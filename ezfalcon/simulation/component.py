@@ -1,5 +1,5 @@
 import numpy as np
-from ..dynamics.acceleration import self_gravity
+from ..dynamics.forces.self_gravity import self_gravity
 from ._decorators import _resolve_use_cached, _resolve_t
 from ..util.units import unit_handler
 import warnings
@@ -647,8 +647,7 @@ class Component:
             Units: `Msun km^2 / s^2`
         '''
         ext_pot = np.zeros(self.mass.shape[0])
-        for fn in self._sim._ext_pot_fns:
-            ext_pot += fn(self.pos(t=t, return_internal=True), t=t)
+        ext_pot = self._sim._conserv_ext_force.potential(self.pos(t=t, return_internal=True), self.mass, t)
         return self.mass * ext_pot
     
     @_resolve_use_cached
@@ -1082,9 +1081,14 @@ class Component:
             each particle at each snapshot.
             Units: `km / s^2`
         '''
-        ext_acc = np.zeros_like(self.vel(t=t, return_internal=True))
-        for fn in self._sim._ext_acc_fns:
-            ext_acc += fn(self.pos(t=t, return_internal=True), t=t)
+        #ext_acc = np.zeros_like(self.vel(t=t, return_internal=True))
+        #for fn in self._sim._ext_acc_fns:
+        ti = self._ti(t)
+        t_phys = self._sim._times[ti]
+        ext_acc = (self._sim._conserv_ext_force.acc(pos=self.pos(ti, return_internal=True), mass=self.mass, t=t_phys) + self._sim._base_ext_force.acc(pos=self.pos(ti, return_internal=True), 
+                                  vel=self.vel(ti, return_internal=True), 
+                                  mass=self.mass, 
+                                  t=t_phys))
         return ext_acc
     
     @unit_handler('acceleration')

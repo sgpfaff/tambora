@@ -1,41 +1,39 @@
-from .leapfrog import _leapfrog_step #, leapfrog_drift, leapfrog_kick
-from ..acceleration import self_gravity
+from ..forces import SelfGravityForce, ConservativeForce, BaseForce
+from .BaseIntegrator import BaseIntegrator
 import numpy as np
 from tqdm import tqdm
 from functools import partial
+from typing import Optional
+import warnings
 
-def _integrate(pos, vel, mass, 
-              include_self_gravity,
-              self_gravity_method,
-              extra_acc,
-              t_end, dt, dt_out, 
-              return_self_potential=True,
-              return_self_gravity=True,
-              return_ext_acc=True,
-              **kwargs):
+def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray, 
+            integrator: BaseIntegrator, 
+            self_gravity_force: Optional[SelfGravityForce], 
+            conserv_ext_force: Optional[ConservativeForce],
+            base_ext_force: Optional[BaseForce],
+            t_end: float, dt: float, dt_out: float, 
+            return_self_gravity_pot: bool = True, 
+            return_self_gravity_acc: bool = True):
     '''
-    Integrate particle trajectories under self-gravity 
-    using leapfrog with falcON.
+    Integrate particle trajectories optionally under 
+    influence of self-gravity and external forces.
 
     Parameters
     ----------
-    pos : (N, 3) array
-        Initial positions of particles. 
-        Units: `kpc`
-    vel : (N, 3) array
-        Initial velocities of particles.
-        Units: `kpc / Gyr`
-    mass : (N,) array
-        Masses of particles.
-        Units: `Msun`
-    include_self_gravity : bool
-        Whether to include self-gravity in the integration.
-    self_gravity_method : str
-        Method to use for computing self-gravity. Included options are:
-        - 'falcON': Use the fast multipole method implemented in falcON.
-        - 'direct': Use direct summation.
-    extra_acc : list of callables
-        Additional accelerations to be added to the self-gravity accelerations.
+    pos : ndarray
+        The starting positions of particles.
+    vel : ndarray
+        The starting velocities of particles.
+    mass : ndarray
+        The mass of particles.
+    integrator: BaseIntegrator
+        Integrator class to use, inherited from BaseIntegrator.
+    self_gravity_force : SelfGravity
+        self-gravity solver class.
+    conserv_ext_forces: ConservativeForce
+        Conservative external forces.
+    base_ext_forces : BaseForce
+        Non-conservative external forces.
     t_end : float
         End time of integration.
         Units: `Gyr`
@@ -45,9 +43,9 @@ def _integrate(pos, vel, mass,
     dt_out : float
         Output interval.
         Units: `Gyr`
-    return_self_potential : bool, optional
+    return_self_gravity_pot : bool, optional
         Whether to return the self-gravitational potential at each output snapshot. Default is True.
-    return_self_gravity : bool, optional
+    return_self_gravity_acc : bool, optional
         Whether to return the self-gravitational acceleration at each output snapshot. Default is True.
     **kwargs
         Additional keyword arguments to pass to the self-gravity method.
@@ -60,80 +58,94 @@ def _integrate(pos, vel, mass,
     velocities : (nsnaps, N, 3) array
         Velocities at each output snapshot.
         Units: `kpc / Gyr`
-    ts : (nsnaps,) array
+    ts_out : (nsnaps,) array
         Times of each output snapshot.
         Units: `Gyr`
-    self_gravities : (nsnaps, N, 3) array or None
+    self_gravity_acc : (nsnaps, N, 3) array or None
         Self-gravitational accelerations at each output snapshot. 
         Returns None if return_self_gravity is False.
         Units: `kpc / Gyr^2`
-    self_potentials : (nsnaps, N) array or None
+    self_gravity_pot : (nsnaps, N) array or None
         Self-gravitational potentials at each output snapshot.
         Returns None if return_self_potential is False.
         Units: `kpc^2 / Myr^2`
     '''
-    
-    def acc_fn(pos, t, mass, method, **kwargs):
-        '''
-        Returns None for self_acc (self_pot) if 
-        return_self_gravity (return_self_potential) is False.
-        '''
-        acc = np.zeros_like(vel)
-        ext_acc = np.zeros_like(vel)
-        if include_self_gravity:
-            if return_self_potential:
-                self_acc, self_pot = self_gravity(pos, mass, method=method, return_potential=True, **kwargs)
-            else:
-                self_pot = None
-                self_acc = self_gravity(pos, mass, method=method, return_potential=False, **kwargs)
-            acc += self_acc
-        else:
-            self_acc = np.zeros_like(vel)
-            if return_self_potential:
-                self_pot = np.zeros(pos.shape[0])
-            else:
-                self_pot = None
-        for fn in extra_acc:
-            ext_acc += fn(pos, t=t)
-        acc += ext_acc
-        return acc, self_acc, self_pot
-    
+    _check_dt_dt_out(dt, dt_out, t_end)
+
+    (ts_out, ts_integrate, 
+    nsnaps, steps_per_output) = _make_time_arrays(dt, dt_out, t_end)
+
+    positions, velocities = _make_pos_vel_arrays(pos, vel, mass, nsnaps)
+    self_gravity_pot, self_gravity_acc = _make_self_gravity_arrays(pos, mass, self_gravity_force, 
+                                                                   return_self_gravity_pot, return_self_gravity_acc, nsnaps)
+    i_out = 1
+    current_pos, current_vel = pos, vel
+    current_t = 0
+    integrator.reset()
+    for step, t in enumerate(tqdm(ts_integrate[1:]), start=1):
+        step_result = integrator.step(current_pos, current_vel, mass, current_t, dt,
+                                      self_gravity_force, conserv_ext_force, base_ext_force)
+        current_pos, current_vel, current_t = step_result.pos, step_result.vel, step_result.t
+        if step % steps_per_output == 0 and i_out < nsnaps: # recording snapshot
+            positions[i_out] = step_result.pos.copy()
+            velocities[i_out] = step_result.vel.copy()
+            if return_self_gravity_acc:
+                self_gravity_acc[i_out] += step_result.self_acc.copy() if step_result.self_acc is not None else 0.0
+            if return_self_gravity_pot:
+                self_gravity_pot[i_out] += step_result.self_pot.copy() if step_result.self_pot is not None else 0.0
+            i_out += 1
+
+    return positions, velocities, ts_out, self_gravity_acc, self_gravity_pot
+
+
+def _check_dt_dt_out(dt, dt_out, t_end):
+    if dt <= 0 or dt_out <= 0 or t_end <= 0:
+        raise ValueError("dt, dt_out, and t_end must be positive.")
+    if dt_out < dt:
+        raise ValueError("dt_out must be greater than or equal to dt.")
+    if abs(dt_out / dt - round(dt_out / dt)) > 1e-9:
+        raise ValueError("dt_out must be a multiple of dt.")
+    if abs(t_end / dt - round(t_end / dt)) > 1e-9:
+        actual_t_end = int(t_end / dt) * dt
+        warnings.warn(f"t_end={t_end} Gyr is not an exact multiple of dt={dt} Gyr. "
+                        f"Simulation will end at t={actual_t_end:.10g} Gyr instead.")
+    if abs(t_end / dt_out - round(t_end / dt_out)) > 1e-9:
+        n_steps_w = int(t_end / dt) if abs(t_end / dt - round(t_end / dt)) > 1e-9 else round(t_end / dt)
+        steps_per_output = round(dt_out / dt)
+        nsnaps = n_steps_w // steps_per_output + 1
+        actual_t_end = (nsnaps-1) * dt_out
+        warnings.warn(f"t_end={t_end} Gyr is not an exact multiple of dt_out={dt_out} Gyr. "
+                        f"Last output will be at t={actual_t_end:.10g} Gyr instead of t={t_end:.10g} Gyr.")
+
+def _make_time_arrays(dt, dt_out, t_end):
     ratio = t_end / dt
     n_steps = round(ratio) if abs(ratio - round(ratio)) < 1e-9 else int(ratio)
     steps_per_output = round(dt_out / dt)
     nsnaps = n_steps // steps_per_output + 1  # +1 for initial snapshot
-
     ts_out = np.arange(nsnaps, dtype=np.float64) * dt_out
     ts_integrate = np.arange(n_steps + 1, dtype=np.float64) * dt
+    return ts_out, ts_integrate, nsnaps, steps_per_output
 
-    positions = np.zeros((nsnaps, mass.shape[0], 3), dtype=np.float64)
-    velocities = np.zeros((nsnaps, mass.shape[0], 3), dtype=np.float64)
+
+def _make_pos_vel_arrays(pos, vel, mass, nsnaps):
+    n = mass.shape[0]
+    positions = np.zeros((nsnaps, n, 3), dtype=np.float64)
+    velocities = np.zeros((nsnaps, n, 3), dtype=np.float64)
     positions[0] = pos.copy()
     velocities[0] = vel.copy()
+    return positions, velocities
 
-    self_potentials = None
-    self_gravities = None
-    acc, self_acc, self_pot = acc_fn(pos, 0.0, mass=mass, method=self_gravity_method, **kwargs)
 
-    if return_self_potential:
-        self_potentials = np.zeros((nsnaps, mass.shape[0]), dtype=np.float64)
-        self_potentials[0] = self_pot.copy()
-    if return_self_gravity:
-        self_gravities = np.zeros((nsnaps, mass.shape[0], 3), dtype=np.float64)
-        self_gravities[0] = self_acc.copy()
-
-    i_out = 1
-    for step, t in enumerate(tqdm(ts_integrate[1:]), start=1):
-        (pos, vel, acc, 
-        self_acc, self_pot) = _leapfrog_step(pos, vel, acc, partial(acc_fn, mass=mass, 
-                                                                    method=self_gravity_method, **kwargs), 
-                                            dt=dt, t=t)
-        if step % steps_per_output == 0 and i_out < nsnaps:
-            positions[i_out] = pos.copy()
-            velocities[i_out] = vel.copy()
-            if return_self_gravity:
-                self_gravities[i_out] = self_acc.copy()
-            if return_self_potential:
-                self_potentials[i_out] = self_pot.copy()
-            i_out += 1
-    return positions, velocities, ts_out, self_gravities, self_potentials
+def _make_self_gravity_arrays(pos, mass, self_gravity_force, return_self_gravity_pot,
+                            return_self_gravity_acc, nsnaps):
+    self_gravity_pot = None
+    self_gravity_acc = None
+    self_acc, self_pot = self_gravity_force.acc_and_potential(pos, mass)
+    n = mass.shape[0]
+    if return_self_gravity_pot:
+        self_gravity_pot = np.zeros((nsnaps, n), dtype=np.float64)
+        self_gravity_pot[0] += self_pot.copy() if self_pot is not None else 0.0
+    if return_self_gravity_acc:
+        self_gravity_acc = np.zeros((nsnaps, n, 3), dtype=np.float64)
+        self_gravity_acc[0] = self_acc.copy() if self_acc is not None else 0.0
+    return self_gravity_pot, self_gravity_acc

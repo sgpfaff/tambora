@@ -4,10 +4,15 @@ Simulation class for ezfalcon.
 
 import numpy as np
 from .component import Component
-from ..dynamics import _integrate, self_gravity
+from ..dynamics import (_runner, self_gravity, BaseForce, SelfGravityForce, NullSelfGravity,
+                        ConservativeForce, ExternalGalpyPotential, 
+                        SELF_GRAVITY_METHODS, INTEGRATORS)
+
+from ..dynamics.forces.CompositeForce import _CompositeConservative, _CompositePlain
 from ..util.units import unit_handler, KMS_TO_KPCGYR
 import warnings
-
+import inspect
+from typing import Optional
 from ._decorators import _USE_CACHED_DEFAULT, _resolve_use_cached, _resolve_t
 
 
@@ -35,8 +40,9 @@ class Sim:
         self._times = None           # (n_snap,) Gyr
         self._has_run = False
         self._self_gravity_on = True
-        self._ext_acc_fns = []     # list of functions that take (pos, t) and return (N, 3) acc
-        self._ext_pot_fns = []
+        self._self_gravity_force = NullSelfGravity()
+        self._conserv_ext_force = _CompositeConservative([]) # ConservativeForce external forces
+        self._base_ext_force = _CompositePlain([]) # BaseForce external forces
 
     def _ti(self, t, vectorized=True):
         """
@@ -86,6 +92,7 @@ class Sim:
         Turn self-gravity on for the simulation. 
         This is on by default.
         '''
+        
         self._self_gravity_on = True
 
     def turn_self_gravity_off(self):
@@ -95,6 +102,7 @@ class Sim:
         Methods the acceleration and potential due
         to self-gravity will be zero.
         '''
+        self._self_gravity_force = NullSelfGravity()
         self._self_gravity_on = False
 
     def add_particles(self, name, pos, vel, mass):
@@ -166,8 +174,39 @@ class Sim:
         self._positions = self._init_pos.reshape(1, N, 3)
         self._velocities = self._init_vel.reshape(1, N, 3)
         self._times = np.array([0.0])
-    
-    def add_external_pot(self, pot):
+
+    def add_external_force(self, force: BaseForce):
+        '''
+        Add an external force to the simulation.
+
+        Parameters
+        ----------
+        force : BaseForce
+            An instance of a subclass of BaseForce representing an external force.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        TypeError
+            If force is an instance of SelfGravity. Only accepts external
+            forces.
+        '''
+        if isinstance(force, SelfGravityForce):
+            raise TypeError("The provided force is a self-gravity force, not an external force. Please provide a ConservativeForce or BaseForce subclass.")
+        elif isinstance(force, ConservativeForce):
+            self._conserv_ext_force = self._conserv_ext_force  + force
+        elif isinstance(force, BaseForce):
+            self._base_ext_forces = self._base_ext_forces + force
+        else:
+            raise TypeError(
+                f"Expected a ConservativeForce or BaseForce subclass, "
+                f"got {type(force).__name__!r}."
+            )
+        
+    def add_external_pot(self, potential):
         '''
         Add an external potential to the simulation.
 
@@ -188,56 +227,20 @@ class Sim:
         Warnings
         --------
         UserWarning
-            If the provided galpy potential has physical outputs turned off. 
-            In this case
-        
+            If the provided galpy potential has physical outputs turned off.
         '''
         try:
-            import galpy.potential
-            from ..util._galpy_bridge import (
-                _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn,
-                _check_physical, _check_supported_pot,
-                _ensure_pot, _iter_components,
-            )
+            import galpy
         except ImportError:
             raise ImportError(
                 "galpy is required for external potentials. "
-                "Install it with: pip install ezfalcon[galpy]"
-            )
-        # Accept single Potential, list, or CompositePotential (galpy >=1.11)
-        pot = _ensure_pot(pot)
-        for p in _iter_components(pot):
-            if not isinstance(p, galpy.potential.Potential):
-                raise TypeError("External potential must be a galpy Potential object.")
-            _check_physical(p)
-        _check_supported_pot(pot)
-        self._ext_pot_fns.append(_galpy_pot_to_pot_fn(pot))
-        self._ext_acc_fns.append(_galpy_pot_to_acc_fn(pot))
-    
-    def add_external_acc(self, acc_fn):
-        '''
-        Add an external acceleration function to the simulation.
-
-        Parameters
-        ----------
-        acc_fn : function
-            A function that takes (pos, t) and returns (N, 3) array of accelerations.
-
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        TypeError
-            If acc_fn is not a callable function.
-        '''
-        # if callable(acc_fn):
-        #     self._ext_acc_fns.append(acc_fn)
-        # else:
-        #     raise TypeError("External acceleration must be a callable function that takes (pos, t) and returns (N, 3) array of accelerations.")
-        raise NotImplementedError("Adding external accelerations as functions is not yet implemented. Please add your external potential as a galpy Potential and use add_external_pot().")
-
+                "Install it with: pip install ezfalcon[galpy]")
+        if isinstance(potential, galpy.potential.Potential):
+            force = ExternalGalpyPotential(potential)
+            self.add_external_force(force)
+        else:
+            raise TypeError("External potential must be a galpy Potential object.")
+        
     def add_subhalos(self, pos, vel, mass):
         '''
         Add Plummer sphere subhalos as a component to the simulation. 
@@ -312,9 +315,13 @@ class Sim:
                 else:
                     raise ValueError(f"eps[{name!r}] must be a scalar or 1D array of length {n_comp}, got {type(val)} with shape {val.shape}")
             return eps_flat
+        
+    # --- Running the Simulation ------------------------------------------------------------------------------------------
 
-    def run(self, t_end, dt, dt_out, method='falcON', 
-            cache_self_gravity=True, cache_self_potential=True, **kwargs):
+    def run(self, t_end: float, dt: float, dt_out: float, 
+            method: Optional[str] = 'auto', integration_method: str = 'leapfrog',
+            cache_self_gravity_acc: bool = True, cache_self_gravity_pot: bool = True, 
+            **kwargs):
         """
         Run the simulation to *t_end* [Gyr].
 
@@ -329,13 +336,15 @@ class Sim:
         dt_out : float
             Output interval. Must be a multiple of dt.
             Units: `Gyr`
-        method : str, optional
+        sg_method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
             - 'direct': direct summation.
-        cache_self_gravity : bool, optional
+        integration_method: str, optional
+            Method to use for integration. Currently only leapfrog is available.
+        cache_self_gravity_acc : bool, optional
             Whether to cache the self-gravity acceleration at each output snapshot. Default is True.
-        cache_self_potential : bool, optional
+        cache_self_gravity_pot : bool, optional
             Whether to cache the self-gravitational potential at each output snapshot. Default is True.
         **kwargs 
             Additional keyword arguments to pass to the gravity method. 
@@ -353,47 +362,52 @@ class Sim:
             - theta (float, optional): Tree opening angle. Default is 0.6. Smaller = more accurate but slower.
             - kernel (int, optional): Softening kernel: 0=Plummer, 1=default (~r^-7), 2,3=faster decay.
         """
-        if dt <= 0 or dt_out <= 0 or t_end <= 0:
-            raise ValueError("dt, dt_out, and t_end must be positive.")
-        if dt_out < dt:
-            raise ValueError("dt_out must be greater than or equal to dt.")
-        if abs(dt_out / dt - round(dt_out / dt)) > 1e-9:
-            raise ValueError("dt_out must be a multiple of dt.")
-        if abs(t_end / dt - round(t_end / dt)) > 1e-9:
-            actual_t_end = int(t_end / dt) * dt
-            warnings.warn(f"t_end={t_end} Gyr is not an exact multiple of dt={dt} Gyr. "
-                          f"Simulation will end at t={actual_t_end:.10g} Gyr instead.")
-        if abs(t_end / dt_out - round(t_end / dt_out)) > 1e-9:
-            n_steps_w = int(t_end / dt) if abs(t_end / dt - round(t_end / dt)) > 1e-9 else round(t_end / dt)
-            steps_per_output = round(dt_out / dt)
-            nsnaps = n_steps_w // steps_per_output + 1
-            actual_t_end = (nsnaps-1) * dt_out
-            warnings.warn(f"t_end={t_end} Gyr is not an exact multiple of dt_out={dt_out} Gyr. "
-                          f"Last output will be at t={actual_t_end:.10g} Gyr instead of t={t_end:.10g} Gyr.")
         if 'eps' in kwargs:
             kwargs['eps'] = self._resolve_eps(kwargs['eps'])
-        
-        (self._positions, self._velocities, self._times,
-         self._cached_self_acc, self._cached_self_pot) = _integrate(
-                    pos = self._init_pos, 
-                    vel = self._init_vel, 
-                    mass = self._mass,
-                    include_self_gravity = self._self_gravity_on, 
-                    self_gravity_method=method,
-                    extra_acc = self._ext_acc_fns,
+
+        if method == 'auto':
+            method = 'falcON' if self._self_gravity_on else None
+
+        if self._self_gravity_on:
+            supported = sorted(m for m in SELF_GRAVITY_METHODS if m is not None)
+            if method not in SELF_GRAVITY_METHODS:
+                raise ValueError(
+                    f"Unknown method {method!r} for self-gravity. Supported methods: {supported}")
+            solver_cls = SELF_GRAVITY_METHODS[method]
+            valid = set(inspect.signature(solver_cls.__init__).parameters) - {'self'}
+            invalid = set(kwargs) - valid
+            if invalid:
+                raise ValueError(
+                    f"{invalid} is (are) invalid kwarg(s) for {method!r} self-gravity method. "
+                    "Only kwargs for self-gravity methods are allowed."
+                )
+            self._self_gravity_force = solver_cls(**kwargs)
+        else:
+            if method is not None:
+                raise UserWarning("Self-gravity method is not None but self-gravity is turned off. " \
+                "Self-gravity will not be used during integration.")
+        integrator = INTEGRATORS[integration_method]()
+
+        (self._positions, self._velocities, 
+         self._times, self._cached_self_acc, 
+         self._cached_self_pot) = _runner(
+                    self._init_pos, self._init_vel, self._mass,
+                    integrator,
+                    self._self_gravity_force,
+                    self._conserv_ext_force,
+                    self._base_ext_force,
                     t_end = t_end,
                     dt = dt,
                     dt_out = dt_out,
-                    return_self_potential = cache_self_potential,
-                    return_self_gravity = cache_self_gravity,
-                    **kwargs
+                    return_self_gravity_pot = cache_self_gravity_pot,
+                    return_self_gravity_acc = cache_self_gravity_acc,
                 )
         self._has_run = True
 
     # --- Position Accessors -----------------------------------------------------------------
 
     @unit_handler('length')
-    def pos(self, t=...):
+    def pos(self, t=...) -> np.ndarray:
         '''
         Particle positions (x,y,z) at *t*.
 
@@ -416,7 +430,7 @@ class Sim:
         return self._positions[self._ti(t)]
 
     @unit_handler('length')
-    def x(self, t=...):
+    def x(self, t=...) -> np.ndarray:
         '''
         Particle x-positions of all particles at *t*.
 
@@ -439,7 +453,7 @@ class Sim:
         return self._positions[self._ti(t), :, 0]
  
     @unit_handler('length')
-    def y(self, t=...):
+    def y(self, t=...) -> np.ndarray:
         '''
         Particle y-positions of all particles at *t*.
 
@@ -462,7 +476,7 @@ class Sim:
         return self._positions[self._ti(t), :, 1]
 
     @unit_handler('length')
-    def z(self, t=...):
+    def z(self, t=...) -> np.ndarray:
         '''
         Particle z-positions of all particles at *t*.
 
@@ -485,7 +499,7 @@ class Sim:
         return self._positions[self._ti(t), :, 2]
 
     @unit_handler('length')
-    def r(self, t=...):
+    def r(self, t=...) -> np.ndarray:
         '''
         Particle spherical radii at *t*.
 
@@ -508,7 +522,7 @@ class Sim:
         pos = self.pos(t, return_internal=True)
         return np.linalg.norm(pos, axis=-1)
 
-    def phi(self, t=...):
+    def phi(self, t=...) -> np.ndarray:
         '''
         Particle azimuthal angles at *t*.
         
@@ -534,7 +548,7 @@ class Sim:
         pos = self.pos(t, return_internal=True)
         return np.arctan2(pos[..., 1], pos[..., 0])
     
-    def theta(self, t=...):
+    def theta(self, t=...) -> np.ndarray:
         '''
         Particle polar angles at *t*.
 
@@ -561,7 +575,7 @@ class Sim:
         return np.arccos(pos[..., 2] / r)
 
     @unit_handler('length')
-    def cylR(self, t=...):
+    def cylR(self, t=...) -> np.ndarray:
         '''
         Particle cylindrical radii at *t*.
 
@@ -585,8 +599,9 @@ class Sim:
                        self.y(t, return_internal=True)**2)
     
     # --- Velocity Accessors -----------------------------------------------------------------
+    
     @unit_handler('velocity')
-    def vel(self, t=...):
+    def vel(self, t=...) -> np.ndarray:
         '''
         Particle velocities (vx,vy,vz) at *t*.
 
@@ -609,7 +624,7 @@ class Sim:
         return self._velocities[self._ti(t)]
 
     @unit_handler('velocity')
-    def vx(self, t=...):
+    def vx(self, t=...) -> np.ndarray:
         '''
         x-component of particle velocities at *t*.
 
@@ -632,7 +647,7 @@ class Sim:
         return self._velocities[self._ti(t), :, 0]
 
     @unit_handler('velocity')
-    def vy(self, t=...):
+    def vy(self, t=...) -> np.ndarray:
         '''
         y-component of particle velocities at *t*.
 
@@ -655,7 +670,7 @@ class Sim:
         return self._velocities[self._ti(t), :, 1]
 
     @unit_handler('velocity')
-    def vz(self, t=...):
+    def vz(self, t=...) -> np.ndarray:
         '''
         z-component of particle velocities at *t*.
 
@@ -679,7 +694,7 @@ class Sim:
         return self._velocities[self._ti(t), :, 2]
 
     @unit_handler('velocity')
-    def vr(self, t=...):
+    def vr(self, t=...) -> np.ndarray:
         '''
         Spherical coordinates radial velocities at *t*.
 
@@ -708,7 +723,7 @@ class Sim:
         return vr
 
     @unit_handler('angular_velocity')
-    def vphi(self, t=...):
+    def vphi(self, t=...) -> np.ndarray:
         '''
         Azimuthal angular velocity at *t* (for both spherical and cylindrical coordinates).
 
@@ -736,7 +751,7 @@ class Sim:
                 self.cylR(t, return_internal=True)**2)
     
     @unit_handler('velocity')
-    def vtheta(self, t=...):
+    def vtheta(self, t=...) -> np.ndarray:
         '''
         Polar velocities at *t* (for spherical coordinates).
 
@@ -768,7 +783,7 @@ class Sim:
         )
     
     @unit_handler('velocity')
-    def cylvR(self, t=...):
+    def cylvR(self, t=...) -> np.ndarray:
         '''
         Cylindrical coordinates radial velocities at *t*.
 
@@ -798,7 +813,7 @@ class Sim:
     # --- Momentum Accessors -----------------------------------------------------------------
     
     @unit_handler('momentum')
-    def p(self, t=...):
+    def p(self, t=...) -> np.ndarray:
         '''
         Particle momenta (px, py, pz) at *t*.
         
@@ -821,7 +836,7 @@ class Sim:
         return self._mass[:, None] * self.vel(t, return_internal=True)
     
     @unit_handler('momentum')
-    def px(self, t=...):
+    def px(self, t=...) -> np.ndarray:
         '''
         x-component of particle momenta at *t*.
 
@@ -844,7 +859,7 @@ class Sim:
         return self._mass * self.vx(t, return_internal=True)
 
     @unit_handler('momentum')
-    def py(self, t=...):
+    def py(self, t=...) -> np.ndarray:
         '''
         y-component of particle momenta at *t*.
 
@@ -867,7 +882,7 @@ class Sim:
         return self._mass * self.vy(t, return_internal=True)
     
     @unit_handler('momentum')
-    def pz(self, t=...):
+    def pz(self, t=...) -> np.ndarray:
         '''
         z-component of particle momenta at *t*.
 
@@ -890,7 +905,7 @@ class Sim:
         return self._mass * self.vz(t, return_internal=True)
 
     @unit_handler('angular_momentum')
-    def L(self, t=..., center_pos=None, center_vel=None):
+    def L(self, t=..., center_pos=None, center_vel=None) -> np.ndarray:
         '''
         Angular momentum of particles at *t*
 
@@ -925,7 +940,7 @@ class Sim:
         return self.mass[:, None] * np.cross(r, v)
     
     @unit_handler('angular_momentum')
-    def Lx(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0]):
+    def Lx(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0]) -> np.ndarray:
         '''
         x-component of particle angular momentum at *t* about *center*.
 
@@ -955,7 +970,7 @@ class Sim:
                       return_internal=True)[..., 0]
     
     @unit_handler('angular_momentum')
-    def Ly(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0]):
+    def Ly(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0]) -> np.ndarray:
         '''
         y-component of particle angular momentum at *t* about *center*.
 
@@ -985,7 +1000,7 @@ class Sim:
                       return_internal=True)[..., 1]
     
     @unit_handler('angular_momentum')
-    def Lz(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0]):
+    def Lz(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0]) -> np.ndarray:
         '''
         z-component of particle angular momentum at *t* about *center*.
 
@@ -1019,7 +1034,7 @@ class Sim:
     # --- Potential Energy --- #
 
     @unit_handler('energy')
-    def compute_external_pot(self, t=...):
+    def compute_external_pot(self, t=...) -> np.ndarray:
         '''
         External potential of particles at *t*.
 
@@ -1040,24 +1055,24 @@ class Sim:
             Units: `Msun km^2 / s^2`
         '''
         ti = self._ti(t, vectorized=True)
+        
         if isinstance(ti, (int, np.integer)):
             t_phys = self._times[ti]
-            ext_pot = np.zeros(self._mass.shape[0])
-            for fn in self._ext_pot_fns:
-                ext_pot += fn(self.pos(t=ti, return_internal=True), t=t_phys)
+            ext_pot = self._conserv_ext_force.potential(pos=self.pos(t=ti, return_internal=True), 
+                                                        mass=self.mass, t=t_phys) if self._conserv_ext_force is not None else 0.0
         else:
             warnings.warn("Computing external potential on-the-fly for multiple snapshots may be slow.")
             times = self._times
             ext_pot = np.zeros((len(times), self._mass.shape[0]))
-            for fn in self._ext_pot_fns:
-                for i, t_i in enumerate(times):
-                    ext_pot[i] += fn(self.pos(t=t_i, return_internal=True), t=t_i)
+            for i, t_i in enumerate(times):
+                ext_pot[i] += self._conserv_ext_force.potential(pos=self.pos(t=t_i, return_internal=True), 
+                                                                mass=self.mass, t=t_i,) if self._conserv_ext_force is not None else 0.0
         return self._mass * ext_pot
     
     @_resolve_use_cached
     @_resolve_t
     @unit_handler('energy')
-    def self_potential(self, t=..., use_cached=True, method=None, **kwargs):
+    def self_potential(self, t=..., use_cached=True, method=None, **kwargs) -> np.ndarray:
         '''
         Self-gravitational potential of particles at *t*.
 
@@ -1106,7 +1121,7 @@ class Sim:
     @_resolve_use_cached
     @_resolve_t
     @unit_handler('energy')
-    def PE(self, t=..., use_cached=True, method=None, **kwargs):
+    def PE(self, t=..., use_cached=True, method=None, **kwargs) -> np.ndarray:
         '''
         Total potential energy of particles at *t*.
 
@@ -1148,7 +1163,7 @@ class Sim:
         )
     # --- Kinetic Energy --- #
     @unit_handler('energy')
-    def KE(self, t=...):
+    def KE(self, t=...) -> np.ndarray:
         '''
         Kinetic energy of particles at *t*.
 
@@ -1520,9 +1535,17 @@ class Sim:
         '''
         ti = self._ti(t)
         t_phys = self._times[ti]
-        ext_acc = np.zeros_like(self._velocities[ti])
-        for fn in self._ext_acc_fns:
-            ext_acc += fn(self.pos(t=ti, return_internal=True), t=t_phys)
+        # ext_acc = np.zeros_like(self._velocities[ti])
+        ext_acc = (self._conserv_ext_force.acc(pos=self.pos(ti, return_internal=True), mass=self.mass, t=t_phys) + self._base_ext_force.acc(pos=self.pos(ti, return_internal=True), 
+                                  vel=self.vel(ti, return_internal=True), 
+                                  mass=self.mass, 
+                                  t=t_phys))# if self._base_ext_force is not None else 0.0)
+        # ((self._conserv_ext_force.acc(pos=self.pos(ti, return_internal=True), mass=self.mass, t=t_phys) 
+        #              if self._conserv_ext_force is not None else 0.0) +
+        # (self._base_ext_force.acc(pos=self.pos(ti, return_internal=True), 
+        #                           vel=self.vel(ti, return_internal=True), 
+        #                           mass=self.mass, 
+        #                           t=t_phys) if self._base_ext_force is not None else 0.0)
         return ext_acc
     
     @unit_handler('acceleration')
@@ -1634,7 +1657,7 @@ class Sim:
         plt.plot(self.times[::skip_every], dE, c='k')
         plt.yscale('log')
         plt.xlabel("Time (Gyr)")
-        plt.ylabel("$|\Delta E / E_0|$")
+        plt.ylabel("$|\\Delta E / E_0|$")
         plt.title("Energy Conservation")
         if filename is not None:
             plt.savefig(filename, dpi=300, bbox_inches='tight')
@@ -1669,7 +1692,7 @@ class Sim:
             plt.plot(self.times, (np.sum(self.pz(), axis=-1)-np.sum(self.pz(t=0), axis=-1))/np.sum(self.pz(t=0), axis=-1), alpha=0.5, lw=4, label='$p_z$')
         plt.plot(self.times, np.sum((np.sum(self.p(), axis=-1)-np.sum(self.p(t=0), axis=-1)), axis=-1)/ np.sum(self.p(t=0)), c='k', label='Total')
         plt.xlabel("Time (Gyr)")
-        plt.ylabel("$|\Delta p / p_0|$")
+        plt.ylabel("$|\\Delta p / p_0|$")
         plt.legend()
         plt.title(f"Momentum Conservation")
         if filename is not None:
@@ -1700,3 +1723,4 @@ class Sim:
 
     def to_galpy_orbit(self, t):
         raise NotImplementedError('Outputting galpy orbit is not yet supported.')
+    

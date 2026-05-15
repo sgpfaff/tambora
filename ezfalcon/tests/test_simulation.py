@@ -7,7 +7,7 @@ from ezfalcon.simulation import Sim, Component
 import numpy as np
 from ezfalcon.util import G_INTERNAL
 from ezfalcon.util.units import KMS_TO_KPCGYR
-from ezfalcon.dynamics.acceleration.self_gravity import _direct_summation
+from ezfalcon.dynamics import DirectSummationGravity
 import astropy.units as u
 
 
@@ -321,7 +321,7 @@ def test_self_gravity_off_gives_zero_acc():
     sim = Sim()
     sim.add_particles('a', np.random.normal(size=(30, 3)) * 0.5, np.zeros((30, 3)), np.ones(30) * 1e4)
     sim.turn_self_gravity_off()
-    sim.run(t_end=2, dt=1, dt_out=2, method='direct', eps=0.0)
+    sim.run(t_end=2, dt=1, dt_out=2)
     acc = sim.self_gravity()
     np.testing.assert_array_equal(acc, 0)
 
@@ -369,6 +369,21 @@ def test_resolve_eps_invalid_type():
     with pytest.raises(TypeError, match="eps must be a scalar or dict"):
         sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=[0.1, 0.2])
 
+# --- .add_external_force() ---------------------------------------------------------------------- #
+def test_add_external_force_rejects_non_force():
+    class Test:
+        ...
+    testInstance = Test()
+    sim = Sim()
+    with pytest.raises(TypeError, match="Expected a ConservativeForce or BaseForce subclass"):
+        sim.add_external_force(testInstance)
+
+def test_add_external_force_rejects_self_gravity():
+    sim = Sim()
+    force = DirectSummationGravity(eps=0.1)
+    with pytest.raises(TypeError, match="The provided force is a self-gravity force, not an external force."):
+        sim.add_external_force(force)
+
 # --- .add_external_pot() ------------------------------------------------------------------------ #
 
 def test_add_external_pot_rejection():
@@ -389,7 +404,7 @@ def test_acc_matches_direct():
     sim = Sim()
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     acc = sim.self_gravity(t=0, method='direct', eps=0.0, return_internal=True)
-    acc_direct= _direct_summation(pos, mass, eps=0.0, return_potential=False)
+    acc_direct= DirectSummationGravity(eps=0.0).acc(pos, mass)
     np.testing.assert_allclose(acc, acc_direct, rtol=1e-10)
 
 # --- external acceleration accessors -------------------------------------------------------- #
@@ -440,20 +455,20 @@ def test_external_pot_against_direct():
 
 def test_self_potential_against_direct():
     '''
-    Aim: Verify self_potential() equals mass * _direct_summation()
+    Aim: Verify self_potential() equals mass * DirectSummationGravity().potential()
     potential. This tests that the Sim accessor correctly multiplies by mass
     on top of the raw solver output. Uses non-unit masses [1e8, 1e10].
 
     If this fails: self_potential is not multiplying by mass, or is
     calling self_gravity incorrectly (wrong method, wrong kwargs).
-    Relies on: _direct_summation being correct (test_direct_summation.py).
+    Relies on: DirectSummationGravity being correct (test_direct_summation.py).
     '''
     pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
     vel = np.zeros_like(pos)
     mass = np.array([1e8, 1e10])
     sim = Sim()
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
-    _, pot_direct = _direct_summation(pos, mass, eps=0.0, return_potential=True)
+    pot_direct = DirectSummationGravity(eps=0.0).potential(pos, mass)
     pot_sim = sim.self_potential(t=0, method='direct', eps=0.0, return_internal=True)
     np.testing.assert_allclose(pot_sim[0], mass[0] * pot_direct[0], rtol=1e-15)
     np.testing.assert_allclose(pot_sim[1], mass[1] * pot_direct[1], rtol=1e-15)
@@ -474,7 +489,7 @@ def test_PE_against_direct():
     sim = Sim()
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.add_external_pot(kepler_pot)
-    _, self_pot_direct = _direct_summation(pos, mass, eps=0.0, return_potential=True)
+    self_pot_direct = DirectSummationGravity(eps=0.0).potential(pos, mass)
     ext_pot_direct = ([-G_INTERNAL * mass[0] * 1e9 / np.linalg.norm(pos[0]), 
                        -G_INTERNAL * mass[1] * 1e9 / np.linalg.norm(pos[1])])
     pot_direct = mass * self_pot_direct + ext_pot_direct
@@ -549,8 +564,8 @@ def test_energy_is_sum_of_KE_and_PE_after_run():
 
 def test_system_energy_is_sum_of_energies():
     '''
-    Aim: Verify system_energy() == Σ KE + ½ Σ(m·Φ_self) + Σ(m·Φ_ext).
-    The ½ on the self-PE avoids double-counting pairwise interactions.
+    Aim: Verify system_energy() == sum(KE) + 0.5*sum(m·phi_self) + sum(m·phi_ext).
+    The 0.5 on the self-PE avoids double-counting pairwise interactions.
     This checks the scalar reduction logic, NOT whether individual
     terms have correct mass factors (that's the analytical tests' job).
 
@@ -559,7 +574,7 @@ def test_system_energy_is_sum_of_energies():
     consistency test. A shared mass-factor bug would escape.
 
     If this fails: system_energy() is combining terms incorrectly
-    (e.g. missing the ½ on self-PE, or not summing over particles).
+    (e.g. missing the 0.5 on self-PE, or not summing over particles).
     Relies on: KE(), self_potential(), compute_external_pot()
     all returning per-particle arrays of the right shape.
     '''
@@ -634,7 +649,7 @@ def test_dt_out_not_a_multiple_of_dt():
                   method='direct',
                   eps=0.0)
 def test_invalid_method():
-    with pytest.raises(ValueError, match="Unknown method 'invalid_method' for self-gravity. Supported methods: \['direct', 'direct_C', 'falcON'\]"):
+    with pytest.raises(ValueError, match=r"Unknown method 'invalid_method' for self-gravity. Supported methods: \['direct', 'falcON'\]"):
         KEPLER_SIM.run(
                   t_end=1.0, 
                   dt=0.1, 
@@ -709,8 +724,8 @@ def test_self_potential_is_mass_weighted():
     Uses non-unit masses so m*phi ≠ phi.
 
     If this fails: compute_self_potential is returning bare phi without
-    the mass multiplication, or _direct_summation potential is wrong.
-    Relies on: _direct_summation being correct (test_direct_summation.py).
+    the mass multiplication, or DirectSummationGravity potential is wrong.
+    Relies on: DirectSummationGravity being correct (test_direct_summation.py).
     '''
     sim = _energy_sim()
     pe = sim.self_potential(t=0, method='direct',eps=E_EPS, return_internal=True)
@@ -814,7 +829,7 @@ def test_system_energy_analytical():
 
     If this fails: system_energy has a wrong coefficient (e.g. missing 0.5
     on self-PE), a missing mass factor on any term, or wrong signs.
-    Relies on: _direct_summation being correct, galpy bridge being correct.
+    Relies on: DirectSummationGravity  being correct, galpy bridge being correct.
     This is the strongest energy test — independent of all other accessors.
     '''
     sim = _energy_sim(with_ext_pot=True)
@@ -865,8 +880,8 @@ def _caching_test_sim():
 def _run_caching_test_sim(sim, cache_self_gravity, cache_self_potential):
     sim.run(t_end=1, dt=0.1, dt_out=0.1, 
             method='direct', eps=0.0, 
-            cache_self_gravity=cache_self_gravity, 
-            cache_self_potential=cache_self_potential)
+            cache_self_gravity_acc=cache_self_gravity, 
+            cache_self_gravity_pot=cache_self_potential)
     
 def test_no_self_gravity_pot_or_acc_caching_after_run():
     '''
@@ -1033,8 +1048,7 @@ def _shape_test_sim():
                       pos=np.random.normal(size=(20, 3)),
                       vel=np.random.normal(size=(20, 3)),
                       mass=np.abs(np.random.normal(loc=1e9, scale=1e8, size=(20,))))
-    sim.run(t_end=1, dt=0.1, dt_out=0.1, method='direct', eps=0.05,
-            cache_self_gravity=True, cache_self_potential=True)
+    sim.run(t_end=1, dt=0.1, dt_out=0.1, method='direct', eps=0.05)
     return sim
 
 _SHAPE_SIM = _shape_test_sim()
