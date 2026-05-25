@@ -2,9 +2,10 @@ import pytest
 import numpy as np
 from ezfalcon.simulation import Sim, Component
 from ezfalcon.util import G_INTERNAL
-from ezfalcon.dynamics.acceleration.self_gravity import _direct_summation
+from ezfalcon.dynamics import DirectSummationGravity
 
 np.random.seed(42)
+direct_gravity = DirectSummationGravity(eps=0.0)
 
 COMP1_NPTS = 50
 COMP1_POS = np.random.rand(COMP1_NPTS, 3)
@@ -630,7 +631,7 @@ def _iac_sim():
     sim.add_particles('sat', pos=_IAC_COMP2_POS.copy(),
                       vel=_IAC_COMP2_VEL.copy(), mass=_IAC_COMP2_MASS.copy())
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0,
-            cache_self_gravity=True, cache_self_potential=True)
+            cache_self_gravity_acc=True, cache_self_gravity_pot=True)
     return sim
 
 _IAC_SIM = _iac_sim()
@@ -646,7 +647,8 @@ def test_iac_self_gravity_all_components():
     disk = _IAC_SIM.disk
     all_pos = np.concatenate([_IAC_COMP1_POS, _IAC_COMP2_POS])
     all_mass = np.concatenate([_IAC_COMP1_MASS, _IAC_COMP2_MASS])
-    acc_all, _ = _direct_summation(all_pos, all_mass, eps=0.0, return_potential=True)
+    
+    acc_all = direct_gravity.acc(all_pos, all_mass)
     acc_disk_expected = acc_all[:2]
 
     acc_disk = disk.self_gravity(t=0, method='direct', eps=0.0, include_all_components=True, return_internal=True)
@@ -661,7 +663,7 @@ def test_iac_self_gravity_own_component_only():
     If this fails: include_all_components=False still includes other components.
     '''
     disk = _IAC_SIM.disk
-    acc_disk_only, _ = _direct_summation(_IAC_COMP1_POS, _IAC_COMP1_MASS, eps=0.0, return_potential=True)
+    acc_disk_only= direct_gravity.acc(_IAC_COMP1_POS, _IAC_COMP1_MASS)
 
     acc_disk = disk.self_gravity(t=0, method='direct', eps=0.0, include_all_components=False, return_internal=True)
     np.testing.assert_allclose(acc_disk, acc_disk_only, rtol=1e-15)
@@ -689,7 +691,7 @@ def test_iac_self_potential_all_components():
     disk = _IAC_SIM.disk
     all_pos = np.concatenate([_IAC_COMP1_POS, _IAC_COMP2_POS])
     all_mass = np.concatenate([_IAC_COMP1_MASS, _IAC_COMP2_MASS])
-    _, pot_all = _direct_summation(all_pos, all_mass, eps=0.0, return_potential=True)
+    pot_all = direct_gravity.potential(all_pos, all_mass)
     expected = _IAC_COMP1_MASS * pot_all[:2]
 
     result = disk.self_potential(t=0, method='direct', eps=0.0, include_all_components=True, return_internal=True)
@@ -703,7 +705,7 @@ def test_iac_self_potential_own_component_only():
     If this fails: include_all_components=False still includes other particles.
     '''
     disk = _IAC_SIM.disk
-    _, pot_disk_only = _direct_summation(_IAC_COMP1_POS, _IAC_COMP1_MASS, eps=0.0, return_potential=True)
+    pot_disk_only = direct_gravity.potential(_IAC_COMP1_POS, _IAC_COMP1_MASS)
     expected = _IAC_COMP1_MASS * pot_disk_only
 
     result = disk.self_potential(t=0, method='direct', eps=0.0, include_all_components=False, return_internal=True)
@@ -752,7 +754,7 @@ def test_iac_sat_self_gravity_all_analytical():
     sat = _IAC_SIM.sat
     all_pos = np.concatenate([_IAC_COMP1_POS, _IAC_COMP2_POS])
     all_mass = np.concatenate([_IAC_COMP1_MASS, _IAC_COMP2_MASS])
-    acc_all, _ = _direct_summation(all_pos, all_mass, eps=0.0, return_potential=True)
+    acc_all = direct_gravity.acc(all_pos, all_mass)
     acc_sat_expected = acc_all[2:]  # sat is particle index 2
 
     acc_sat = sat.self_gravity(t=0, method='direct', eps=0.0, include_all_components=True, return_internal=True)

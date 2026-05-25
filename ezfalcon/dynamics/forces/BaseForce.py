@@ -36,3 +36,20 @@ class BaseForce(ABC):
     def __add__(self, other: "BaseForce") -> "BaseForce":
         from .CompositeForce import CompositeForce
         return CompositeForce([self, other])
+    
+class NullBaseForce(BaseForce):
+    """No-op self-gravity. Used when self-gravity is disabled."""
+    def __init__(self):
+        self._zeros_array_3d = None
+        self._zeros_array_1d = None
+
+    def acc(self, pos, vel, mass, t):
+        if self._zeros_array_3d is None:
+            self._zeros_array_3d = np.zeros_like(pos)
+        return self._zeros_array_3d
+    def potential(self, pos, vel, mass, t):
+        if self._zeros_array_1d is None:
+            self._zeros_array_1d = np.zeros(pos.shape[0])
+        return self._zeros_array_1d
+    def acc_and_potential(self, pos, vel, mass, t):
+        return self.acc(pos, vel, mass, t), self.potential(pos, vel, mass, t)

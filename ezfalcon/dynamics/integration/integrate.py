@@ -108,22 +108,26 @@ def _check_dt_dt_out(dt, dt_out, t_end):
     if abs(t_end / dt - round(t_end / dt)) > 1e-9:
         actual_t_end = int(t_end / dt) * dt
         warnings.warn(f"t_end={t_end} Gyr is not an exact multiple of dt={dt} Gyr. "
-                        f"Simulation will end at t={actual_t_end:.10g} Gyr instead.")
+                        f"The simulation will end before t_end.")
     if abs(t_end / dt_out - round(t_end / dt_out)) > 1e-9:
         n_steps_w = int(t_end / dt) if abs(t_end / dt - round(t_end / dt)) > 1e-9 else round(t_end / dt)
         steps_per_output = round(dt_out / dt)
-        nsnaps = n_steps_w // steps_per_output + 1
-        actual_t_end = (nsnaps-1) * dt_out
+        nsnaps = n_steps_w // steps_per_output
+        actual_t_end = nsnaps * dt_out
         warnings.warn(f"t_end={t_end} Gyr is not an exact multiple of dt_out={dt_out} Gyr. "
-                        f"Last output will be at t={actual_t_end:.10g} Gyr instead of t={t_end:.10g} Gyr.")
+                        f"Last output will be at t={actual_t_end:.10g} Gyr instead of t={t_end} Gyr.")
 
 def _make_time_arrays(dt, dt_out, t_end):
-    ratio = t_end / dt
-    n_steps = round(ratio) if abs(ratio - round(ratio)) < 1e-9 else int(ratio)
+    ratio_save = t_end / dt_out
+    n_steps_save = round(ratio_save) if abs(ratio_save - round(ratio_save)) < 1e-9 else int(ratio_save)
+
+    ratio_integrate = t_end / dt
+    n_steps_integrate = round(ratio_integrate) if abs(ratio_integrate - round(ratio_integrate)) < 1e-9 else int(ratio_integrate)
+
     steps_per_output = round(dt_out / dt)
-    nsnaps = n_steps // steps_per_output + 1  # +1 for initial snapshot
+    nsnaps = n_steps_save + 1  # +1 for initial snapshot at t=0
     ts_out = np.arange(nsnaps, dtype=np.float64) * dt_out
-    ts_integrate = np.arange(n_steps + 1, dtype=np.float64) * dt
+    ts_integrate = np.arange(n_steps_integrate + 1, dtype=np.float64) * dt
     return ts_out, ts_integrate, nsnaps, steps_per_output
 
 

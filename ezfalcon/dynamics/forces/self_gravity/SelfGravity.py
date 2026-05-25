@@ -73,7 +73,7 @@ class FalcONGravity(SelfGravityForce):
         )
 
     def potential(self, pos: np.ndarray, mass: np.ndarray) -> np.ndarray:
-        return self.force_and_potential(pos, mass)[1]
+        return self.acc_and_potential(pos, mass)[1]
 
 
 class DirectSummationGravity(SelfGravityForce):
