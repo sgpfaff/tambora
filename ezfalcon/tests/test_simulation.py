@@ -1207,9 +1207,10 @@ def test_L_analytic():
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
     L = sim.L(t=0, return_internal=True)
-    momentum = mass[:, None] * vel * KMS_TO_KPCGYR
-    expected = np.cross(pos, momentum)
-    np.testing.assert_allclose(L, expected, rtol=1e-12)
+    v_internal = vel * KMS_TO_KPCGYR
+    expected = mass[:, None] * np.cross(pos, v_internal)
+
+    np.testing.assert_allclose(L, expected, rtol=1e-15)
 
 def test_Lx_analytic():
     '''
@@ -1222,9 +1223,9 @@ def test_Lx_analytic():
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
     Lx = sim.Lx(t=0, return_internal=True)
-    # Lx = y*pz - z*py
-    expected = mass * (pos[:, 1] * vel[:, 2] - pos[:, 2] * vel[:, 1]) * KMS_TO_KPCGYR
-    np.testing.assert_allclose(Lx, expected, rtol=1e-14)
+    v_internal = vel * KMS_TO_KPCGYR
+    expected = mass * (pos[:, 1] * v_internal[:, 2] - pos[:, 2] * v_internal[:, 1])
+    np.testing.assert_allclose(Lx, expected, rtol=1e-15)
 
 def test_Ly_analytic():
     '''
@@ -1237,9 +1238,9 @@ def test_Ly_analytic():
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
     Ly = sim.Ly(t=0, return_internal=True)
-    # Ly = z*px - x*pz
-    expected = mass * (pos[:, 2] * vel[:, 0] - pos[:, 0] * vel[:, 2]) * KMS_TO_KPCGYR
-    np.testing.assert_allclose(Ly, expected, rtol=1e-14)
+    v_internal = vel * KMS_TO_KPCGYR
+    expected = mass * (pos[:, 2] * v_internal[:, 0] - pos[:, 0] * v_internal[:, 2])
+    np.testing.assert_allclose(Ly, expected, rtol=1e-15)
 
 def test_Lz_analytic():
     '''
@@ -1252,9 +1253,9 @@ def test_Lz_analytic():
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
     Lz = sim.Lz(t=0, return_internal=True)
-    # Lz = x*py - y*px
-    expected = mass * (pos[:, 0] * vel[:, 1] - pos[:, 1] * vel[:, 0]) * KMS_TO_KPCGYR
-    np.testing.assert_allclose(Lz, expected, rtol=1e-14)
+    v_internal = vel * KMS_TO_KPCGYR
+    expected = mass * (pos[:, 0] * v_internal[:, 1] - pos[:, 1] * v_internal[:, 0])
+    np.testing.assert_allclose(Lz, expected, rtol=1e-15)
 
 # -- momentum shapes --- #
 
