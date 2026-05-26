@@ -3,11 +3,11 @@ import warnings
 from galpy import potential
 from galpy.util.coords import rect_to_cyl, cyl_to_rect_vec
 import numpy as np
-from ezfalcon.util import _galpy_bridge
+from tambora.util import _galpy_bridge
 from itertools import product
 from functools import partial
 import astropy.units as u
-from ezfalcon.dynamics import ExternalGalpyPotential
+from tambora.dynamics import ExternalGalpyPotential
 
 _has_composite = hasattr(potential, 'CompositePotential')
 
@@ -279,7 +279,7 @@ def test_potential_match(galpy_potential):
     '''
     R, phi, z = rect_to_cyl(*FULL_TEST_GRID_POSITIONS.T)
     # Reference: galpy evaluatePotentials in physical units (km^2/s^2),
-    # converted to ezfalcon internal units (kpc^2/Gyr^2).
+    # converted to tambora internal units (kpc^2/Gyr^2).
     # Uses galpy defaults (ro=8 kpc, vo=220 km/s) passed explicitly.
     galpy_ref = np.array([
         potential.evaluatePotentials(
@@ -348,7 +348,7 @@ def test_identify_unsupported_potential(unsupported_potential):
 def test_acc_units():
     '''Verify acc_fn returns the correct analytic value in internal units
     for a Kepler potential at a known position.'''
-    from ezfalcon.util.units import G_INTERNAL
+    from tambora.util.units import G_INTERNAL
     # Kepler potential: a = -GM/r^2 rhat
     from galpy.util.conversion import get_physical
     M_msun = 1e7 # Msun
@@ -367,7 +367,7 @@ def test_acc_units():
 def test_pot_units():
     '''Verify pot_fn returns the correct analytic value in internal units
     for a Kepler potential at a known position.'''
-    from ezfalcon.util.units import G_INTERNAL
+    from tambora.util.units import G_INTERNAL
     from galpy.util.conversion import get_physical
     M_msun = 1e7 # Msun
     pot = potential.KeplerPotential(amp=M_msun * u.Msun)  # amp=1 Msun in physical units
@@ -585,7 +585,7 @@ def test_wrapper_rejects_unsupported_wrapper():
     nfw = potential.NFWPotential()
     fake = object.__new__(FakeWrapperPotential)
     fake._pot = nfw
-    with pytest.raises(TypeError, match="is not supported by ezfalcon"):
+    with pytest.raises(TypeError, match="is not supported by tambora"):
         _galpy_bridge._check_supported_pot(fake)
 
 

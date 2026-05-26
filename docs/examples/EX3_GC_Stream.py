@@ -1,6 +1,6 @@
 # # Globular Cluster Stream
 
-# This example demonstrates how `ezfalcon`  can be used with `galpy` to simulate the formation of a globular cluster tidal stream in the Milky Way.
+# This example demonstrates how `tambora`  can be used with `galpy` to simulate the formation of a globular cluster tidal stream in the Milky Way.
 
 # ## Setting up the simulation
 
@@ -9,9 +9,9 @@
 from galpy.potential import MWPotential2014
 host = MWPotential2014[2]
 
-# We can go ahead and create our `ezfalcon` `Sim` instance. This class does all of the useful orchestration that we'll need.
+# We can go ahead and create our `tambora` `Sim` instance. This class does all of the useful orchestration that we'll need.
 
-from ezfalcon.simulation import Sim
+from tambora.simulation import Sim
 stream = Sim()
 
 # We can also add the MW potential using the `add_external_pot` method:
@@ -29,14 +29,14 @@ import numpy as np
 center_r = np.sqrt(center_R**2 + center_z**2)
 center_v = host.vcirc(center_r, quantity=True).to(u.km/u.s) * 0.8 # progentior center speed
 
-# Next, we sample **20,000** positions, velocities, and masses of the progentior using `ezfalcon`'s integrated interface with `galpy`. 
+# Next, we sample **20,000** positions, velocities, and masses of the progentior using `tambora`'s integrated interface with `galpy`. 
 # 
 # We sample a King sphere of mass $10^8 \text{M}_{\odot}$, which also requires us to calculate the tidal radius (which we do with galpy).
 
 sat_mass = 1e7 * u.Msun # progenitor mass
 rtidal = host.rtide(R=center_R, z=0 * u.kpc, M=sat_mass, quantity=True).to(u.kpc)
 
-from ezfalcon.tools import mkKing_galpy
+from tambora.tools import mkKing_galpy
 pos, vel, mass = mkKing_galpy(m=1e7, n = 20000, center_pos = [center_R.value, 0, 0], 
                               center_vel = [0., center_v.value, 0.], W0=4, rt=rtidal.value)
 

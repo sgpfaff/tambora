@@ -1,13 +1,13 @@
 import pytest
 import numpy as np
 
-from ezfalcon.dynamics.integration import _runner
+from tambora.dynamics.integration import _runner
 from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
-from ezfalcon.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
-from ezfalcon.simulation import Sim
-from ezfalcon.dynamics import ExternalGalpyPotential, DirectSummationGravity, NullBaseForce, NullSelfGravity
-from ezfalcon.dynamics.forces.CompositeForce import _CompositeConservative
-from ezfalcon.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
+from tambora.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
+from tambora.simulation import Sim
+from tambora.dynamics import ExternalGalpyPotential, DirectSummationGravity, NullBaseForce, NullSelfGravity
+from tambora.dynamics.forces.CompositeForce import _CompositeConservative
+from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
 from galpy.potential import NFWPotential
 from galpy.orbit import Orbit
 import astropy.units as u
@@ -348,7 +348,7 @@ class TestTimeStepInputs:
 # --- time-dependent external potential --------------------------------------------------------- #
 
 from galpy.potential import DehnenSmoothWrapperPotential
-from ezfalcon.util.units import KMS_TO_KPCGYR
+from tambora.util.units import KMS_TO_KPCGYR
 
 def test_time_dependent_potential_matches_galpy():
     '''
@@ -373,7 +373,7 @@ def test_time_dependent_potential_matches_galpy():
     td_vel = np.array([(cyl_to_rect_vec(td_vR, td_vT, td_vz, td_phi) * u.km / u.s).to(u.kpc / u.Gyr).value])
 
     integrator = LeapfrogIntegrator()
-    # ezfalcon integration
+    # tambora integration
     td_force = _CompositeConservative([]) + ExternalGalpyPotential(smooth_pot)
     td_pos_out, td_vel_out, td_ts_out, _, _ = _runner(
         td_pos, td_vel, np.array([1.0]),
@@ -453,11 +453,11 @@ def test_time_dependent_potential_differs_from_static():
         "Time is likely not being forwarded to the external force function."
     )
 
-from ezfalcon.util._galpy_bridge import _galpy_pot_to_pot_fn
+from tambora.util._galpy_bridge import _galpy_pot_to_pot_fn
 
 def test_time_dependent_potential_energy_matches_galpy():
     '''
-    Compare the total energy trajectory E(t) = KE + PE from ezfalcon
+    Compare the total energy trajectory E(t) = KE + PE from tambora
     against galpy for a time-dependent potential.
 
     In a time-dependent potential total energy is NOT conserved — it
@@ -480,7 +480,7 @@ def test_time_dependent_potential_energy_matches_galpy():
     e_vel = np.array([(cyl_to_rect_vec(e_vR, e_vT, e_vz, e_phi)
                        * u.km / u.s).to(u.kpc / u.Gyr).value])
 
-    # --- ezfalcon integration ---
+    # --- tambora integration ---
     integrator = LeapfrogIntegrator()
     ext_force = _CompositeConservative([]) + ExternalGalpyPotential(smooth_e)
     e_pos_out, e_vel_out, e_ts_out, _, _ = _runner(

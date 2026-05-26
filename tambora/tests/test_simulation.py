@@ -3,11 +3,11 @@ Test the Sim class and its methods.
 '''
 
 import pytest 
-from ezfalcon.simulation import Sim, Component
+from tambora.simulation import Sim, Component
 import numpy as np
-from ezfalcon.util import G_INTERNAL
-from ezfalcon.util.units import KMS_TO_KPCGYR
-from ezfalcon.dynamics import DirectSummationGravity
+from tambora.util import G_INTERNAL
+from tambora.util.units import KMS_TO_KPCGYR
+from tambora.dynamics import DirectSummationGravity
 import astropy.units as u
 
 

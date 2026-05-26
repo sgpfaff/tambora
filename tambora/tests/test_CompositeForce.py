@@ -1,5 +1,5 @@
-from ezfalcon.dynamics.forces import ConservativeForce, BaseForce
-from ezfalcon.dynamics.forces.CompositeForce import _CompositePlain, _CompositeConservative
+from tambora.dynamics.forces import ConservativeForce, BaseForce
+from tambora.dynamics.forces.CompositeForce import _CompositePlain, _CompositeConservative
 import numpy as np
 import pytest
 

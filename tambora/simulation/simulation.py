@@ -1,5 +1,5 @@
 """
-Simulation class for ezfalcon.
+Simulation class for tambora.
 """
 
 import numpy as np
@@ -234,7 +234,7 @@ class Sim:
         except ImportError:
             raise ImportError(
                 "galpy is required for external potentials. "
-                "Install it with: pip install ezfalcon[galpy]")
+                "Install it with: pip install tambora[galpy]")
         if isinstance(potential, galpy.potential.Potential):
             force = ExternalGalpyPotential(potential)
             self.add_external_force(force)

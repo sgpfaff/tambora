@@ -1,7 +1,7 @@
 import functools
 
 '''
-Unit Conversions for ezfalcon.
+Unit Conversions for tambora.
 
 Input/Output units (for user):
 -----------------------------

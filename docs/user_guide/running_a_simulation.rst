@@ -8,7 +8,7 @@ Pausing and Resuming a Simulation
 
 🚧 *Still working on it...* 🚧
 
-Pausing and resuming are currently not supported. :method:`~ezfalcon.simulation.Sim.run` will overwrite previous runs.
+Pausing and resuming are currently not supported. :method:`~tambora.simulation.Sim.run` will overwrite previous runs.
 API
 ---
-.. automethod:: ezfalcon.simulation.Sim.run
+.. automethod:: tambora.simulation.Sim.run

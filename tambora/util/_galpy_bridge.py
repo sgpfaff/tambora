@@ -1,6 +1,6 @@
 '''galpy bridge functions.
 
-Converts galpy potentials into ezfalcon internal-unit callables
+Converts galpy potentials into tambora internal-unit callables
 using galpy's module-level ``evaluate*`` functions in natural units.
 This removes the astropy dependency from the hot path and works
 uniformly across all galpy versions.
@@ -25,7 +25,7 @@ import warnings
 
 _has_composite = hasattr(potential, 'CompositePotential')
 
-# galpy physical units --> ezfalcon internal units conversion factors
+# galpy physical units --> tambora internal units conversion factors
 FROM_GALPY_TO_INTERNAL = {
     'pos': 1.0,                 # kpc --> kpc
     'vel': KMS_TO_KPCGYR,       # km/s --> kpc/Gyr 
@@ -162,7 +162,7 @@ def _unwrap_pot(pot):
         yield pot
 
 def _check_supported_pot(pot):
-    '''Validate that a galpy potential (or composite) is supported by ezfalcon.
+    '''Validate that a galpy potential (or composite) is supported by tambora.
 
     Wrapper potentials are accepted; their inner (leaf) potentials are
     validated recursively.
@@ -172,12 +172,12 @@ def _check_supported_pot(pot):
             # Reject unknown wrappers
             if not isinstance(p, tuple(w for w in ALL_SUPPORTED_WRAPPERS if w is not None)):
                 raise TypeError(
-                    f"{type(p).__name__} is not supported by ezfalcon."
+                    f"{type(p).__name__} is not supported by tambora."
                 )
             # Warn for known-but-unvectorized wrappers
             if isinstance(p, tuple(w for w in UNVECTORIZED_WRAPPERS if w is not None)):
                 warnings.warn(
-                    f"{type(p).__name__} is supported by ezfalcon but not vectorized. "
+                    f"{type(p).__name__} is supported by tambora but not vectorized. "
                     f"Performance may be poor."
                 )
             # Validate inner (leaf) potentials
@@ -190,12 +190,12 @@ def _check_supported_leaf(p):
     '''Validate a single non-wrapper galpy potential.'''
     if isinstance(p, UNVECTORIZED_POTENTIALS):
         warnings.warn(
-            f"{type(p).__name__} is supported by ezfalcon but not vectorized. "
+            f"{type(p).__name__} is supported by tambora but not vectorized. "
             f"Performance may be poor."
         )
     elif not isinstance(p, ALL_SUPPORTED_POTENTIALS):
         raise TypeError(
-            f"{type(p).__name__} is not supported by ezfalcon. "
+            f"{type(p).__name__} is not supported by tambora. "
             f"Supported potentials: {', '.join(p.__name__ for p in ALL_SUPPORTED_POTENTIALS)}"
         )
 
@@ -245,7 +245,7 @@ def _needs_scalar_loop(pot):
 def _galpy_pot_to_pot_fn(pot):
     '''
     Convert a galpy potential to a function that 
-    returns potentials in ezfalcon internal units.
+    returns potentials in tambora internal units.
     '''
     pot = _ensure_pot(pot)
     ro, vo = _get_ro_vo(pot)
@@ -273,7 +273,7 @@ def _galpy_pot_to_pot_fn(pot):
 def _galpy_pot_to_acc_fn(pot):
     '''
     Convert a galpy potential to a function that 
-    returns accelerations in ezfalcon internal units.
+    returns accelerations in tambora internal units.
     
     Parameters
     ----------

@@ -9,12 +9,12 @@ import datetime
 # -- Project information -----------------------------------------------------
 
 # The full version, including alpha/beta/rc tags
-from ezfalcon import __version__
+from tambora import __version__
 
 release = __version__
 version = __version__.split("+")[0]  # short version for display
 
-project = "ezfalcon"
+project = "tambora"
 author = "Gabriel Pfaffman"
 copyright = f"{datetime.datetime.now().year}, {author}"  # noqa: A001
 
@@ -86,7 +86,7 @@ html_theme_options = {
     "icon_links": [
         {
             "name": "GitHub",
-            "url": "https://github.com/sgpfaff/ezfalcon",
+            "url": "https://github.com/sgpfaff/tambora",
             "icon": "fa-brands fa-github",
         },
     ],

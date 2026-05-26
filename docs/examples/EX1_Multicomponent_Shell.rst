@@ -15,14 +15,14 @@ Setup
 -----
 
 We create the simulation and sample both the dark matter and stellar components from
-isotropic Plummer distribution functions using :func:`~ezfalcon.tools.galpydfsampler`:
+isotropic Plummer distribution functions using :func:`~tambora.tools.galpydfsampler`:
 
 .. code-block:: python
 
    from galpy.potential import PlummerPotential, NFWPotential
    from galpy.df import isotropicPlummerdf
-   from ezfalcon.simulation import Sim
-   from ezfalcon.tools import galpydfsampler
+   from tambora.simulation import Sim
+   from tambora.tools import galpydfsampler
    import astropy.units as u
 
    shell = Sim()

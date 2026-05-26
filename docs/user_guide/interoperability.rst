@@ -5,11 +5,11 @@ galpy
 -----------------------
 🚧 *Still working on it...* 🚧
 
-.. autofunction:: ezfalcon.tools.galpy_orbit_to_ezfalcon
+.. autofunction:: tambora.tools.galpy_orbit_to_tambora
 
 see section on df sampling interface.
 
-.. automethod:: ezfalcon.simulation.Sim.to_galpy_orbit
+.. automethod:: tambora.simulation.Sim.to_galpy_orbit
 
 agama
 -----------------------

@@ -4,8 +4,8 @@
   "checkout": null,
   "context": {
     "cookiecutter": {
-      "package_name": "ezfalconv2",
-      "module_name": "ezfalconv2",
+      "package_name": "tambora",
+      "module_name": "tambora",
       "short_description": "",
       "author_name": "Gabriel Pfaffman",
       "author_email": "gabriel.pfaffman@mail.utoronto.ca",

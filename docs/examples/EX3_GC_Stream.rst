@@ -1,7 +1,7 @@
 Globular Cluster Stream
 =======================
 
-This example demonstrates how ezfalcon works with galpy to simulate the formation of a
+This example demonstrates how tambora works with galpy to simulate the formation of a
 globular cluster tidal stream in the Milky Way potential.
 
 The full runnable script for this example is available as a :download:`Python script <EX3_GC_Stream.py>`
@@ -10,12 +10,12 @@ or as a :download:`Jupyter notebook <EX3_GC_Stream.ipynb>`.
 Setting Up the Simulation
 --------------------------
 
-We start by loading the Milky Way potential from galpy and creating a :class:`~ezfalcon.simulation.Sim` instance:
+We start by loading the Milky Way potential from galpy and creating a :class:`~tambora.simulation.Sim` instance:
 
 .. code-block:: python
 
    from galpy.potential import MWPotential2014
-   from ezfalcon.simulation import Sim
+   from tambora.simulation import Sim
    import astropy.units as u
 
    host = MWPotential2014[2]  # NFW component
@@ -28,13 +28,13 @@ Sampling Initial Conditions
 -----------------------------
 
 We place the progenitor 10 kpc from the Galactic center and sample a King sphere
-of :math:`10^7\ \mathrm{M}_\odot` using :func:`~ezfalcon.tools.mkKing_galpy`. The tidal
+of :math:`10^7\ \mathrm{M}_\odot` using :func:`~tambora.tools.mkKing_galpy`. The tidal
 radius is computed with galpy:
 
 .. code-block:: python
 
    import numpy as np
-   from ezfalcon.tools import mkKing_galpy
+   from tambora.tools import mkKing_galpy
 
    center_R = 10 * u.kpc
    center_v = host.vcirc(center_R, quantity=True).to(u.km / u.s) * 0.8

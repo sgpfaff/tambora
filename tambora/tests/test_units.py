@@ -13,8 +13,8 @@ import pytest
 import numpy as np
 from numpy.testing import assert_allclose
 
-from ezfalcon.simulation import Sim
-from ezfalcon.util.units import (
+from tambora.simulation import Sim
+from tambora.util.units import (
     G_INTERNAL,
     G_KPC_KMS,
     KMS_TO_KPCGYR,

@@ -1,8 +1,8 @@
 import pytest
 from galpy.df import isotropicHernquistdf
 from galpy.potential import HernquistPotential, PlummerPotential, NFWPotential
-from ezfalcon.tools import galpydfsampler, galpy_orbit_to_ezfalcon, mkPlummer_galpy, mkKing_galpy, mkNFW_galpy
-from ezfalcon.tools.galpy_tools import _check_df, galpysampler
+from tambora.tools import galpydfsampler, galpy_orbit_to_tambora, mkPlummer_galpy, mkKing_galpy, mkNFW_galpy
+from tambora.tools.galpy_tools import _check_df, galpysampler
 import numpy as np
 import astropy.units as u
 
@@ -29,22 +29,22 @@ def test_sampler_center_offset(hernquist_df):
                                        center_pos=[100, 0, 0])
     assert np.mean(pos[:, 0]) > 50  # shifted well away from origin
 
-def test_orbit_to_ezfalcon_vel_units():
+def test_orbit_to_tambora_vel_units():
     from galpy.orbit import Orbit
     # Orbit at R=8 kpc, vR=0, vT=220 km/s, z=0, vz=0, phi=0
     # (natural units: R=1, vT=1 with ro=8 kpc, vo=220 km/s)
     o = Orbit([1., 0., 1., 0., 0., 0.], ro=8., vo=220.)
     o.turn_physical_on()
-    pos, vel = galpy_orbit_to_ezfalcon(o)
+    pos, vel = galpy_orbit_to_tambora(o)
     expected_vT_kpcgyr = (220 * u.km/u.s).to(u.kpc/u.Gyr).value
     assert np.max(np.abs(vel)) < 300.0  # kpc/Gyr are ~km/s (~225)
     assert np.max(np.abs(vel)) > 1.0  # but not zero
 
-def test_orbit_to_ezfalcon_shapes():
+def test_orbit_to_tambora_shapes():
     from galpy.orbit import Orbit
     o = Orbit.from_name("LMC")
     o.turn_physical_on()
-    pos, vel = galpy_orbit_to_ezfalcon(o)
+    pos, vel = galpy_orbit_to_tambora(o)
     assert pos.shape == (1, 3)
     assert vel.shape == (1, 3)
 

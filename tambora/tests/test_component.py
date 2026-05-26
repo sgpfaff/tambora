@@ -1,8 +1,8 @@
 import pytest
 import numpy as np
-from ezfalcon.simulation import Sim, Component
-from ezfalcon.util import G_INTERNAL
-from ezfalcon.dynamics import DirectSummationGravity
+from tambora.simulation import Sim, Component
+from tambora.util import G_INTERNAL
+from tambora.dynamics import DirectSummationGravity
 
 np.random.seed(42)
 direct_gravity = DirectSummationGravity(eps=0.0)

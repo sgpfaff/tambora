@@ -3,8 +3,8 @@ from galpy.df import isotropicPlummerdf
 import numpy as np
 import matplotlib.pyplot as plt
 import astropy.units as u
-from ezfalcon.util import galpydfsampler
-from ezfalcon.simulation import Simulation
+from tambora.util import galpydfsampler
+from tambora.simulation import Simulation
 from multiprocessing import Process, Queue
 
 def run_sim(dt, pos, vel, masses, q):

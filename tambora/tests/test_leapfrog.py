@@ -1,9 +1,9 @@
-from ezfalcon.dynamics.integration import _runner
+from tambora.dynamics.integration import _runner
 from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
-from ezfalcon.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
-from ezfalcon.simulation import Sim
-from ezfalcon.dynamics import ExternalGalpyPotential
-from ezfalcon.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
+from tambora.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
+from tambora.simulation import Sim
+from tambora.dynamics import ExternalGalpyPotential
+from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
 from galpy.potential import NFWPotential
 from galpy.orbit import Orbit
 import astropy.units as u
@@ -12,13 +12,13 @@ import numpy as np
 import pytest
 import numpy as np
 
-from ezfalcon.dynamics.integration import _runner
+from tambora.dynamics.integration import _runner
 from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
-from ezfalcon.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
-from ezfalcon.simulation import Sim
-from ezfalcon.dynamics import ExternalGalpyPotential, DirectSummationGravity, NullBaseForce, NullSelfGravity
-from ezfalcon.dynamics.forces.CompositeForce import _CompositeConservative
-from ezfalcon.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
+from tambora.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
+from tambora.simulation import Sim
+from tambora.dynamics import ExternalGalpyPotential, DirectSummationGravity, NullBaseForce, NullSelfGravity
+from tambora.dynamics.forces.CompositeForce import _CompositeConservative
+from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
 from galpy.potential import NFWPotential
 from galpy.orbit import Orbit
 import astropy.units as u

@@ -1,20 +1,20 @@
 Making a Simulation 
 ===================
 
-The :class:`~ezfalcon.simulation.Sim` class is the core of :ref:`home`. It orchestrates building, running, 
+The :class:`~tambora.simulation.Sim` class is the core of :ref:`home`. It orchestrates building, running, 
 and analyzing n-body simulations and is what you will interact with the most as a result.
 Instantiating a simulation is super simple:
 
 .. code-block:: python
 
-    from ezfalcon import Sim
+    from tambora import Sim
     sim = Sim()
 
 
 Adding Particles
 ----------------
 
-To add particles to the simulation, use the :func:`~ezfalcon.simulation.Sim.add_particles` method. This method takes a component name (e.g. 'stars', 'dark_matter') and arrays of positions, velocities, and masses.
+To add particles to the simulation, use the :func:`~tambora.simulation.Sim.add_particles` method. This method takes a component name (e.g. 'stars', 'dark_matter') and arrays of positions, velocities, and masses.
 
 .. code-block:: python
 
@@ -48,6 +48,6 @@ Methods for accessing the properties of individual components is discussed in mo
 API
 ---
 
-.. autoclass:: ezfalcon.simulation.Sim
+.. autoclass:: tambora.simulation.Sim
 
-.. automethod:: ezfalcon.simulation.Sim.add_particles
+.. automethod:: tambora.simulation.Sim.add_particles

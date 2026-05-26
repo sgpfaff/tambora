@@ -4,9 +4,9 @@
 
 import pytest
 import numpy as np
-from ezfalcon.dynamics import FalcONGravity, DirectSummationGravity
-from ezfalcon.dynamics.forces.self_gravity.falcON.falcON import _falcON_gravity
-from ezfalcon.util.units import G_INTERNAL
+from tambora.dynamics import FalcONGravity, DirectSummationGravity
+from tambora.dynamics.forces.self_gravity.falcON.falcON import _falcON_gravity
+from tambora.util.units import G_INTERNAL
 
 np.random.seed(42)
 falcON_gravity = FalcONGravity(eps=0.0, theta=0.5, kernel=0)

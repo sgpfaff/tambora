@@ -1,5 +1,5 @@
 try:
-    from .galpy_tools import galpydfsampler, galpysampler, galpy_orbit_to_ezfalcon, mkKing_galpy, mkNFW_galpy, mkPlummer_galpy
+    from .galpy_tools import galpydfsampler, galpysampler, galpy_orbit_to_tambora, mkKing_galpy, mkNFW_galpy, mkPlummer_galpy
 except ImportError:
     pass
 

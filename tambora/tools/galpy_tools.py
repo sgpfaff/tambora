@@ -11,8 +11,8 @@ _GALPY_VO = 220.0  # km/s
 # --- Interface tools ----------------------------------------------------------------
 
 
-def galpy_orbit_to_ezfalcon(orb):
-    r'''Convert a galpy orbit object to ezfalcon compatible pos and vel arrays.
+def galpy_orbit_to_tambora(orb):
+    r'''Convert a galpy orbit object to tambora compatible pos and vel arrays.
      
      Parameters
      ----------
@@ -57,7 +57,7 @@ def galpydfsampler(df, n, m_total, rmin=0.0, center_pos=[0, 0, 0],
                    center_vel=[0, 0, 0]):
     '''
     Sample from a galpy spherical distribution 
-    function and return ezfalcon compatible 
+    function and return tambora compatible 
     positions and velocities.
 
     Parameters
@@ -94,7 +94,7 @@ def galpydfsampler(df, n, m_total, rmin=0.0, center_pos=[0, 0, 0],
     _check_physical(df)
     _check_df(df)
     o = df.sample(n=n, rmin=rmin/_GALPY_RO, return_orbit=True)
-    pos, vel = galpy_orbit_to_ezfalcon(o)
+    pos, vel = galpy_orbit_to_tambora(o)
     pos += np.asarray(center_pos)[:,None].T
     vel += np.asarray(center_vel)[:,None].T
     return pos, vel, np.repeat(m_total / n, n)
@@ -103,7 +103,7 @@ def galpysampler(pot, n, m_total, rmin=0.0,
                  center_pos=[0, 0, 0], center_vel=[0, 0, 0],
                  df_kwargs={}):
     '''
-    Sample from a galpy potential and return ezfalcon compatible 
+    Sample from a galpy potential and return tambora compatible 
     positions and velocities. Only supports spherical potentials.
 
     Parameters

@@ -3,7 +3,7 @@ Test the self_gravity function
 '''
 
 import pytest
-from ezfalcon.dynamics import self_gravity
+from tambora.dynamics import self_gravity
 import numpy as np
 
 
