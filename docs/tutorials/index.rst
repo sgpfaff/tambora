@@ -1,7 +1,7 @@
 Tutorials
 =========
 
-Step-by-step guides for learning ezfalcon.
+Step-by-step guides for learning tambora.
 
 .. toctree::
    :maxdepth: 1

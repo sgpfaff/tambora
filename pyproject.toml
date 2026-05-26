@@ -7,7 +7,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ezfalcon"
+name = "tambora"
 description = ""
 requires-python = ">=3.9"
 readme = { file = "README.rst", content-type = "text/x-rst" }
@@ -48,37 +48,37 @@ zip-safe = false
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["ezfalcon*"]
+include = ["tambora*"]
 
 [tool.setuptools_scm]
-version_file = "ezfalcon/version.py"
+version_file = "tambora/version.py"
 
 [tool.pytest.ini_options]
 testpaths = [
-  "ezfalcon",
+  "tambora",
   "docs",
 ]
 doctest_plus = "enabled"
 text_file_format = "rst"
 addopts = "--doctest-rst"
-norecursedirs = ["ezfalconv2[\\/]_dev"]
+norecursedirs = ["tambora[\\/]_dev"]
 
 [tool.coverage.run]
 omit = [
- "ezfalcon/__init*",
- "ezfalcon/conftest.py",
- "ezfalcon/*setup_package*",
- "ezfalcon/tests/*",
- "ezfalcon/*/tests/*",
- "ezfalcon/extern/*",
- "ezfalcon/version*",
- "*/ezfalcon/__init*",
- "*/ezfalcon/conftest.py",
- "*/ezfalcon/*setup_package*",
- "*/ezfalcon/tests/*",
- "*/ezfalcon/*/tests/*",
- "*/ezfalcon/extern/*",
- "*/ezfalcon/version*",
+ "tambora/__init*",
+ "tambora/conftest.py",
+ "tambora/*setup_package*",
+ "tambora/tests/*",
+ "tambora/*/tests/*",
+ "tambora/extern/*",
+ "tambora/version*",
+ "*/tambora/__init*",
+ "*/tambora/conftest.py",
+ "*/tambora/*setup_package*",
+ "*/tambora/tests/*",
+ "*/tambora/*/tests/*",
+ "*/tambora/extern/*",
+ "*/tambora/version*",
 ]
 
 [tool.coverage.report]

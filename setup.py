@@ -2,12 +2,12 @@
 import numpy as np
 from setuptools import setup, Extension
 
-_falcon_src_dir = "ezfalcon/dynamics/forces/self_gravity/falcON/_falcON_src"
+_falcon_src_dir = "tambora/dynamics/forces/self_gravity/falcON/_falcON_src"
 
 _falcon = Extension(
-    name="ezfalcon.dynamics.forces.self_gravity.falcON._falcon",
+    name="tambora.dynamics.forces.self_gravity.falcON._falcon",
     sources=[
-        "ezfalcon/dynamics/forces/self_gravity/falcON/_falcON_wrapper.cpp",
+        "tambora/dynamics/forces/self_gravity/falcON/_falcON_wrapper.cpp",
         f"{_falcon_src_dir}/src/basic.cc",
         f"{_falcon_src_dir}/src/body.cc",
         f"{_falcon_src_dir}/src/gravity.cc",
@@ -30,8 +30,8 @@ _falcon = Extension(
 )
 
 _direct_summation = Extension(
-    name="ezfalcon.dynamics.forces.self_gravity.directSummation._direct_summation",
-    sources=["ezfalcon/dynamics/forces/self_gravity/directSummation/_direct_wrapper.cpp"],
+    name="tambora.dynamics.forces.self_gravity.directSummation._direct_summation",
+    sources=["tambora/dynamics/forces/self_gravity/directSummation/_direct_wrapper.cpp"],
     include_dirs=[np.get_include()],
     language="c++",
 )

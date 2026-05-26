@@ -5,4 +5,4 @@ Adding External Forces 🚧
 
 API
 ---
-.. automethod:: ezfalcon.simulation.Sim.add_external_acc
+.. automethod:: tambora.simulation.Sim.add_external_acc

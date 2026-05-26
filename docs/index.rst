@@ -1,6 +1,6 @@
 .. _home:
 
-ezfalcon
+tambora
 ========
 
 
@@ -11,7 +11,7 @@ ezfalcon
       :link: installation
       :link-type: doc
 
-      How to install ezfalcon and its optional dependencies.
+      How to install tambora and its optional dependencies.
 
    .. grid-item-card:: Quickstart
       :link: quickstart
@@ -23,14 +23,14 @@ ezfalcon
       :link: user_guide/index
       :link-type: doc
 
-      In-depth explanations of ezfalcon's core concepts: units, self-gravity,
+      In-depth explanations of tambora's core concepts: units, self-gravity,
       external forces, and more.
 
    .. grid-item-card:: Examples
       :link: examples/index
       :link-type: doc
 
-      Notebooks covering ezfalcon's features, from basics to
+      Notebooks covering tambora's features, from basics to
       science applications.
 
    .. grid-item-card:: Diagnostics

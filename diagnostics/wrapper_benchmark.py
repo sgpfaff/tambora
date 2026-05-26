@@ -23,7 +23,7 @@ from galpy import potential as gp
 from galpy.util.coords import rect_to_cyl
 import astropy.units as u
 
-from ezfalcon.dynamics.acceleration.self_gravity import self_gravity
+from tambora.dynamics.acceleration.self_gravity import self_gravity
 
 plt.rcParams['xtick.direction'] = 'in'
 plt.rcParams['ytick.direction'] = 'in'

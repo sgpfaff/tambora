@@ -18,7 +18,7 @@ An exponential disk is sampled with a sech² vertical profile using the built-in
 
 .. code-block:: python
 
-   from ezfalcon.simulation import Sim
+   from tambora.simulation import Sim
    import astropy.units as u
 
    Ndisk = 10000

@@ -1,5 +1,5 @@
 
-ezfalcon
+tambora
 ========
 
 A Python package for self-gravitating N-body simulations, powered by the
@@ -13,8 +13,8 @@ Until it is added to PyPI in the near future, you can use the code by
 running the following in your terminal:
 
 ```bash
-git clone https://github.com/sgpfaff/ezfalcon.git
-cd ezfalcon
+git clone https://github.com/sgpfaff/tambora.git
+cd tambora
 pip install .
 ```
 
@@ -31,7 +31,7 @@ more information.
 Contributing
 ------------
 
-We love contributions! ezfalconv2 is open source,
+We love contributions! tambora is open source,
 built on open source, and we'd love to have you hang out in our community.
 
 **Imposter syndrome disclaimer**: We want your help. No, really.
@@ -57,7 +57,7 @@ the errors and assumptions that seasoned contributors have glossed over.
 Note: This disclaimer was originally written by
 `Adrienne Lowe <https://github.com/adriennefriend>`_ for a
 `PyCon talk <https://www.youtube.com/watch?v=6Uj746j9Heo>`_, and was adapted by
-ezfalcon based on its use in the README file for the
+tambora based on its use in the README file for the
 `MetPy project <https://github.com/Unidata/MetPy>`_.
 
 

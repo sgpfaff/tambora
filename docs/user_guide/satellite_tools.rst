@@ -6,6 +6,6 @@ Tools for Satellites 🚧
 API
 ---
 
-.. autofunction:: ezfalcon.tools.compute_bound
+.. autofunction:: tambora.tools.compute_bound
 
-.. autofunction:: ezfalcon.tools.compute_tidal_radius
+.. autofunction:: tambora.tools.compute_tidal_radius

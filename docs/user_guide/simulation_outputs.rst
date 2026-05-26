@@ -21,7 +21,7 @@ are returned:
      - All snapshots, returned as ``(nsnap, N, ...)``
 
 
-Saving and Loading a :class:`~ezfalcon.simulation.Sim`
+Saving and Loading a :class:`~tambora.simulation.Sim`
 ------------------------------------------------------
 🚧 *Still working on it...* 🚧
 
@@ -35,28 +35,28 @@ Position Accessors
    * - Method
      - Description
      - Units
-   * - :meth:`~ezfalcon.simulation.Sim.pos`
+   * - :meth:`~tambora.simulation.Sim.pos`
      - Full position vector (N, 3)
      - kpc
-   * - :meth:`~ezfalcon.simulation.Sim.x`
+   * - :meth:`~tambora.simulation.Sim.x`
      - Cartesian x
      - kpc
-   * - :meth:`~ezfalcon.simulation.Sim.y`
+   * - :meth:`~tambora.simulation.Sim.y`
      - Cartesian y
      - kpc
-   * - :meth:`~ezfalcon.simulation.Sim.z`
+   * - :meth:`~tambora.simulation.Sim.z`
      - Cartesian z
      - kpc
-   * - :meth:`~ezfalcon.simulation.Sim.r`
+   * - :meth:`~tambora.simulation.Sim.r`
      - Spherical radius
      - kpc
-   * - :meth:`~ezfalcon.simulation.Sim.phi`
+   * - :meth:`~tambora.simulation.Sim.phi`
      - Azimuthal angle
      - rad
-   * - :meth:`~ezfalcon.simulation.Sim.theta`
+   * - :meth:`~tambora.simulation.Sim.theta`
      - Polar angle
      - rad
-   * - :meth:`~ezfalcon.simulation.Sim.cylR`
+   * - :meth:`~tambora.simulation.Sim.cylR`
      - Cylindrical radius
      - kpc
 
@@ -71,28 +71,28 @@ Velocity Accessors
    * - Method
      - Description
      - Units
-   * - :meth:`~ezfalcon.simulation.Sim.vel`
+   * - :meth:`~tambora.simulation.Sim.vel`
      - Full velocity vector (N, 3)
      - km/s
-   * - :meth:`~ezfalcon.simulation.Sim.vx`
+   * - :meth:`~tambora.simulation.Sim.vx`
      - Cartesian vx
      - km/s
-   * - :meth:`~ezfalcon.simulation.Sim.vy`
+   * - :meth:`~tambora.simulation.Sim.vy`
      - Cartesian vy
      - km/s
-   * - :meth:`~ezfalcon.simulation.Sim.vz`
+   * - :meth:`~tambora.simulation.Sim.vz`
      - Cartesian vz
      - km/s
-   * - :meth:`~ezfalcon.simulation.Sim.vr`
+   * - :meth:`~tambora.simulation.Sim.vr`
      - Spherical radial velocity
      - km/s
-   * - :meth:`~ezfalcon.simulation.Sim.vphi`
+   * - :meth:`~tambora.simulation.Sim.vphi`
      - Azimuthal angular velocity
      - km/s/kpc
-   * - :meth:`~ezfalcon.simulation.Sim.vtheta`
+   * - :meth:`~tambora.simulation.Sim.vtheta`
      - Polar velocity
      - km/s
-   * - :meth:`~ezfalcon.simulation.Sim.cylvR`
+   * - :meth:`~tambora.simulation.Sim.cylvR`
      - Cylindrical radial velocity
      - km/s
 
@@ -107,16 +107,16 @@ Momentum Accessors
    * - Method
      - Description
      - Units
-   * - :meth:`~ezfalcon.simulation.Sim.p`
+   * - :meth:`~tambora.simulation.Sim.p`
      - Full momentum vector (N, 3)
      - Msun km/s
-   * - :meth:`~ezfalcon.simulation.Sim.px`
+   * - :meth:`~tambora.simulation.Sim.px`
      - Momentum x-component
      - Msun km/s
-   * - :meth:`~ezfalcon.simulation.Sim.py`
+   * - :meth:`~tambora.simulation.Sim.py`
      - Momentum y-component
      - Msun km/s
-   * - :meth:`~ezfalcon.simulation.Sim.pz`
+   * - :meth:`~tambora.simulation.Sim.pz`
      - Momentum z-component
      - Msun km/s
 
@@ -134,16 +134,16 @@ keyword arguments.
    * - Method
      - Description
      - Units
-   * - :meth:`~ezfalcon.simulation.Sim.L`
+   * - :meth:`~tambora.simulation.Sim.L`
      - Full angular momentum vector (N, 3)
      - Msun kpc km/s
-   * - :meth:`~ezfalcon.simulation.Sim.Lx`
+   * - :meth:`~tambora.simulation.Sim.Lx`
      - Angular momentum x-component
      - Msun kpc km/s
-   * - :meth:`~ezfalcon.simulation.Sim.Ly`
+   * - :meth:`~tambora.simulation.Sim.Ly`
      - Angular momentum y-component
      - Msun kpc km/s
-   * - :meth:`~ezfalcon.simulation.Sim.Lz`
+   * - :meth:`~tambora.simulation.Sim.Lz`
      - Angular momentum z-component
      - Msun kpc km/s
 
@@ -158,25 +158,25 @@ Energy Accessors
    * - Method
      - Description
      - Units
-   * - :meth:`~ezfalcon.simulation.Sim.KE`
+   * - :meth:`~tambora.simulation.Sim.KE`
      - Kinetic energy per particle
      - Msun km²/s²
-   * - :meth:`~ezfalcon.simulation.Sim.self_potential`
+   * - :meth:`~tambora.simulation.Sim.self_potential`
      - Self-gravitational potential energy per particle
      - Msun km²/s²
-   * - :meth:`~ezfalcon.simulation.Sim.compute_external_pot`
+   * - :meth:`~tambora.simulation.Sim.compute_external_pot`
      - External potential energy per particle
      - Msun km²/s²
-   * - :meth:`~ezfalcon.simulation.Sim.PE`
+   * - :meth:`~tambora.simulation.Sim.PE`
      - Total potential energy per particle (self + external)
      - Msun km²/s²
-   * - :meth:`~ezfalcon.simulation.Sim.energy`
+   * - :meth:`~tambora.simulation.Sim.energy`
      - Total energy per particle (KE + PE)
      - Msun km²/s²
-   * - :meth:`~ezfalcon.simulation.Sim.system_energy`
+   * - :meth:`~tambora.simulation.Sim.system_energy`
      - Total system energy (sum over all particles)
      - Msun km²/s²
-   * - :meth:`~ezfalcon.simulation.Sim.dE`
+   * - :meth:`~tambora.simulation.Sim.dE`
      - Fractional energy change \|ΔE/E₀\|
      - dimensionless
 
@@ -191,28 +191,28 @@ Acceleration Accessors
    * - Method
      - Description
      - Units
-   * - :meth:`~ezfalcon.simulation.Sim.self_gravity`
+   * - :meth:`~tambora.simulation.Sim.self_gravity`
      - Self-gravity acceleration vector (N, 3)
      - km/s²
-   * - :meth:`~ezfalcon.simulation.Sim.self_ax`
+   * - :meth:`~tambora.simulation.Sim.self_ax`
      - Self-gravity x-component
      - km/s²
-   * - :meth:`~ezfalcon.simulation.Sim.self_ay`
+   * - :meth:`~tambora.simulation.Sim.self_ay`
      - Self-gravity y-component
      - km/s²
-   * - :meth:`~ezfalcon.simulation.Sim.self_az`
+   * - :meth:`~tambora.simulation.Sim.self_az`
      - Self-gravity z-component
      - km/s²
-   * - :meth:`~ezfalcon.simulation.Sim.external_acc`
+   * - :meth:`~tambora.simulation.Sim.external_acc`
      - External acceleration vector (N, 3)
      - km/s²
-   * - :meth:`~ezfalcon.simulation.Sim.external_ax`
+   * - :meth:`~tambora.simulation.Sim.external_ax`
      - External acceleration x-component
      - km/s²
-   * - :meth:`~ezfalcon.simulation.Sim.external_ay`
+   * - :meth:`~tambora.simulation.Sim.external_ay`
      - External acceleration y-component
      - km/s²
-   * - :meth:`~ezfalcon.simulation.Sim.external_az`
+   * - :meth:`~tambora.simulation.Sim.external_az`
      - External acceleration z-component
      - km/s²
 
@@ -226,9 +226,9 @@ Making Diagnostic Plots
 
    * - Method
      - Description
-   * - :meth:`~ezfalcon.simulation.Sim.plot_energy_diagnostic`
+   * - :meth:`~tambora.simulation.Sim.plot_energy_diagnostic`
      - Plot fractional energy change as a function of time
-   * - :meth:`~ezfalcon.simulation.Sim.plot_momentum_diagnostic`
+   * - :meth:`~tambora.simulation.Sim.plot_momentum_diagnostic`
      - Plot momentum conservation
 
 .. _component_accessors:
@@ -237,7 +237,7 @@ Component Accessors
 -------------------
 
 Each named component is accessible as an attribute of the ``Sim`` object
-(e.g. ``sim.stars``). The returned :class:`~ezfalcon.simulation.Component`
+(e.g. ``sim.stars``). The returned :class:`~tambora.simulation.Component`
 object provides the same accessor interface as ``Sim``, scoped to that
 component's particles.
 
@@ -254,10 +254,10 @@ Properties
    * - Property
      - Description
      - Units
-   * - :attr:`~ezfalcon.simulation.Sim.mass`
+   * - :attr:`~tambora.simulation.Sim.mass`
      - Particle masses
      - Msun
-   * - :attr:`~ezfalcon.simulation.Sim.times`
+   * - :attr:`~tambora.simulation.Sim.times`
      - Snapshot times
      - Gyr
 
@@ -265,11 +265,11 @@ Properties
 API
 ---
 
-.. autoclass:: ezfalcon.simulation.Sim
+.. autoclass:: tambora.simulation.Sim
    :members:
    :undoc-members:
    :exclude-members: add_particles, run, add_external_pot, add_external_acc
 
-.. autoclass:: ezfalcon.simulation.Component
+.. autoclass:: tambora.simulation.Component
    :members:
    :undoc-members:

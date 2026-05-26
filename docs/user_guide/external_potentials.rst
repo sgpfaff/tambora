@@ -1,7 +1,7 @@
 Adding External Potentials
 ==========================
 
-To add an external potential to the :class:`~ezfalcon.simulation.Sim`, use the :func:`~ezfalcon.simulation.Sim.add_external_pot` method. 
+To add an external potential to the :class:`~tambora.simulation.Sim`, use the :func:`~tambora.simulation.Sim.add_external_pot` method. 
 This method takes a (galpy) potential and adds it to the simulation. 
 
 .. code-block:: python
@@ -12,8 +12,8 @@ This method takes a (galpy) potential and adds it to the simulation.
     sim.add_external_pot(extpot)
 
 You can add as many external potentials as you'd like, and they will be summed together to compute the total external acceleration on each particle.
-You can also use the :func:`~ezfalcon.simulation.Sim.compute_external_pot` method to compute the external potential and the
-:func:`~ezfalcon.simulation.Sim.external_acc`, :func:`~ezfalcon.simulation.Sim.external_ax`, :func:`~ezfalcon.simulation.Sim.external_ay`, :func:`~ezfalcon.simulation.Sim.external_az` methods to compute the external acceleration 
+You can also use the :func:`~tambora.simulation.Sim.compute_external_pot` method to compute the external potential and the
+:func:`~tambora.simulation.Sim.external_acc`, :func:`~tambora.simulation.Sim.external_ax`, :func:`~tambora.simulation.Sim.external_ay`, :func:`~tambora.simulation.Sim.external_az` methods to compute the external acceleration 
 from the added potentials at any point in time during the simulation.
 
 galpy
@@ -94,5 +94,5 @@ agama 🚧
 
 API
 ---
-.. automethod:: ezfalcon.simulation.Sim.add_external_pot
+.. automethod:: tambora.simulation.Sim.add_external_pot
 

@@ -25,7 +25,6 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-ezfalconv2/version.py
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
@@ -172,95 +171,14 @@ docs/examples/EX4_run_02/data/shell_pos.npy
 docs/examples/EX4_run_02/data/shell_vel.npy
 docs/examples/EX4_run_02/data/star_mask.npy
 docs/examples/EX4_run_02/data/times.npy
-ezfalcon/bin/activate
-ezfalcon/bin/activate.csh
-ezfalcon/bin/activate.fish
-ezfalcon/bin/Activate.ps1
-ezfalcon/bin/coverage
-ezfalcon/bin/coverage-3.12
-ezfalcon/bin/coverage3
-ezfalcon/bin/debugpy
-ezfalcon/bin/debugpy-adapter
-ezfalcon/bin/docutils
-ezfalcon/bin/f2py
-ezfalcon/bin/fits2bitmap
-ezfalcon/bin/fitscheck
-ezfalcon/bin/fitsdiff
-ezfalcon/bin/fitsheader
-ezfalcon/bin/fitsinfo
-ezfalcon/bin/fonttools
-ezfalcon/bin/ipython
-ezfalcon/bin/ipython3
-ezfalcon/bin/jsonschema
-ezfalcon/bin/jupyter
-ezfalcon/bin/jupyter-kernel
-ezfalcon/bin/jupyter-kernelspec
-ezfalcon/bin/jupyter-migrate
-ezfalcon/bin/jupyter-run
-ezfalcon/bin/jupyter-troubleshoot
-ezfalcon/bin/jupyter-trust
-ezfalcon/bin/normalizer
-ezfalcon/bin/numpy-config
-ezfalcon/bin/pip
-ezfalcon/bin/pip3
-ezfalcon/bin/pip3.12
-ezfalcon/bin/plotly_get_chrome
-ezfalcon/bin/py.test
-ezfalcon/bin/pybabel
-ezfalcon/bin/pyftmerge
-ezfalcon/bin/pyftsubset
-ezfalcon/bin/pygmentize
-ezfalcon/bin/pytest
-ezfalcon/bin/python
-ezfalcon/bin/python3
-ezfalcon/bin/python3.12
-ezfalcon/bin/rst2html
-ezfalcon/bin/rst2html4
-ezfalcon/bin/rst2html5
-ezfalcon/bin/rst2latex
-ezfalcon/bin/rst2man
-ezfalcon/bin/rst2odt
-ezfalcon/bin/rst2pseudoxml
-ezfalcon/bin/rst2s5
-ezfalcon/bin/rst2xetex
-ezfalcon/bin/rst2xml
-ezfalcon/bin/samp_hub
-ezfalcon/bin/showtable
-ezfalcon/bin/showtable-astropy
-ezfalcon/bin/sphinx-apidoc
-ezfalcon/bin/sphinx-autogen
-ezfalcon/bin/sphinx-build
-ezfalcon/bin/sphinx-quickstart
-ezfalcon/bin/tox
-ezfalcon/bin/tqdm
-ezfalcon/bin/ttx
-ezfalcon/bin/virtualenv
-ezfalcon/bin/volint
-ezfalcon/bin/wcslint
-ezfalcon/share/jupyter/kernels/python3/kernel.json
-ezfalcon/share/jupyter/kernels/python3/logo-32x32.png
-ezfalcon/share/jupyter/kernels/python3/logo-64x64.png
-ezfalcon/share/jupyter/kernels/python3/logo-svg.svg
-ezfalcon/share/jupyter/labextensions/jupyterlab-plotly/install.json
-ezfalcon/share/jupyter/labextensions/jupyterlab-plotly/package.json
-ezfalcon/share/jupyter/labextensions/jupyterlab-plotly/static/340.330950829c5d59eca692.js
-ezfalcon/share/jupyter/labextensions/jupyterlab-plotly/static/remoteEntry.bbf25df5110252151416.js
-ezfalcon/share/jupyter/labextensions/jupyterlab-plotly/static/style.js
-ezfalcon/share/man/man1/ipython.1
-ezfalcon/share/man/man1/tox.1
-ezfalcon/share/man/man1/ttx.1
-ezfalcon/lib64
-ezfalcon/pyvenv.cfg
-.acceleration._falcon import gravity; import inspect; print(inspect.signature(gravity))"
-e:', np.allclose(pot1, pot4, atol=1e-10))
-e(acc1, acc2),
-e(acc3, acc6, atol=1e-10),
-e(acc4, acc5, atol=1e-14),
-e(pot3, pot6, atol=1e-10))
-e(pot1, pot2))
-e(pot4, pot5, atol=1e-14))
-np
-sanity_checks/CHECK_01_External_Potential.ipynb
+# Venv accidentally installed inside the package directory
+tambora/bin/
+tambora/etc/
+tambora/include/
+tambora/lib/
+tambora/lib64
+tambora/pyvenv.cfg
+tambora/share/
 diagnostics/test_galpy_versions.sh
 docs/examples/EX5_GC_stream/data/bound_mask.npy
 docs/examples/EX5_GC_stream/data/self_PE.npy
@@ -269,7 +187,6 @@ docs/examples/EX5_GC_stream/data/shell_pos.npy
 docs/examples/EX5_GC_stream/data/shell_vel.npy
 docs/examples/EX5_GC_stream/data/times.npy
 docs/tutorials/python_generators.ipynb
-ezfalcon/version.py
-ezfalcon/version.py
+tambora/version.py
 nemo/
 

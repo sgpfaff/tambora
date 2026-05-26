@@ -31,12 +31,12 @@ jobs:
 
       - name: Verify C extensions
         working-directory: /tmp
-        run: python -c "from ezfalcon.dynamics.forces.self_gravity.falcON._falcon import gravity; print('_falcon OK')"
+        run: python -c "from tambora.dynamics.forces.self_gravity.falcON._falcon import gravity; print('_falcon OK')"
 
       - name: Run tests with coverage
         working-directory: /tmp
         run: |
-          python -m pytest --pyargs ezfalcon.tests -o "addopts=" --cov=ezfalcon --cov-report=term-missing -q
+          python -m pytest --pyargs tambora.tests -o "addopts=" --cov=tambora --cov-report=term-missing -q
 
   galpy-compat:
     name: galpy ${{ matrix.galpy-version }} (Python ${{ matrix.python-version }})
@@ -69,4 +69,4 @@ jobs:
       - name: Run galpy-specific tests
         working-directory: /tmp
         run: |
-          python -m pytest --pyargs ezfalcon.tests.test_galpy_bridge ezfalcon.tests.test_galpy_tools -o "addopts=" -q
+          python -m pytest --pyargs tambora.tests.test_galpy_bridge tambora.tests.test_galpy_tools -o "addopts=" -q
