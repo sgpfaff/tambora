@@ -2,7 +2,7 @@
 tambora
 ========
 
-An N-body code for the modern era.
+*An N-body code for the modern era.*
 
 Installation
 ------------
