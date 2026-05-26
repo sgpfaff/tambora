@@ -185,6 +185,113 @@ class TestTimeInputs:
                     dt=dt, 
                     dt_out=dt_out)
         np.testing.assert_equal(ts_out[-1], 0.8)
+    
+    def test_accepts_dt_out_equal_to_t_end(self):
+        '''
+        dt_out=0.075, dt=0.025 -> 3.0 in exact arithmetic, but
+        0.075 and 0.025 are not exact in binary. The tolerant check
+        should accept this.
+        '''
+        t_end=0.1
+        dt=0.005
+        dt_out=0.1
+        pos = np.zeros((1, 3))
+        vel = np.zeros((1, 3))
+        mass = np.ones(1)
+        _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+                    _CompositeConservative([]), NullBaseForce(),
+                    t_end=t_end, 
+                    dt=dt, 
+                    dt_out=dt_out)
+        
+    def test_accepts_dt_equal_to_t_end(self):
+        '''
+        dt_out=0.075, dt=0.025 -> 3.0 in exact arithmetic, but
+        0.075 and 0.025 are not exact in binary. The tolerant check
+        should accept this.
+        '''
+        t_end=0.1
+        dt=0.1
+        dt_out=0.1
+        pos = np.zeros((1, 3))
+        vel = np.zeros((1, 3))
+        mass = np.ones(1)
+        _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+                    _CompositeConservative([]), NullBaseForce(),
+                    t_end=t_end, 
+                    dt=dt, 
+                    dt_out=dt_out)
+    
+    def test_float_tolerant_dt_out_dt_accepts_exact_multiples(self):
+        '''
+        dt_out=0.1, dt=0.001 -> ratio = 100 exactly.
+        Should not raise despite floating-point representation.
+        '''
+        t_end=1.0
+        dt=0.001
+        dt_out=0.01
+        pos = np.zeros((1, 3))
+        vel = np.zeros((1, 3))
+        mass = np.ones(1)
+        _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+                    _CompositeConservative([]), NullBaseForce(),
+                    t_end=t_end, 
+                    dt=dt, 
+                    dt_out=dt_out)
+
+
+    def test_float_tolerant_dt_out_dt_accepts_tricky_floats(self):
+        '''
+        dt_out=0.075, dt=0.025 -> 3.0 in exact arithmetic, but
+        0.075 and 0.025 are not exact in binary. The tolerant check
+        should accept this.
+        '''
+        t_end=0.1
+        dt=0.025
+        dt_out=0.075
+        pos = np.zeros((1, 3))
+        vel = np.zeros((1, 3))
+        mass = np.ones(1)
+        _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+                    _CompositeConservative([]), NullBaseForce(),
+                    t_end=t_end, 
+                    dt=dt, 
+                    dt_out=dt_out)
+
+    def test_float_tolerant_dt_out_dt_rejects_genuine_nonmultiple(self):
+        '''
+        dt_out=0.07, dt=0.03 -> ratio approx 2.333, genuinely not an integer.
+        Should raise ValueError.
+        '''
+        t_end=1.0
+        dt=0.03
+        dt_out=0.07
+        pos = np.zeros((1, 3))
+        vel = np.zeros((1, 3))
+        mass = np.ones(1)
+        with pytest.raises(ValueError, match="dt_out must be a multiple of dt."):
+            _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+                        _CompositeConservative([]), NullBaseForce(),
+                        t_end=t_end, 
+                        dt=dt, 
+                        dt_out=dt_out)
+
+    def test_exact_multiples_no_warnings(self):
+        '''
+        dt_out and t_end are exact multiples of dt.
+        No UserWarning should be raised.
+        '''
+        t_end=1.0
+        dt=0.1
+        dt_out=0.1
+        pos = np.zeros((1, 3))
+        vel = np.zeros((1, 3))
+        mass = np.ones(1)
+        _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+                    _CompositeConservative([]), NullBaseForce(),
+                    t_end=t_end, 
+                    dt=dt, 
+                    dt_out=dt_out)
 
 class TestTimeStepInputs:
     @classmethod
