@@ -1,8 +1,11 @@
 import numpy as np
+from scipy.special import exp1
+from scipy import integrate, interpolate
 from ..util._galpy_bridge import _check_physical
 from ..util.units import KMS_TO_KPCGYR
 from galpy import df, potential
 from galpy.util.conversion import mass_in_msol
+from galpy.potential.SphericalPotential import SphericalPotential
 lunit = "kpc"
 # galpy default unit scales (used for natural-unit conversions)
 _GALPY_RO = 8.0    # kpc
@@ -275,3 +278,146 @@ def mkNFW_galpy(m, n, rmin=0.0, center_pos=[0, 0, 0], center_vel=[0, 0, 0],
     return galpysampler(pot, n, m, rmin=rmin, 
                         center_pos=center_pos, center_vel=center_vel,
                         df_kwargs=nfw_df_kwargs)
+class TruncatedNFWPotential(SphericalPotential):
+    r'''Exponentially-truncated NFW potential.
+
+    Density:
+
+    .. math::
+
+        \rho(r) = \frac{\rho_s\,e^{-r/r_c}}{(r/a)\,(1 + r/a)^2}
+
+    where :math:`\rho_s = \mathrm{amp}/(4\pi a^3)`, matching galpy's NFW
+    amplitude convention. All methods are closed-form. Mass and outer
+    potential integrals are expressible via the exponential integral
+    :math:`E_1` (`scipy.special.exp1`); a small-:math:`r` Taylor fallback
+    avoids catastrophic cancellation when :math:`r \ll a, r_c`.
+
+    Parameters
+    ----------
+    amp : float
+        Mass-scale amplitude :math:`4\pi\,\rho_s\,a^3`. galpy multiplies this
+        externally for `pot.dens`, `pot(r)`, etc.
+    a : float
+        NFW scale radius.
+    rc : float
+        Exponential truncation radius.
+    ro, vo : float, optional
+        galpy unit scales (kpc, km/s).
+    '''
+
+    def __init__(self, amp=1.0, a=1.0, rc=2.0, ro=None, vo=None):
+        SphericalPotential.__init__(self, amp=amp, ro=ro, vo=vo)
+        self._a = a
+        self._rc = rc
+        self._alpha = a / rc
+        self._exp_alpha = np.exp(self._alpha)
+        self._E1_alpha = exp1(self._alpha)
+        self.hasC = False
+        self.hasC_dxdv = False
+        self._scale = a
+        # Threshold below which closed-form M(<r) suffers cancellation; use
+        # series expansion instead. r/min(a, rc) < eps gives roughly eps^2
+        # relative truncation error in F(r).
+        self._small_r_thresh = 1e-3 * min(a, rc)
+
+    # F(r) = M(<r) / amp, dimensionless mass scale (so that
+    # _rforce = -F(r)/r^2 in amp-units).
+    def _F(self, r):
+        # closed form
+        # F(r) = exp(a)(1+a)[E1(a) - E1(b)] - 1 + (a_/(a_+r)) exp(-r/rc),
+        # where a = alpha = a_/rc, b = (a_+r)/rc.
+        # For r << a_, rc, both subtractions cancel; use Taylor in r.
+        r = np.asarray(r, dtype=float)
+        small = r < self._small_r_thresh
+        out = np.empty_like(r) if r.ndim else np.array(0.0)
+        if r.ndim == 0:
+            return self._F_scalar(float(r))
+        out[~small] = self._F_closed(r[~small])
+        out[small] = self._F_series(r[small])
+        return out
+
+    def _F_scalar(self, r):
+        if r < self._small_r_thresh:
+            return self._F_series(r)
+        return self._F_closed(r)
+
+    def _F_closed(self, r):
+        a, rc = self._a, self._rc
+        beta = (a + r) / rc
+        return (self._exp_alpha * (1.0 + self._alpha)
+                * (self._E1_alpha - exp1(beta))
+                - 1.0
+                + a * np.exp(-r / rc) / (a + r))
+
+    def _F_series(self, r):
+        # F(r) = (1/a^2) * [ r^2/2 - (r^3/3)(1/rc + 2/a)
+        #                  + (r^4/4)(1/(2 rc^2) + 2/(rc a) + 3/a^2)
+        #                  - (r^5/5)(1/(6 rc^3) + 1/(rc^2 a)
+        #                           + 3/(rc a^2) + 4/a^3) + ... ]
+        a, rc = self._a, self._rc
+        c2 = 0.5
+        c3 = -(1.0 / rc + 2.0 / a) / 3.0
+        c4 = (0.5 / rc / rc + 2.0 / (rc * a) + 3.0 / (a * a)) / 4.0
+        c5 = -(1.0 / (6.0 * rc**3) + 1.0 / (rc * rc * a)
+               + 3.0 / (rc * a * a) + 4.0 / a**3) / 5.0
+        return (r * r / (a * a)) * (c2 + r * (c3 + r * (c4 + r * c5)))
+
+    # G(r) := 4*pi * \int_r^infty rho(s) s ds / amp
+    #      = exp(-r/rc)/(a + r) - exp(alpha) E1(beta) / rc
+    # Used in the potential.
+    def _G(self, r):
+        a, rc = self._a, self._rc
+        beta = (a + r) / rc
+        return np.exp(-r / rc) / (a + r) - self._exp_alpha * exp1(beta) / rc
+
+    # rho(r) / amp: galpy NFW convention places the 1/(4*pi a^3) factor here
+    # so that the user-facing pot.dens(r) = rho_s * exp(-r/rc) / [(r/a)(1+r/a)^2].
+    def _rdens(self, r, t=0.0):
+        a = self._a
+        return np.exp(-r / self._rc) / (
+            4.0 * np.pi * a * a * r * (1.0 + r / a) ** 2)
+
+    # _revaluate / _rforce / _r2deriv: amp is applied externally by Potential.
+    # F(r) ~ r^2/(2 a^2) near the origin, so F/r and F/r^2 have finite
+    # limits we substitute by hand. Without this, _evaluate(0)/_rforce(0)
+    # return NaN; galpy's eddingtondf seeds its rphi spline with r=0 and
+    # scipy>=1.13's strict monotonicity check then raises.
+    def _revaluate(self, r, t=0.0):
+        r_arr = np.asarray(r, dtype=float)
+        if r_arr.ndim == 0:
+            if r_arr == 0.0:
+                return -self._G(0.0)
+            return -(self._F(r_arr) / r_arr + self._G(r_arr))
+        out = -self._G(r_arr)
+        nz = r_arr != 0.0
+        out[nz] -= self._F(r_arr[nz]) / r_arr[nz]
+        return out
+
+    def _rforce(self, r, t=0.0):
+        r_arr = np.asarray(r, dtype=float)
+        zero_limit = -0.5 / (self._a * self._a)
+        if r_arr.ndim == 0:
+            if r_arr == 0.0:
+                return zero_limit
+            return -self._F(r_arr) / (r_arr * r_arr)
+        out = np.full_like(r_arr, zero_limit)
+        nz = r_arr != 0.0
+        out[nz] = -self._F(r_arr[nz]) / (r_arr[nz] * r_arr[nz])
+        return out
+
+    def _r2deriv(self, r, t=0.0):
+        return 4.0 * np.pi * self._rdens(r) - 2.0 * self._F(r) / r ** 3
+
+    # _ddensdr / _d2densdr2: galpy calls these directly (no amp wrapping),
+    # so we bake in self._amp.
+    def _ddensdr(self, r, t=0.0):
+        rho_phys = self._amp * self._rdens(r)
+        g = 1.0 / r + 2.0 / (self._a + r) + 1.0 / self._rc
+        return -rho_phys * g
+
+    def _d2densdr2(self, r, t=0.0):
+        rho_phys = self._amp * self._rdens(r)
+        g = 1.0 / r + 2.0 / (self._a + r) + 1.0 / self._rc
+        gprime = -1.0 / (r * r) - 2.0 / (self._a + r) ** 2
+        return rho_phys * (g * g - gprime)
