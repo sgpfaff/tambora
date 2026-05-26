@@ -2,8 +2,7 @@
 tambora
 ========
 
-A Python package for self-gravitating N-body simulations, powered by the
-falcON tree-code algorithm.
+An N-body code for the modern era.
 
 Installation
 ------------
