@@ -31,7 +31,7 @@ jobs:
 
       - name: Verify C extensions
         working-directory: /tmp
-        run: python -c "from ezfalcon.dynamics.acceleration._falcon import gravity; print('_falcon OK')"
+        run: python -c "from ezfalcon.dynamics.forces.self_gravity.falcON._falcon import gravity; print('_falcon OK')"
 
       - name: Run tests with coverage
         working-directory: /tmp
