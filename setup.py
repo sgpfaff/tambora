@@ -26,6 +26,7 @@ _falcon = Extension(
     define_macros=[
         ("falcON_DOUBLE", None),
     ],
+    extra_compile_args=["-std=c++17"],
     language="c++",
 )
 
@@ -33,6 +34,7 @@ _direct_summation = Extension(
     name="tambora.dynamics.forces.self_gravity.directSummation._direct_summation",
     sources=["tambora/dynamics/forces/self_gravity/directSummation/_direct_wrapper.cpp"],
     include_dirs=[np.get_include()],
+    extra_compile_args=["-std=c++17"],
     language="c++",
 )
 
