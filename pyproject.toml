@@ -52,6 +52,7 @@ include = ["tambora*"]
 
 [tool.setuptools_scm]
 version_file = "tambora/version.py"
+local_scheme = "no-local-version"
 
 [tool.pytest.ini_options]
 testpaths = [
