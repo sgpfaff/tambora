@@ -1,9 +1,9 @@
-from tambora.dynamics.integration import _runner
+from src.tambora.dynamics.integration import _runner
 from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
-from tambora.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
-from tambora.simulation import Sim
-from tambora.dynamics import ExternalGalpyPotential
-from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
+from src.tambora.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
+from src.tambora.simulation import Sim
+from src.tambora.dynamics import ExternalGalpyPotential
+from src.tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
 from galpy.potential import NFWPotential
 from galpy.orbit import Orbit
 import astropy.units as u
@@ -12,13 +12,13 @@ import numpy as np
 import pytest
 import numpy as np
 
-from tambora.dynamics.integration import _runner
+from src.tambora.dynamics.integration import _runner
 from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
-from tambora.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
-from tambora.simulation import Sim
-from tambora.dynamics import ExternalGalpyPotential, DirectSummationGravity, NullBaseForce, NullSelfGravity
-from tambora.dynamics.forces.CompositeForce import _CompositeConservative
-from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
+from src.tambora.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
+from src.tambora.simulation import Sim
+from src.tambora.dynamics import ExternalGalpyPotential, DirectSummationGravity, NullBaseForce, NullSelfGravity
+from src.tambora.dynamics.forces.CompositeForce import _CompositeConservative
+from src.tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
 from galpy.potential import NFWPotential
 from galpy.orbit import Orbit
 import astropy.units as u

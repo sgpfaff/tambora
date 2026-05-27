@@ -1,4 +1,6 @@
-from ..forces import SelfGravityForce, ConservativeForce, BaseForce
+from src.tambora.dynamics.forces import SelfGravityForce
+
+from ..forces import ConservativeForce, BaseForce
 from .BaseIntegrator import BaseIntegrator
 import numpy as np
 from tqdm import tqdm

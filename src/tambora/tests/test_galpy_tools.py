@@ -1,8 +1,8 @@
 import pytest
 from galpy.df import isotropicHernquistdf
 from galpy.potential import HernquistPotential, PlummerPotential, NFWPotential
-from tambora.tools import galpydfsampler, galpy_orbit_to_tambora, mkPlummer_galpy, mkKing_galpy, mkNFW_galpy
-from tambora.tools.galpy_tools import _check_df, galpysampler
+from src.tambora.tools import galpydfsampler, galpy_orbit_to_tambora, mkPlummer_galpy, mkKing_galpy, mkNFW_galpy
+from src.tambora.tools.galpy_tools import _check_df, galpysampler
 import numpy as np
 import astropy.units as u
 

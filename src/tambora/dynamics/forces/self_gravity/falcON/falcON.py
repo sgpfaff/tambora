@@ -1,4 +1,4 @@
-from ._falcon import gravity
+from .......tambora.dynamics.forces.self_gravity.falcON._falcon import gravity
 from .....util import G_INTERNAL
 
 def _falcON_gravity(pos, mass, eps, theta, kernel, return_potential):

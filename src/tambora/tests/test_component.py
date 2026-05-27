@@ -1,8 +1,8 @@
 import pytest
 import numpy as np
-from tambora.simulation import Sim, Component
-from tambora.util import G_INTERNAL
-from tambora.dynamics import DirectSummationGravity
+from src.tambora.simulation import Sim, Component
+from src.tambora.util import G_INTERNAL
+from src.tambora.dynamics import DirectSummationGravity
 
 np.random.seed(42)
 direct_gravity = DirectSummationGravity(eps=0.0)

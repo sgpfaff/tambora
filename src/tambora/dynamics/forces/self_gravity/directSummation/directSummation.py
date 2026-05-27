@@ -1,5 +1,5 @@
 from .....util import G_INTERNAL
-from ._direct_summation import gravity
+from .......tambora.dynamics.forces.self_gravity.directSummation._direct_summation import gravity
 import numpy as np
 
 def _direct_summation_py(pos, mass, eps, return_potential):

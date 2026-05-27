@@ -3,7 +3,7 @@ Test the self_gravity function
 '''
 
 import pytest
-from tambora.dynamics import self_gravity
+from src.tambora.dynamics import self_gravity
 import numpy as np
 
 

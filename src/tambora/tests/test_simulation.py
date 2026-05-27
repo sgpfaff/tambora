@@ -3,11 +3,11 @@ Test the Sim class and its methods.
 '''
 
 import pytest 
-from tambora.simulation import Sim, Component
+from src.tambora.simulation import Sim, Component
 import numpy as np
-from tambora.util import G_INTERNAL
-from tambora.util.units import KMS_TO_KPCGYR
-from tambora.dynamics import DirectSummationGravity
+from src.tambora.util import G_INTERNAL
+from src.tambora.util.units import KMS_TO_KPCGYR
+from src.tambora.dynamics import DirectSummationGravity
 import astropy.units as u
 
 

@@ -1,13 +1,13 @@
 import pytest
 import numpy as np
 
-from tambora.dynamics.integration import _runner
+from src.tambora.dynamics.integration import _runner
 from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
-from tambora.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
-from tambora.simulation import Sim
-from tambora.dynamics import ExternalGalpyPotential, DirectSummationGravity, NullBaseForce, NullSelfGravity
-from tambora.dynamics.forces.CompositeForce import _CompositeConservative
-from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
+from src.tambora.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
+from src.tambora.simulation import Sim
+from src.tambora.dynamics import ExternalGalpyPotential, DirectSummationGravity, NullBaseForce, NullSelfGravity
+from src.tambora.dynamics.forces.CompositeForce import _CompositeConservative
+from src.tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
 from galpy.potential import NFWPotential
 from galpy.orbit import Orbit
 import astropy.units as u
@@ -348,7 +348,7 @@ class TestTimeStepInputs:
 # --- time-dependent external potential --------------------------------------------------------- #
 
 from galpy.potential import DehnenSmoothWrapperPotential
-from tambora.util.units import KMS_TO_KPCGYR
+from src.tambora.util.units import KMS_TO_KPCGYR
 
 def test_time_dependent_potential_matches_galpy():
     '''
@@ -453,7 +453,7 @@ def test_time_dependent_potential_differs_from_static():
         "Time is likely not being forwarded to the external force function."
     )
 
-from tambora.util._galpy_bridge import _galpy_pot_to_pot_fn
+from src.tambora.util._galpy_bridge import _galpy_pot_to_pot_fn
 
 def test_time_dependent_potential_energy_matches_galpy():
     '''

@@ -9,7 +9,7 @@ import datetime
 # -- Project information -----------------------------------------------------
 
 # The full version, including alpha/beta/rc tags
-from tambora import __version__
+from src.tambora import __version__
 
 release = __version__
 version = __version__.split("+")[0]  # short version for display

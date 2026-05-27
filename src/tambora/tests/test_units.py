@@ -13,8 +13,8 @@ import pytest
 import numpy as np
 from numpy.testing import assert_allclose
 
-from tambora.simulation import Sim
-from tambora.util.units import (
+from src.tambora.simulation import Sim
+from src.tambora.util.units import (
     G_INTERNAL,
     G_KPC_KMS,
     KMS_TO_KPCGYR,

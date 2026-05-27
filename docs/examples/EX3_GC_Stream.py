@@ -11,7 +11,7 @@ host = MWPotential2014[2]
 
 # We can go ahead and create our `tambora` `Sim` instance. This class does all of the useful orchestration that we'll need.
 
-from tambora.simulation import Sim
+from src.tambora.simulation import Sim
 stream = Sim()
 
 # We can also add the MW potential using the `add_external_pot` method:
@@ -36,7 +36,7 @@ center_v = host.vcirc(center_r, quantity=True).to(u.km/u.s) * 0.8 # progentior c
 sat_mass = 1e7 * u.Msun # progenitor mass
 rtidal = host.rtide(R=center_R, z=0 * u.kpc, M=sat_mass, quantity=True).to(u.kpc)
 
-from tambora.tools import mkKing_galpy
+from src.tambora.tools import mkKing_galpy
 pos, vel, mass = mkKing_galpy(m=1e7, n = 20000, center_pos = [center_R.value, 0, 0], 
                               center_vel = [0., center_v.value, 0.], W0=4, rt=rtidal.value)
 
