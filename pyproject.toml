@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tambora"
 description = "An n-body code for the modern era."
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "licenses/LICENSE.rst" }
 authors = [
