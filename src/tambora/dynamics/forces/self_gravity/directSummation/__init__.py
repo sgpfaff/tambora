@@ -1,1 +1,0 @@
-from .directSummation import _direct_summation_py, _direct_summation_C

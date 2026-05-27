@@ -1,1 +1,0 @@
-from .ExternalGalpyPotential import ExternalGalpyPotential
