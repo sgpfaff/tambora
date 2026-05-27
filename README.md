@@ -1,6 +1,5 @@
 
-tambora
-========
+# tambora
 
 *An N-body code for the modern era.*
 
@@ -11,22 +10,25 @@ tambora
 [![galpy](https://img.shields.io/badge/galpy-1.9%20%7C%201.10%20%7C%201.11-blue)](https://github.com/sgpfaff/tambora/actions/workflows/tests.yml)
 
 
-Installation
-------------
-***Please note*** *that this code is under rapid development and backwards compatility is currently not guarenteed.*
-
-Until it is added to PyPI in the near future, you can use the code by
-running the following in your terminal:
-
-```bash
-git clone https://github.com/sgpfaff/tambora.git
-cd tambora
-pip install .
-```
+## Installation
+<b><span style="color:red">Please note that this code is under rapid development and backwards compatility is currently not guarenteed.</span></b>
 
 
-License
--------
+### Basic Installation
+The latest pre-release version of [tambora](https://tambora.readthedocs.io/en/latest/) can be installed using pip as follows:
+
+````bash
+pip install tambora==0.1.0a1.dev17
+````
+
+### Optional Dependencies
+
+
+[galpy](https://docs.galpy.org/en/v1.11.2/) is required to be installed in the same environment as [tambora](https://tambora.readthedocs.io/en/latest/) to use features including galpy external potentials and distribution function sampling. Please refer to the [galpy installation guide](https://docs.galpy.org/en/stable/installation.html) for installing galpy.
+
+
+
+## License
 
 This project is Copyright (c) Gabriel Pfaffman and licensed under
 the terms of the BSD 3-Clause license. This package is based upon
