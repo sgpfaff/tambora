@@ -249,7 +249,6 @@ class TestUnitHandlerDecorator:
 
 @pytest.fixture
 def sim():
-    np.random.seed(99)
     s = Sim()
     s.add_particles(
         'stars',
@@ -380,7 +379,6 @@ class TestSimAccessorConversion:
 def sim_ext():
     """Sim with an external galpy potential attached."""
     from galpy import potential as gp
-    np.random.seed(99)
     s = Sim()
     s.add_particles(
         'stars',
