@@ -1,4 +1,4 @@
-from src.tambora.simulation import Sim
+from tambora.simulation import Sim
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.differentiate import derivative

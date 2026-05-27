@@ -3,8 +3,8 @@ from galpy.df import isotropicPlummerdf, isotropicNFWdf
 import numpy as np
 import matplotlib.pyplot as plt
 import astropy.units as u
-from src.tambora.tools import galpydfsampler
-from src.tambora.simulation import Sim
+from tambora.tools import galpydfsampler
+from tambora.simulation import Sim
 plt.rcParams['xtick.direction'] = 'in'
 plt.rcParams['ytick.direction'] = 'in'
 plt.rcParams['font.size'] = 14

@@ -1,8 +1,8 @@
 
 from galpy.df import kingdf
 from galpy.potential import PlummerPotential, NFWPotential, TriaxialNFWPotential
-from src.tambora.simulation import Sim
-from src.tambora.tools import galpydfsampler
+from tambora.simulation import Sim
+from tambora.tools import galpydfsampler
 import astropy.units as u
 import numpy as np
 import matplotlib.pyplot as plt
