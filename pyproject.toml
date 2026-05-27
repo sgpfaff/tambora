@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 name = "tambora"
 description = "An n-body code for the modern era."
 requires-python = ">=3.9"
-readme = { file = "README.rst", content-type = "text/x-rst" }
+readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "licenses/LICENSE.rst" }
 authors = [
   { name = "Gabriel Pfaffman", email = "gabriel.pfaffman@mail.utoronto.ca" },
