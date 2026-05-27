@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tambora"
-description = ""
+description = "An n-body code for the modern era."
 requires-python = ">=3.9"
 readme = { file = "README.rst", content-type = "text/x-rst" }
 license = { file = "licenses/LICENSE.rst" }
@@ -17,7 +17,7 @@ authors = [
 ]
 dependencies = [
     "numpy",
-    "tqdm",
+    "tqdm"
 ]
 dynamic = ["version"]
 

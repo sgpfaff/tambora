@@ -4,6 +4,12 @@ tambora
 
 *An N-body code for the modern era.*
 
+[![Tests](https://github.com/sgpfaff/tambora/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/sgpfaff/tambora/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/gh/sgpfaff/tambora/branch/master/graph/badge.svg)](https://codecov.io/gh/sgpfaff/tambora)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](https://github.com/sgpfaff/tambora/actions/workflows/tests.yml)
+[![galpy](https://img.shields.io/badge/galpy-1.9%20%7C%201.10%20%7C%201.11-blue)](https://github.com/sgpfaff/tambora/actions/workflows/tests.yml)
+
+
 Installation
 ------------
 ***Please note*** *that this code is under rapid development and backwards compatility is currently not guarenteed.*
