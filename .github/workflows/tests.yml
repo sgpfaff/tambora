@@ -47,6 +47,52 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
+  no-galpy:
+    name: Install without galpy (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install tambora without [galpy] extra
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+
+      - name: Assert galpy is not installed
+        run: |
+          python -c "import sys; \
+            import importlib.util; \
+            assert importlib.util.find_spec('galpy') is None, 'galpy unexpectedly present'"
+
+      - name: Import tambora.simulation works without galpy
+        working-directory: /tmp
+        run: python -c "from tambora.simulation import Sim; print('Sim import OK')"
+
+      - name: ExternalGalpyPotential raises helpful ImportError
+        working-directory: /tmp
+        run: |
+          python -c "
+          from tambora.dynamics.forces import ExternalGalpyPotential
+          try:
+              ExternalGalpyPotential(None)
+          except ImportError as e:
+              assert 'galpy' in str(e).lower(), f'unexpected message: {e}'
+              print('Helpful ImportError raised as expected')
+          else:
+              raise SystemExit('Expected ImportError, none raised')
+          "
+
   galpy-compat:
     name: galpy ${{ matrix.galpy-version }} (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
