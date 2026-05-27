@@ -170,3 +170,51 @@ def test_mkKing_density_profile():
 
     _, pvalue = kstest(r_nat, cdf_interp)
     assert pvalue > 0.001, f"King KS test failed: p={pvalue:.4f}"
+
+# --- galpy-not-installed behaviour ---------------------------------------------------------- #
+
+import tambora.tools.galpy_tools as gt
+
+
+def test_galpy_tools_importable_without_guard():
+    """All galpy tools stay importable from tambora.tools even when galpy is
+    the optional dependency that might be missing (the module itself must
+    import without raising)."""
+    from tambora.tools import (
+        galpydfsampler, galpysampler, galpy_orbit_to_tambora,
+        mkKing_galpy, mkNFW_galpy, mkPlummer_galpy,
+    )
+
+
+def test_require_galpy_raises_with_install_url(monkeypatch):
+    """_require_galpy points the user at galpy's installation page."""
+    monkeypatch.setattr(gt, "_GALPY_IMPORT_ERROR",
+                        ImportError("No module named 'galpy'"))
+    with pytest.raises(ImportError,
+                       match=r"docs\.galpy\.org/en/stable/installation"):
+        gt._require_galpy()
+
+
+def test_require_galpy_noop_when_available():
+    """When galpy is installed, _require_galpy does nothing."""
+    assert gt._GALPY_IMPORT_ERROR is None
+    gt._require_galpy()  # must not raise
+
+
+@pytest.mark.parametrize("call", [
+    lambda: gt.galpy_orbit_to_tambora(None),
+    lambda: gt.galpydfsampler(None, n=1, m_total=1.0),
+    lambda: gt.galpysampler(None, n=1, m_total=1.0),
+    lambda: gt.mkPlummer_galpy(m=1.0, b=1.0, n=1),
+    lambda: gt.mkKing_galpy(m=1.0, n=1, W0=3.0),
+    lambda: gt.mkNFW_galpy(m=1.0, n=1),
+    lambda: gt._check_df("not_a_df"),
+], ids=["orbit_to_tambora", "galpydfsampler", "galpysampler",
+        "mkPlummer", "mkKing", "mkNFW", "_check_df"])
+def test_tools_raise_helpful_error_when_galpy_missing(monkeypatch, call):
+    """Every galpy tool raises the helpful ImportError (not NameError/
+    AttributeError) when galpy could not be imported."""
+    monkeypatch.setattr(gt, "_GALPY_IMPORT_ERROR",
+                        ImportError("No module named 'galpy'"))
+    with pytest.raises(ImportError, match="galpy is required"):
+        call()

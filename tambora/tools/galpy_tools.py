@@ -1,8 +1,33 @@
 import numpy as np
-from ..util._galpy_bridge import _check_physical
 from ..util.units import KMS_TO_KPCGYR
-from galpy import df, potential
-from galpy.util.conversion import mass_in_msol
+
+_GALPY_INSTALL_URL = "https://docs.galpy.org/en/stable/installation.html"
+
+try:
+    from galpy import df, potential
+    from galpy.util.conversion import mass_in_msol
+    from ..util._galpy_bridge import _check_physical
+    _GALPY_IMPORT_ERROR = None
+except ImportError as exc:  # galpy (an optional dependency) is not installed
+    df = potential = mass_in_msol = _check_physical = None
+    _GALPY_IMPORT_ERROR = exc
+
+
+def _require_galpy():
+    '''Raise a helpful error if galpy is not available.
+
+    The galpy tools depend on the optional ``galpy`` package.  When it is
+    not installed, importing this module still succeeds (so the tool names
+    remain importable), but calling any tool raises this error instead of a
+    confusing ``NameError``/``AttributeError`` from a missing symbol.
+    '''
+    if _GALPY_IMPORT_ERROR is not None:
+        raise ImportError(
+            "galpy is required to use tambora's galpy tools but could not be "
+            f"imported. See {_GALPY_INSTALL_URL} for installation instructions."
+        ) from _GALPY_IMPORT_ERROR
+
+
 lunit = "kpc"
 # galpy default unit scales (used for natural-unit conversions)
 _GALPY_RO = 8.0    # kpc
@@ -29,6 +54,7 @@ def galpy_orbit_to_tambora(orb):
          Cartesian velocities of sampled particles.
          Units: `km / s`
      '''
+    _require_galpy()
     _check_physical(orb)
     pos = np.atleast_2d(np.array([orb.x(return_physical=True), 
                                   orb.y(return_physical=True), 
@@ -40,16 +66,20 @@ def galpy_orbit_to_tambora(orb):
 
 # --- Sampling tools ----------------------------------------------------------------
 
-SUPPORTED_GALPY_DFS = (
-    df.isotropicHernquistdf,
-    df.isotropicPlummerdf,
-    df.isotropicNFWdf,
-    df.kingdf,
-    df.eddingtondf
-)
+if _GALPY_IMPORT_ERROR is None:
+    SUPPORTED_GALPY_DFS = (
+        df.isotropicHernquistdf,
+        df.isotropicPlummerdf,
+        df.isotropicNFWdf,
+        df.kingdf,
+        df.eddingtondf
+    )
+else:
+    SUPPORTED_GALPY_DFS = ()
 
 def _check_df(df):
     '''Currently only spherical galpy dfs are supported.'''
+    _require_galpy()
     if not isinstance(df, SUPPORTED_GALPY_DFS):
         raise ValueError(f"Unsupported galpy df type: {type(df)}. Supported types: {SUPPORTED_GALPY_DFS}")
 
@@ -91,6 +121,7 @@ def galpydfsampler(df, n, m_total, rmin=0.0, center_pos=[0, 0, 0],
         Masses of sampled particles.
         Units: `Msun`
     '''
+    _require_galpy()
     _check_physical(df)
     _check_df(df)
     o = df.sample(n=n, rmin=rmin/_GALPY_RO, return_orbit=True)
@@ -127,6 +158,7 @@ def galpysampler(pot, n, m_total, rmin=0.0,
         Units: `Msun`
 
     '''
+    _require_galpy()
     _check_physical(pot)
     if isinstance(pot, potential.PlummerPotential):
         _df = df.isotropicPlummerdf(pot=pot, **df_kwargs)
@@ -165,6 +197,7 @@ def mkPlummer_galpy(m, b, n, center_pos=[0, 0, 0], center_vel=[0, 0, 0]):
         Velocity of the center of the Plummer sphere.
         Units: `km / s`
     '''
+    _require_galpy()
     pot = potential.PlummerPotential(
         amp = m / mass_in_msol(_GALPY_VO, _GALPY_RO),
         b = b / _GALPY_RO,
@@ -216,6 +249,7 @@ def mkKing_galpy(m:float, n, W0:float, rt=None, npts=None, rmin=0.0,
         Masses of sampled particles.
         Units: `Msun`
     '''
+    _require_galpy()
     df_kwargs = {}
     if rt is not None:
         df_kwargs['rt'] = rt / _GALPY_RO
@@ -271,6 +305,7 @@ def mkNFW_galpy(m, n, rmin=0.0, center_pos=[0, 0, 0], center_vel=[0, 0, 0],
         Masses of sampled particles.
         Units: `Msun`
     '''
+    _require_galpy()
     pot = potential.NFWPotential(**nfw_kwargs)
     return galpysampler(pot, n, m, rmin=rmin, 
                         center_pos=center_pos, center_vel=center_vel,
