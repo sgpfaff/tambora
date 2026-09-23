@@ -4,7 +4,7 @@ Examples
    :gutter: 2
 
    .. grid-item-card:: Globular Cluster Stream
-      :img-bottom: GC_stream_evolution_no_axes.gif
+      :img-bottom: stream_bnd_unbnd_w_stripping_t.png
       :link: GC_stream
       :link-type: doc
 
