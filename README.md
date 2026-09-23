@@ -12,10 +12,16 @@ A publicly maintained, modular N-body python package designed for small galactic
 
 ## Installation
 
-The latest alpha release of [tambora](https://tambora.readthedocs.io/en/latest/) can be installed using pip as follows:
+tambora is currently published as a pre-release, so pip needs `--pre` to see it:
 
 ````bash
-pip install tambora==0.1.0a1.dev17
+pip install --pre tambora
+````
+
+To pin an exact version instead:
+
+````bash
+pip install tambora==0.1.0a1
 ````
 🚨 **NOTE:** tambora is still under development. Backwards compatibility is currently not guaranteed. 🚨
 
@@ -25,6 +31,10 @@ pip install tambora==0.1.0a1.dev17
 [galpy](https://docs.galpy.org/en/stable/) is required to be installed in the same environment as tambora to use features including galpy external potentials and distribution function sampling. Please refer to the [galpy installation guide](https://docs.galpy.org/en/stable/installation.html) for installing galpy.
 
 
+## Acknowledgements
+
+tambora is partly derived from Walter Dehnen's `gyrfalcON` as implemented in [NEMO](https://astronemo.readthedocs.io/) and Eugene Vasiliev's [pyfalcon](https://github.com/GalacticDynamics-Oxford/pyfalcon) python interface for gyrfalcON's self-gravity solver. 
+
 
 ## License
 
@@ -33,15 +43,17 @@ This project is Copyright (c) Gabriel Pfaffman and is licensed under the terms o
 
 tambora bundles [falcON](https://td.mpia.de/~dehnen/falcON/), the fast tree-code by Walter
 Dehnen, the same code distributed as `gyrfalcON` in [NEMO](https://astronemo.readthedocs.io/)
-and compiles it into the `_falcon` extension module. falcON is GPL-2.0-or-later, so tambora as
-distributed is a combined work and carries the same licence. See
-[licenses/LICENSE.rst](licenses/LICENSE.rst) for the full provenance.
+and compiles it into the `_falcon` extension module. The python interface for the falcON self-gravity solver is derived from Eugene Vasiliev's [pyfalcon](https://github.com/GalacticDynamics-Oxford/pyfalcon) code. pyfalcon does not carry an explicit licence, but as a work derived from falcON/gyrfalcON it is GPL-compatible; falcON itself is GPL-2.0-or-later, so tambora as distributed is a combined work and carries the same licence. [licenses/LICENSE.rst](licenses/LICENSE.rst) for the full provenance.
 
-If you use the falcON self-gravity backend, please cite Dehnen (2000, 2002) alongside tambora.
+If you use the falcON self-gravity backend, please cite Dehnen (2000, 2002) and pyfalcon (E. Vasiliev,  [github.com/GalacticDynamics-Oxford/pyfalcon](github.com/GalacticDynamics-Oxford/pyfalcon)) alongside tambora.
 
 This package's packaging scaffolding is based upon the
 [OpenAstronomy packaging guide](https://github.com/OpenAstronomy/packaging-guide), which is
 licensed under the BSD 3-Clause licence. See the licenses folder for more information.
+
+
+
+
 
 ## Contributing
 

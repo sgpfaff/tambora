@@ -6,15 +6,22 @@ Installation
 
 Basic Installation
 ------------------
-The latest pre-release version of :ref:`home` can be installed using pip as follows:
+:ref:`home` is currently published as a pre-release. pip ignores pre-releases by
+default, so ``--pre`` is required:
 
-.. code-block:: python
+.. code-block:: bash
 
-    pip install tambora==0.1.0a1.dev17
+    pip install --pre tambora
+
+To pin an exact version instead:
+
+.. code-block:: bash
+
+    pip install tambora==0.1.0a1
 
 
 Optional Dependencies
-------------------
+---------------------
 
 
 `galpy`_ is required to be installed in the same environment as :ref:`home` to use features including galpy external potentials and distribution function sampling. Please refer to the `galpy installation guide`_ for installing galpy.
