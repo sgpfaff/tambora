@@ -104,3 +104,67 @@ class TestOrbitIntegrationAgainstGalpy:
     def test_Lz_against_galpy(self):
         Lz_galpy = self.o_galpy.Lz(self.ts, quantity=True).to(u.kpc*u.kpc/u.Gyr).value
         np.testing.assert_allclose(self.Lz_out, Lz_galpy, rtol=1e-6), "Angular momentum does not match galpy output."
+
+
+# --- Time-dependent forces with a nonzero start time ------------------------------------
+
+from tambora.dynamics.forces import Force
+from tambora.dynamics.forces.external_force import ExternalConservativeForce
+
+_G_FIELD = 3.0  # kpc / Gyr^3: field strength grows linearly in time, a(t) = G t x_hat
+
+
+class _GrowingUniformField(ExternalConservativeForce):
+    """Conservative uniform field a(t) = G t x_hat, potential -G t x."""
+    def acc(self, pos, t):
+        a = np.zeros_like(pos)
+        a[:, 0] = _G_FIELD * t
+        return a
+
+    def potential(self, pos, t):
+        return -_G_FIELD * t * pos[:, 0]
+
+
+class _GrowingUniformBaseForce(Force):
+    """The same field, routed through the non-conservative (base) force path."""
+    def acc(self, pos, vel, mass, t):
+        a = np.zeros_like(pos)
+        a[:, 0] = _G_FIELD * t
+        return a
+
+
+def _leapfrog_kick_exact(t0, dt):
+    # Leapfrog's velocity update is the trapezoid rule on a(t):
+    # dv = dt/2 * (a(t0) + a(t0 + dt)) = G dt/2 * (2 t0 + dt).
+    return _G_FIELD * dt / 2 * (2 * t0 + dt)
+
+
+class TestTimeDependentForceAtNonzeroT0:
+    '''The first half-kick must be evaluated at the actual start time, not t = 0.'''
+    t0, dt = 2.0, 0.1
+    pos = np.zeros((1, 3))
+    vel = np.zeros((1, 3))
+    mass = np.ones(1)
+
+    def test_first_step_conservative_force_uses_t0(self):
+        result = LeapfrogIntegrator().step(
+            self.pos, self.vel, self.mass, self.t0, self.dt,
+            NullSelfGravity(), _CompositeConservative([_GrowingUniformField()]), NullForce())
+        np.testing.assert_allclose(result.vel[0, 0], _leapfrog_kick_exact(self.t0, self.dt), rtol=1e-12)
+
+    def test_first_step_base_force_uses_t0(self):
+        result = LeapfrogIntegrator().step(
+            self.pos, self.vel, self.mass, self.t0, self.dt,
+            NullSelfGravity(), _CompositeConservative([]), _GrowingUniformBaseForce())
+        np.testing.assert_allclose(result.vel[0, 0], _leapfrog_kick_exact(self.t0, self.dt), rtol=1e-12)
+
+    def test_runner_velocity_matches_exact_solution(self):
+        # Over [t0, t_end] the trapezoid rule is exact for a linear a(t), so the final
+        # velocity is the exact integral G/2 (t_end^2 - t0^2), for any step count.
+        t_end = self.t0 + 1.0
+        _, vel_out, _, _, _ = _runner(
+            self.pos, self.vel, self.mass, LeapfrogIntegrator(), NullSelfGravity(),
+            _CompositeConservative([_GrowingUniformField()]), NullForce(),
+            self.t0, t_end, self.dt, self.dt,
+            return_self_gravity_pot=False, return_self_gravity_acc=False, progress=False)
+        np.testing.assert_allclose(vel_out[-1, 0, 0], _G_FIELD / 2 * (t_end**2 - self.t0**2), rtol=1e-12)
