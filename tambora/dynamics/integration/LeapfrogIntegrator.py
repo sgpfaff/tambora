@@ -24,11 +24,11 @@ class LeapfrogIntegrator(BaseIntegrator):
     ) -> StepResult:
         
         # --- base force half-kick -------------------------------------------------------
-        a_base_0 = self._initial_base_acc(pos, vel, mass, 0.0, base_ext_force)
+        a_base_0 = self._initial_base_acc(pos, vel, mass, t, base_ext_force)
         vel = vel + a_base_0 * dt / 2
 
         # --- conservative force half-kick -----------------------------------------------
-        a_cons_0 = self._initial_conservative_acc(pos, mass, 0.0, self_gravity_force, conserv_ext_force)
+        a_cons_0 = self._initial_conservative_acc(pos, mass, t, self_gravity_force, conserv_ext_force)
         vel_half = vel + a_cons_0 * dt / 2
 
         # --- full step drift ------------------------------------------------------------
