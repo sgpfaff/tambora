@@ -245,6 +245,14 @@ def _needs_scalar_loop(pot):
             return True
     return False
 
+def _Rforces(pot, R_nat, z_nat, phi, t_nat, scalar):
+    '''galpy R-forces in natural units, one point at a time if ``scalar``.'''
+    if scalar:
+        return np.array([potential.evaluateRforces(pot, Ri, zi, phi=pi, t=t_nat, use_physical=False)
+                         for Ri, zi, pi in zip(R_nat, z_nat, phi)])
+    return np.asarray(potential.evaluateRforces(pot, R_nat, z_nat, phi=phi, t=t_nat,
+                                                use_physical=False))
+
 def _galpy_pot_to_pot_fn(pot):
     '''
     Convert a galpy potential to a function that 
@@ -321,7 +329,12 @@ def _galpy_pot_to_acc_fn(pot):
 
         aR = Rf * vo_int**2 / ro          # kpc/Gyr^2
         az = zf * vo_int**2 / ro
-        aphi = pt * vo_int**2 / R          # phitorque (energy) / R = force
+        on_axis = R == 0
+        aphi = pt * vo_int**2 / np.where(on_axis, 1.0, R)
+        if np.any(on_axis):
+            aphi = np.array(aphi, dtype=float)
+            aphi[on_axis] = _Rforces(pot, R_nat[on_axis], z_nat[on_axis], phi[on_axis] + np.pi / 2,
+                                     t_nat, scalar) * vo_int**2 / ro
 
         ax, ay, az = cyl_to_rect_vec(aR, aphi, az, phi)
         return np.array([ax, ay, az]).T
