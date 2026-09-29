@@ -1,6 +1,6 @@
 from .ExternalConservativeForce import ExternalConservativeForce
 import numpy as np
-from tambora.tools.util._galpy_bridge import (
+from tambora.interop._galpy.bridge import (
                 _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn,
                 _check_physical, _check_supported_pot,
                 _ensure_pot, _iter_components, UNVECTORIZED_WRAPPERS, 

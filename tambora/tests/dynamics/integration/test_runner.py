@@ -3,7 +3,7 @@ import numpy as np
 
 from tambora.dynamics.integration import _runner, StepState
 from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
-from tambora.tools.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
+from tambora.interop._galpy.bridge import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
 from tambora.simulation import Sim
 from tambora.dynamics import ExternalPotential, DirectSummationGravity, NullForce, NullSelfGravity
 from tambora.dynamics.forces.CompositeForce import _CompositeConservative
@@ -484,7 +484,7 @@ def test_time_dependent_potential_differs_from_static():
         "Time is likely not being forwarded to the external force function."
     )
 
-from tambora.tools.util._galpy_bridge import _galpy_pot_to_pot_fn
+from tambora.interop._galpy.bridge import _galpy_pot_to_pot_fn
 
 def test_time_dependent_potential_energy_matches_galpy():
     '''

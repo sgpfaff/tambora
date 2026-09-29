@@ -4,7 +4,7 @@ from galpy import potential
 from galpy.orbit import Orbit
 from galpy.util.coords import rect_to_cyl, cyl_to_rect_vec
 import numpy as np
-from tambora.tools.util import _galpy_bridge
+from tambora.interop._galpy import bridge as _galpy_bridge
 from itertools import product
 from functools import partial
 import astropy.units as u

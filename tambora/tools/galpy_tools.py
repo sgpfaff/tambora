@@ -6,11 +6,13 @@ _GALPY_INSTALL_URL = "https://docs.galpy.org/en/stable/installation.html"
 try:
     from galpy import df, potential
     from galpy.util.conversion import mass_in_msol
-    from .util._galpy_bridge import _check_physical
-    _GALPY_IMPORT_ERROR = None
 except ImportError as exc:  # galpy (an optional dependency) is not installed
     df = potential = mass_in_msol = _check_physical = None
     _GALPY_IMPORT_ERROR = exc
+else:
+    # Outside the try, so an error in tambora's own modules isn't reported as galpy missing.
+    from ..interop._galpy.bridge import _check_physical
+    _GALPY_IMPORT_ERROR = None
 
 
 def _require_galpy():

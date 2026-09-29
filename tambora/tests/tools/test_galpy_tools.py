@@ -1,3 +1,6 @@
+import importlib
+import sys
+
 import pytest
 from galpy.df import isotropicHernquistdf
 from galpy.potential import HernquistPotential, PlummerPotential, NFWPotential, JaffePotential
@@ -307,3 +310,12 @@ def test_mkKing_galpy_rt_is_a_physical_radius_not_a_natural_one():
     r_wide = np.linalg.norm(wide, axis=-1).max()
     assert r_tight < r_wide, f"rt is not scaling the cluster: {r_tight} vs {r_wide}"
     assert r_tight < 1.5, f"rt=1.0 kpc produced a {r_tight:.2f} kpc cluster"
+
+
+def test_an_error_in_tamboras_own_code_is_not_reported_as_galpy_missing(monkeypatch):
+    # galpy is installed, but the bridge can't be imported. That must surface as the
+    # bridge's own error, not be caught and turned into "galpy is required".
+    monkeypatch.setitem(sys.modules, 'tambora.interop._galpy.bridge', None)
+    monkeypatch.delitem(sys.modules, 'tambora.tools.galpy_tools')
+    with pytest.raises(ImportError, match=r"tambora\.interop\._galpy\.bridge"):
+        importlib.import_module('tambora.tools.galpy_tools')

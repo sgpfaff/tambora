@@ -609,7 +609,7 @@ def test_external_pot_against_direct():
 
     If this fails: galpy bridge is returning wrong potential values, or
     compute_external_pot is not multiplying by mass.
-    Relies on: galpy KeplerPotential being correct, _galpy_bridge conversion.
+    Relies on: galpy KeplerPotential being correct, the galpy bridge's conversion.
     '''
     pot = KEPLER_SIM.compute_external_pot(0, return_internal=True)
     assert np.all(np.isclose(pot, KEPLER_POT, rtol=1e-10))
@@ -877,7 +877,7 @@ def test_external_pot_is_mass_weighted():
 
     If this fails: compute_external_pot is not multiplying by mass, or
     the galpy bridge is returning wrong potential values.
-    Relies on: galpy KeplerPotential, _galpy_bridge unit conversion.
+    Relies on: galpy KeplerPotential, the galpy bridge's unit conversion.
     '''
     sim = _energy_sim(with_ext_pot=True)
     ext = sim.compute_external_pot(t=0, return_internal=True)
