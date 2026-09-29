@@ -11,7 +11,7 @@ gp = pytest.importorskip("galpy.potential")
 from galpy.orbit import Orbit                                    # noqa: E402
 
 from tambora.interop._galpy.potential import GalpyPotential      # noqa: E402
-from tambora.tools.util import _galpy_bridge                     # noqa: E402
+from tambora.interop._galpy import bridge as _galpy_bridge       # noqa: E402
 
 POS = np.array([[8., 0., 0.5], [3., -2., 1.], [0.5, 4., -2.]])  # kpc
 

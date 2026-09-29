@@ -1,1 +1,4 @@
-"""galpy backends. Imported only once galpy itself has been imported."""
+"""galpy backends, and the bridge that evaluates galpy potentials in tambora units.
+
+Every module here imports galpy, so import one only when galpy is installed.
+"""

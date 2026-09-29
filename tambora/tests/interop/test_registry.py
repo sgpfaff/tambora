@@ -5,7 +5,7 @@ Tests for the backend registry and the ``PotentialBackend`` interface.
 import numpy as np
 import pytest
 
-from tambora.interop import PotentialBackend, potential_backend_for
+from tambora.interop import PotentialBackend, available_potential_backends, potential_backend_for
 from tambora.interop import _registry
 
 
@@ -71,6 +71,13 @@ def test_naming_a_backend_whose_package_is_missing_says_how_to_install_it(monkey
 def test_the_error_for_an_unusable_object_lists_the_supported_packages():
     with pytest.raises(TypeError, match=r"Supported packages: galpy"):
         potential_backend_for(object())
+
+
+def test_the_available_backends_are_the_ones_whose_package_is_installed(monkeypatch):
+    # numpy is always installed; the fake package never is.
+    entries = (_FakeEntry.make('ghost'), _FakeEntry.make('present', package='numpy'))
+    monkeypatch.setattr(_registry, "_POTENTIAL_BACKENDS", entries)
+    assert available_potential_backends() == ('present',)
 
 
 @pytest.mark.parametrize("entry", _registry._POTENTIAL_BACKENDS, ids=lambda e: e.name)
