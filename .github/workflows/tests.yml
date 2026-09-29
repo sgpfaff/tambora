@@ -85,15 +85,43 @@ jobs:
         working-directory: /tmp
         run: python -c "from tambora.simulation import Sim; print('Sim import OK')"
 
-      - name: ExternalGalpyPotential raises helpful ImportError
+      - name: Asking for the galpy backend raises a helpful ImportError
         working-directory: /tmp
         run: |
           python -c "
-          from tambora.dynamics.forces import ExternalGalpyPotential
+          from tambora.dynamics.forces import ExternalPotential
           try:
-              ExternalGalpyPotential(None)
+              ExternalPotential(None, backend='galpy')
           except ImportError as e:
-              assert 'galpy' in str(e).lower(), f'unexpected message: {e}'
+              assert 'needs galpy' in str(e) and 'docs.galpy.org' in str(e), f'unexpected message: {e}'
+              print('Helpful ImportError raised as expected')
+          else:
+              raise SystemExit('Expected ImportError, none raised')
+          "
+
+      - name: An unusable potential says no package is installed
+        working-directory: /tmp
+        run: |
+          python -c "
+          from tambora.simulation import Sim
+          try:
+              Sim().add_external_pot(None)
+          except TypeError as e:
+              assert 'installed: none' in str(e), f'unexpected message: {e}'
+              print('Helpful TypeError raised as expected')
+          else:
+              raise SystemExit('Expected TypeError, none raised')
+          "
+
+      - name: TidalTensorGalpyForce raises helpful ImportError
+        working-directory: /tmp
+        run: |
+          python -c "
+          from tambora.dynamics.forces import TidalTensorGalpyForce
+          try:
+              TidalTensorGalpyForce(None)
+          except ImportError as e:
+              assert 'requires galpy' in str(e), f'unexpected message: {e}'
               print('Helpful ImportError raised as expected')
           else:
               raise SystemExit('Expected ImportError, none raised')

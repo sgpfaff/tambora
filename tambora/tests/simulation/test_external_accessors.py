@@ -24,7 +24,7 @@ from tambora.simulation import Sim
 
 galpy = pytest.importorskip("galpy")
 from galpy.potential import MWPotential2014                     # noqa: E402
-from tambora.dynamics.forces import ExternalGalpyPotential      # noqa: E402
+from tambora.dynamics.forces import ExternalPotential      # noqa: E402
 
 
 N_C, N_D = 4, 2
@@ -38,7 +38,7 @@ def _sim(external=False):
     s.add_particles('c', rng.random((N_C, 3)) + 8.0, np.zeros((N_C, 3)), np.ones(N_C))
     s.add_particles('d', rng.random((N_D, 3)) + 8.0, np.zeros((N_D, 3)), np.ones(N_D))
     if external:
-        s.add_external_force(ExternalGalpyPotential(MWPotential2014))
+        s.add_external_force(ExternalPotential(MWPotential2014))
     s.run(t_end=0.2, dt=0.1, dt_out=0.1, method=None, progress=False)
     return s
 
@@ -135,7 +135,7 @@ def test_step_state_agrees_with_sim_at_the_same_time(external):
     s.add_particles('c', rng.random((N_C, 3)) + 8.0, np.zeros((N_C, 3)), np.ones(N_C))
     s.add_particles('d', rng.random((N_D, 3)) + 8.0, np.zeros((N_D, 3)), np.ones(N_D))
     if external:
-        s.add_external_force(ExternalGalpyPotential(MWPotential2014))
+        s.add_external_force(ExternalPotential(MWPotential2014))
     seen = {}
     s.add_hook(lambda st: seen.setdefault(
         st.t, (st.external_acc().copy(), st.c.external_acc().copy())))
@@ -153,7 +153,7 @@ def _run_capturing_external_acc(t_end=0.2, external=True):
     s = Sim()
     s.add_particles('c', rng.random((N_C, 3)) + 8.0, np.zeros((N_C, 3)), np.ones(N_C))
     if external:
-        s.add_external_force(ExternalGalpyPotential(MWPotential2014))
+        s.add_external_force(ExternalPotential(MWPotential2014))
     seen = {}
     s.add_hook(lambda st: seen.setdefault(st.t, st.external_acc().copy()))
     s.run(t_end=t_end, dt=0.1, dt_out=0.1, method=None, progress=False)

@@ -478,7 +478,7 @@ def test_add_external_force_assigns_mixed_composite_correctly():
 
 def test_add_external_pot_rejection():
     sim = Sim()
-    with pytest.raises(TypeError, match="External potential must be a galpy Potential object."):
+    with pytest.raises(TypeError, match="Can't use a function as an external potential"):
         sim.add_external_pot(lambda pos, t: pos)
 
 # --- duplicate external forces / potentials --------------------------------------------------- #
@@ -545,9 +545,9 @@ def test_add_external_force_allows_distinct_custom_instances():
 def test_add_external_force_rejects_duplicate_within_composite():
     # Two distinct wrappers of the same pot combined into one composite: the
     # per-member rescan catches the intra-composite duplicate.
-    from tambora.dynamics import ExternalGalpyPotential
+    from tambora.dynamics import ExternalPotential
     pot = _kepler_pot()
-    composite = ExternalGalpyPotential(pot) + ExternalGalpyPotential(pot)
+    composite = ExternalPotential(pot) + ExternalPotential(pot)
     sim = Sim()
     with pytest.raises(ValueError, match="double-count"):
         sim.add_external_force(composite)

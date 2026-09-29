@@ -8,7 +8,7 @@ from tambora.tools.util import _galpy_bridge
 from itertools import product
 from functools import partial
 import astropy.units as u
-from tambora.dynamics import ExternalGalpyPotential
+from tambora.dynamics import ExternalPotential
 
 _has_composite = hasattr(potential, 'CompositePotential')
 
@@ -963,9 +963,9 @@ def test_the_origin_is_nan_for_a_cusp_and_zero_for_a_core():
     assert np.all(np.isnan(cusp))
     np.testing.assert_array_equal(core, 0.0)
 
-### ExternalGalpyPotential and CompositeForce Tests ------------------------------------------------------------------ #
+### ExternalPotential and CompositeForce Tests ------------------------------------------------------------------ #
 
-class Test_ExternalGalpyPotential_methods_match_internal_fns:
+class Test_ExternalPotential_methods_match_internal_fns:
     @classmethod
     def setup_class(cls):
         cls.pos = np.array([[8.0, 0.0, 1.0], [5.0, 3.0, -2.0]])
@@ -974,14 +974,14 @@ class Test_ExternalGalpyPotential_methods_match_internal_fns:
     def test_acc_matches_galpy_pot_to_acc_fn(self):
         acc_func = _galpy_bridge._galpy_pot_to_acc_fn(self.galpy_pot)
         acc_from_func = acc_func(self.pos, t=0)
-        force_class = ExternalGalpyPotential(self.galpy_pot)
+        force_class = ExternalPotential(self.galpy_pot)
         acc_from_class = force_class.acc(self.pos, t=0)
         np.testing.assert_allclose(acc_from_func, acc_from_class, rtol=1e-15)
     
     def test_potential_matches_galpy_pot_to_pot_fn(self):
         pot_func = _galpy_bridge._galpy_pot_to_pot_fn(self.galpy_pot)
         pot_from_func = pot_func(self.pos, t=0)
-        force_class = ExternalGalpyPotential(self.galpy_pot)
+        force_class = ExternalPotential(self.galpy_pot)
         pot_from_class = force_class.potential(self.pos, t=0)
         np.testing.assert_allclose(pot_from_func, pot_from_class, rtol=1e-15)
 
@@ -993,8 +993,8 @@ def test_acc_for_CompositeForce_of_galpy_matches_sum_of_individual():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         _galpy_bridge._check_supported_pot(combo)
-    nfw_class = ExternalGalpyPotential(nfw)
-    plummer_class = ExternalGalpyPotential(plummer)
+    nfw_class = ExternalPotential(nfw)
+    plummer_class = ExternalPotential(plummer)
     combo_class = nfw_class + plummer_class
 
     pos = np.array([[8.0, 0.0, 1.0], [5.0, 3.0, -2.0]])
@@ -1010,8 +1010,8 @@ def test_pot_for_CompositeForce_of_galpy_matches_sum_of_individual():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         _galpy_bridge._check_supported_pot(combo)
-    nfw_class = ExternalGalpyPotential(nfw)
-    plummer_class = ExternalGalpyPotential(plummer)
+    nfw_class = ExternalPotential(nfw)
+    plummer_class = ExternalPotential(plummer)
     combo_class = nfw_class + plummer_class
 
     pos = np.array([[8.0, 0.0, 1.0], [5.0, 3.0, -2.0]])
@@ -1019,35 +1019,35 @@ def test_pot_for_CompositeForce_of_galpy_matches_sum_of_individual():
     pot_sum = nfw_class.potential(pos, t=0) + plummer_class.potential(pos, t=0)
     np.testing.assert_allclose(pot_combo, pot_sum, rtol=1e-15)
 
-def test_acc_for_CompositeForce_of_galpy_is_same_as_ExternalGalpyPotential_of_composite():
-    '''CompositeForce of galpy potentials should match ExternalGalpyPotential of the same combo.'''
+def test_acc_for_CompositeForce_of_galpy_is_same_as_ExternalPotential_of_composite():
+    '''CompositeForce of galpy potentials should match ExternalPotential of the same combo.'''
     nfw = potential.NFWPotential()
     plummer = potential.PlummerPotential()
     combo = nfw + plummer
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         _galpy_bridge._check_supported_pot(combo)
-    nfw_class = ExternalGalpyPotential(nfw)
-    plummer_class = ExternalGalpyPotential(plummer)
+    nfw_class = ExternalPotential(nfw)
+    plummer_class = ExternalPotential(plummer)
     summed_combo_class = nfw_class + plummer_class
-    direct_combo_class = ExternalGalpyPotential(combo)
+    direct_combo_class = ExternalPotential(combo)
     pos = np.array([[8.0, 0.0, 1.0], [5.0, 3.0, -2.0]])
     acc_summed_combo = summed_combo_class.acc(pos, None, t=0)
     acc_direct_combo = direct_combo_class.acc(pos, t=0)
     np.testing.assert_allclose(acc_summed_combo, acc_direct_combo, rtol=1e-15)
 
-def test_pot_for_CompositeForce_of_galpy_is_same_as_ExternalGalpyPotential_of_composite():
-    '''CompositeForce of galpy potentials should match ExternalGalpyPotential of the same combo.'''
+def test_pot_for_CompositeForce_of_galpy_is_same_as_ExternalPotential_of_composite():
+    '''CompositeForce of galpy potentials should match ExternalPotential of the same combo.'''
     nfw = potential.NFWPotential()
     plummer = potential.PlummerPotential()
     combo = nfw + plummer
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         _galpy_bridge._check_supported_pot(combo)
-    nfw_class = ExternalGalpyPotential(nfw)
-    plummer_class = ExternalGalpyPotential(plummer)
+    nfw_class = ExternalPotential(nfw)
+    plummer_class = ExternalPotential(plummer)
     summed_combo_class = nfw_class + plummer_class
-    direct_combo_class = ExternalGalpyPotential(combo)
+    direct_combo_class = ExternalPotential(combo)
     pos = np.array([[8.0, 0.0, 1.0], [5.0, 3.0, -2.0]])
     pot_summed_combo = summed_combo_class.potential(pos, None, t=0)
     pot_direct_combo = direct_combo_class.potential(pos, t=0)

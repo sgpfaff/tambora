@@ -22,7 +22,7 @@ class Force(ABC):
 
     Forces compose with ``+``::
 
-        combined = ExternalGalpyPotential(nfw) + ExternalGalpyPotential(disk)
+        combined = ExternalPotential(nfw) + ExternalPotential(disk)
 
     The result is a :class:`CompositeForce` that itself satisfies the
     :class:`Force` interface.
