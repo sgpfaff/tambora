@@ -1,21 +1,17 @@
+import importlib.util as _importlib_util
+
 from .ExternalConservativeForce import ExternalConservativeForce
+from .ExternalPotential import ExternalPotential
 
-try:
-    from .ExternalGalpyPotential import ExternalGalpyPotential
+# galpy-only until a package-independent LinearTidalForce replaces it. Imported
+# only when galpy is installed, and without a blanket `except ImportError`, so a
+# real error inside it isn't disguised as "galpy is missing".
+if _importlib_util.find_spec("galpy") is not None:
     from .TidalTensorGalpyForce import TidalTensorGalpyForce
-
-except ImportError:
-    class ExternalGalpyPotential:
-        def __init__(self, *args, **kwargs):
-            raise ImportError(
-                "ExternalGalpyPotential requires galpy. "
-                "Refer to https://docs.galpy.org/en/stable/installation.html" \
-                "for galpy installation instructions."
-            )
+else:
     class TidalTensorGalpyForce:
+        """Stand-in without galpy, so the name exists and using it explains why it can't work."""
         def __init__(self, *args, **kwargs):
             raise ImportError(
-                "LinearTideGalpyForce requires galpy. "
-                "Refer to https://docs.galpy.org/en/stable/installation.html" \
-                "for galpy installation instructions."
-            )
+                "TidalTensorGalpyForce requires galpy, which isn't installed. "
+                "See https://docs.galpy.org/en/stable/installation.html")

@@ -4,7 +4,7 @@ Simulation class for tambora.
 
 import numpy as np
 from .component import Component
-from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, NullSelfGravity, Conservative, ExternalGalpyPotential,
+from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, NullSelfGravity, Conservative, ExternalPotential,
                         SELF_GRAVITY_METHODS, INTEGRATORS)
 
 from ..dynamics.forces.CompositeForce import _CompositeConservative, _CompositePlain
@@ -52,6 +52,9 @@ def _render_table(headers, rows, align=None):
 def _force_label(force):
     """Readable one-line label for an external force in ``Sim.__repr__``."""
     name = type(force).__name__
+    backend = getattr(force, "backend", None)
+    if backend is not None and hasattr(backend, "describe"):
+        return f"{name}({backend.describe()})"
     pot = getattr(force, "_pot", None)
     if pot is None:
         return name
@@ -263,14 +266,20 @@ class Sim:
         else:
             _assign_force(force)
             
-    def add_external_pot(self, potential):
+    def add_external_pot(self, potential, *, backend=None):
         '''
-        Add an external potential to the simulation.
+        Add an external potential from a supported package.
+
+        Shorthand for ``add_external_force(ExternalPotential(potential, backend=backend))``.
 
         Parameters
         ----------
-        pot : galpy.potential.Potential
-            External potential to add.
+        potential : object
+            A potential from a supported package, e.g. a galpy ``Potential``,
+            a galpy ``CompositePotential``, or a list of galpy potentials.
+        backend : str, optional
+            Name of the backend to use (e.g. ``'galpy'``). Default: chosen from
+            ``potential``.
 
         Returns
         -------
@@ -279,25 +288,17 @@ class Sim:
         Raises
         ------
         TypeError
-            If the potential is not a galpy Potential object.
-        
+            If no installed backend can use ``potential``.
+        ValueError
+            If the same potential (or an equivalently configured one) is already added.
+
         Warnings
         --------
         UserWarning
             If the provided galpy potential has physical outputs turned off.
         '''
-        try:
-            import galpy
-        except ImportError:
-            raise ImportError(
-                "galpy is required for external potentials. "
-                "Install it with: pip install tambora[galpy]")
-        if isinstance(potential, galpy.potential.Potential):
-            force = ExternalGalpyPotential(potential)
-            self.add_external_force(force)
-        else:
-            raise TypeError("External potential must be a galpy Potential object.")
-        
+        self.add_external_force(ExternalPotential(potential, backend=backend))
+
     def add_subhalos(self, pos, vel, mass):
         '''
         Add Plummer sphere subhalos as a component to the simulation. 
@@ -446,6 +447,12 @@ class Sim:
                 "Only kwargs for self-gravity methods are allowed."
             )
         self._self_gravity_force = solver_cls(**kwargs)
+        # Outside state (e.g. Agama's global units) can invalidate a wrapped
+        # potential after it was added; each backend checks for that here.
+        for force in self._conserv_ext_force.members + self._base_ext_force.members:
+            check = getattr(force, "check_still_valid", None)
+            if check is not None:
+                check()
         self._add_default_monitors(monitors)
         integrator = INTEGRATORS[integration_method]()
 

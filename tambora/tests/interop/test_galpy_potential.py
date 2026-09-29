@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 gp = pytest.importorskip("galpy.potential")
+from galpy.orbit import Orbit                                    # noqa: E402
 
 from tambora.interop._galpy.potential import GalpyPotential      # noqa: E402
 from tambora.tools.util import _galpy_bridge                     # noqa: E402
@@ -130,3 +131,26 @@ def test_an_unpicklable_potential_is_keyed_by_identity():
     p = _plummer()
     p._gotcha = lambda: None                                     # lambdas can't be pickled
     assert GalpyPotential(p).dedup_key() == (id(p),)
+
+
+class _UnhashablePlummer(gp.PlummerPotential):
+    """Like a user's own subclass that defines __eq__, which makes it unhashable."""
+    __hash__ = None
+
+
+def test_a_potential_that_cannot_be_remembered_still_gets_a_key():
+    # Its key can't be stored by identity, so it is recomputed each time. Two identical
+    # fresh ones still match, and wrapping one doesn't fail.
+    a, b = _UnhashablePlummer(b=0.5, ro=8., vo=220.), _UnhashablePlummer(b=0.5, ro=8., vo=220.)
+    assert GalpyPotential(a).dedup_key() == GalpyPotential(b).dedup_key()
+
+
+# --- a satellite ---------------------------------------------------------------------
+
+def test_a_moving_object_goes_through_the_backend():
+    o = Orbit([1., 0.1, 1.1, 0.1, 0., 0.3], ro=8., vo=220.)
+    o.integrate(np.linspace(-1., 1., 101), gp.MWPotential2014)
+    sat = gp.MovingObjectPotential(o, pot=gp.PlummerPotential(amp=0.1, b=0.1), ro=8., vo=220.)
+    b = GalpyPotential(sat)
+    np.testing.assert_array_equal(b.acc(POS, 0.), _galpy_bridge._galpy_pot_to_acc_fn(sat)(POS, 0.))
+    assert b.describe() == 'MovingObjectPotential'

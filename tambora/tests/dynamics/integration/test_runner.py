@@ -5,7 +5,7 @@ from tambora.dynamics.integration import _runner, StepState
 from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
 from tambora.tools.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
 from tambora.simulation import Sim
-from tambora.dynamics import ExternalGalpyPotential, DirectSummationGravity, NullForce, NullSelfGravity
+from tambora.dynamics import ExternalPotential, DirectSummationGravity, NullForce, NullSelfGravity
 from tambora.dynamics.forces.CompositeForce import _CompositeConservative
 from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
 from galpy.potential import NFWPotential
@@ -23,7 +23,7 @@ class TestOrbitIntegrationOutputShapes:
         cls.ts = np.arange(0, t_end.value + dt.value, dt.value) * u.Gyr
         pot = NFWPotential(amp=1e13*u.Msun, a=20*u.kpc)
         pot.turn_physical_on()
-        ext_force = _CompositeConservative([]) + ExternalGalpyPotential(pot)
+        ext_force = _CompositeConservative([]) + ExternalPotential(pot)
 
         pos = np.array([[8., 0., 0.], [8., 0., 0.]])
         vel = np.array([[0.1, 220.0, 0.5], [0.2, 220.0, 0.5]])
@@ -72,7 +72,7 @@ class TestReturnOptions:
         pot.turn_physical_on()
         cls.integrator = integrator
         cls.self_gravity = DirectSummationGravity(eps=0.0)
-        cls.ext_force = _CompositeConservative([]) + ExternalGalpyPotential(pot)
+        cls.ext_force = _CompositeConservative([]) + ExternalPotential(pot)
         cls.pos = np.array([[8., 0., 0.], [8., 0., 0.]])
         vel = np.array([[0.1, 220.0, 0.5], [0.2, 220.0, 0.5]])
         cls.vel_internal = (vel * u.km/u.s).to(u.kpc/u.Gyr).value
@@ -337,7 +337,7 @@ class TestTimeStepInputs:
         R, vR, vT, z, vz, phi = 8., 0.1, 220.0, 0., 0.5, 0.
         cls.pos = np.array([cyl_to_rect(R, phi, z)])
         cls.vel = np.array([(cyl_to_rect_vec(vR, vT, vz, phi) * u.km/u.s).to(u.kpc/u.Gyr).value])
-        cls.ext_force = _CompositeConservative([]) + ExternalGalpyPotential(pot)
+        cls.ext_force = _CompositeConservative([]) + ExternalPotential(pot)
         
     def test_output_shape_for_dt_out_multiple_of_dt(self, t_end=0.1, dt=0.01, dt_out=0.02):
         '''
@@ -405,7 +405,7 @@ def test_time_dependent_potential_matches_galpy():
 
     integrator = LeapfrogIntegrator()
     # tambora integration
-    td_force = _CompositeConservative([]) + ExternalGalpyPotential(smooth_pot)
+    td_force = _CompositeConservative([]) + ExternalPotential(smooth_pot)
     td_pos_out, td_vel_out, td_ts_out, _, _ = _runner(
         td_pos, td_vel, np.array([1.0]),
         integrator, NullSelfGravity(), td_force, NullForce(),
@@ -445,7 +445,7 @@ def test_time_dependent_potential_differs_from_static():
     nfw_static = NFWPotential(amp=1e13 * u.Msun, a=20 * u.kpc)
     nfw_growing = DehnenSmoothWrapperPotential(pot=nfw_static, tform=0., tsteady=0.02*u.Gyr)
     nfw_growing.turn_physical_on()
-    nfw_growing_force = _CompositeConservative([]) + ExternalGalpyPotential(nfw_growing)
+    nfw_growing_force = _CompositeConservative([]) + ExternalPotential(nfw_growing)
 
     td2_t_end = 0.01 * u.Gyr
     td2_dt = 5e-6 * u.Gyr
@@ -469,7 +469,7 @@ def test_time_dependent_potential_differs_from_static():
     # Integrate in static potential
     nfw_static.turn_physical_on()
     # acc_static = _galpy_pot_to_acc_fn(nfw_static)
-    static_ext_force = _CompositeConservative([]) + ExternalGalpyPotential(nfw_static)
+    static_ext_force = _CompositeConservative([]) + ExternalPotential(nfw_static)
     pos_static, _, _, _, _ = _runner(
         td2_pos.copy(), td2_vel.copy(), np.array([1.0]),
         integrator, NullSelfGravity(), static_ext_force, NullForce(),
@@ -513,7 +513,7 @@ def test_time_dependent_potential_energy_matches_galpy():
 
     # --- tambora integration ---
     integrator = LeapfrogIntegrator()
-    ext_force = _CompositeConservative([]) + ExternalGalpyPotential(smooth_e)
+    ext_force = _CompositeConservative([]) + ExternalPotential(smooth_e)
     e_pos_out, e_vel_out, e_ts_out, _, _ = _runner(
         e_pos, e_vel, np.array([1.0]),
         integrator, NullSelfGravity(), ext_force, NullForce(),
