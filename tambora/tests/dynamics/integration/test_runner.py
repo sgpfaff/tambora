@@ -379,7 +379,7 @@ class TestTimeStepInputs:
 # --- time-dependent external potential --------------------------------------------------------- #
 
 from galpy.potential import DehnenSmoothWrapperPotential
-from tambora.tools.util.units import KMS_TO_KPCGYR
+from tambora.units import KMS_TO_KPCGYR
 
 def test_time_dependent_potential_matches_galpy():
     '''

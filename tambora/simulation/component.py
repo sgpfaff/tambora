@@ -1,7 +1,7 @@
 import numpy as np
 from ..dynamics.forces.self_gravity import self_gravity
 from ._decorators import _resolve_use_cached, _resolve_t
-from ..tools.util.units import unit_handler
+from ..units import unit_handler
 import warnings
 
 

@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from tambora.dynamics import DirectSummationGravity
 from tambora.dynamics.forces.self_gravity.directSummation.directSummation import _direct_summation_py, _direct_summation_C
-from tambora.tools.util.units import G_INTERNAL
+from tambora.units import G_INTERNAL
 
 np.random.seed(42)
 direct_gravity = DirectSummationGravity(eps=0.0)

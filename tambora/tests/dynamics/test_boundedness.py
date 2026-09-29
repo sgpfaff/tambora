@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 
 from tambora.dynamics.diagnostics import bound_mask, reconstruct_mask
-from tambora.tools.util.units import G_INTERNAL, KMS_TO_KPCGYR
+from tambora.units import G_INTERNAL, KMS_TO_KPCGYR
 
 R_GAL = 20.0      # kpc; an arbitrary offset from the origin to catch any
                   # accidental assumption that the cluster sits at (0,0,0)

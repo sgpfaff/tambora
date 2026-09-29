@@ -8,7 +8,7 @@ from tambora.tools.util._galpy_bridge import (
 
              )
 
-from tambora.tools.util.units import KMS_TO_KPCGYR
+from tambora.units import KMS_TO_KPCGYR
 from galpy.util.coords import rect_to_cyl
 from galpy import potential
 

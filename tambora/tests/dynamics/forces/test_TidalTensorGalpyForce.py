@@ -15,7 +15,7 @@ import astropy.units as u
 from galpy.potential import KeplerPotential
 
 from tambora.dynamics.forces.external_force import TidalTensorGalpyForce
-from tambora.tools.util.units import G_INTERNAL
+from tambora.units import G_INTERNAL
 
 # Point-mass host: analytic tidal tensor at galactocentric radius R along +x is
 # diag(2GM/R^3, -GM/R^3, -GM/R^3) -- radial stretching, transverse compression.
