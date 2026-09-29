@@ -75,8 +75,8 @@ SUPPORTED_GALPY_GENERAL_TRIAXIAL_POTENTIALS = [
 EXAMPLE_GALPY_COMPOSITE_POTENTIALS = [
     potential.MWPotential2014,
     potential.NFWPotential() + potential.MiyamotoNagaiPotential(), # two vectorized potentials
-    potential.TriaxialNFWPotential(b=0.8, c=0.6) + potential.MiyamotoNagaiPotential(), # unvectorized + vectorized
-    potential.TriaxialNFWPotential(b=0.8, c=0.6) + potential.DehnenBarPotential(), # two unvectorized potentials
+    potential.TriaxialNFWPotential(b=0.8, c=0.6) + potential.MiyamotoNagaiPotential(), # unvectorized before galpy 1.12 + vectorized
+    potential.TriaxialNFWPotential(b=0.8, c=0.6) + potential.DehnenBarPotential(), # unvectorized before galpy 1.12 + vectorized
 ]
 
 ALL_SUPPORTED_GALPY_POTENTIALS = (SUPPORTED_GALPY_SPHERICAL_POTENTIALS + 
@@ -887,20 +887,54 @@ _ON_AXIS_CASES = (
 )
 _FINITE_ON_AXIS_CASES = [c for c in _ON_AXIS_CASES if not c.values[1]]
 
+# galpy can't evaluate the potential of these at R = 0 either. The rest of _NAN_ON_AXIS have
+# a finite, correct potential on the axis, although their force there is NaN.
+_POT_NAN_ON_AXIS = (
+    potential.DoubleExponentialDiskPotential,
+    potential.SpiralArmsPotential,
+)
+
+# galpy's array code gives DehnenBarPotential a finite but wrong potential on the axis inside
+# the bar radius: it leaves R^2/r^2 at 1 there instead of 0. Its scalar code and its forces are
+# right. Strict, so this fails once galpy is fixed; then limit it to the affected versions.
+_GALPY_BAR_AXIS_BUG = pytest.mark.xfail(
+    raises=AssertionError, strict=True,
+    reason="galpy bug: DehnenBarPotential's potential is non-zero on the z-axis for array input")
+
+
+def _hits_galpys_bar_bug(p):
+    '''Whether the bridge evaluates a DehnenBarPotential in ``p`` with galpy's array code. It
+    evaluates the whole of ``p`` one point at a time if any part of it can't be vectorised
+    (the triaxial halos, before galpy 1.12), and then the bar comes out right.'''
+    pot = _galpy_bridge._ensure_pot(p)
+    has_bar = any(isinstance(leaf, potential.DehnenBarPotential)
+                  for c in _galpy_bridge._iter_components(pot) for leaf in _galpy_bridge._unwrap_pot(c))
+    return has_bar and not _galpy_bridge._needs_scalar_loop(pot)
+
+
+def _pot_on_axis_case(case):
+    p = case.values[0]
+    marks = [_GALPY_BAR_AXIS_BUG] if _hits_galpys_bar_bug(p) else []
+    return pytest.param(p, isinstance(p, _POT_NAN_ON_AXIS), id=case.id, marks=marks)
+
+
+_POT_ON_AXIS_CASES = [_pot_on_axis_case(c) for c in _ON_AXIS_CASES]
+_POT_FINITE_ON_AXIS_CASES = [c for c in _POT_ON_AXIS_CASES if not c.values[1]]
+
 _ON_AXIS = np.array([[0., 0., 2.]])     # kpc
 _NEAR_AXIS_H = 1e-6                     # kpc
 
 
-def _near_axis_mean(acc_fn, h):
-    '''Mean acceleration at four points a distance h off the axis (+-x, +-y). The terms
-    linear in h cancel, leaving the on-axis value plus an O(h^2) error.'''
+def _near_axis_mean(fn, h):
+    '''Mean of ``fn`` (acceleration or potential) at four points a distance h off the axis
+    (+-x, +-y). The terms linear in h cancel, leaving the on-axis value plus an O(h^2) error.'''
     pts = np.array([[h, 0., 2.], [-h, 0., 2.], [0., h, 2.], [0., -h, 2.]])
-    return acc_fn(pts, t=0).mean(axis=0)
+    return fn(pts, t=0).mean(axis=0)
 
 
-def _field_scale(acc_fn):
-    '''Size of the field one step off the axis, for tolerances. 1 where it is exactly 0.'''
-    return np.abs(acc_fn(np.array([[2., 0., 2.]]), t=0)).max() or 1.0
+def _field_scale(fn):
+    '''Size of ``fn`` one step off the axis, for tolerances. 1 where it is exactly 0.'''
+    return np.abs(fn(np.array([[2., 0., 2.]]), t=0)).max() or 1.0
 
 
 @pytest.mark.parametrize("pot, nan_expected", _ON_AXIS_CASES)
@@ -923,22 +957,52 @@ def test_on_axis_acc_is_the_limit_from_nearby_or_nan(pot, nan_expected):
     np.testing.assert_allclose(on_axis, near, rtol=0, atol=1e-10 * scale)
 
 
+@pytest.mark.parametrize("pot, nan_expected", _POT_ON_AXIS_CASES)
+def test_on_axis_potential_is_the_limit_from_nearby_or_nan(pot, nan_expected):
+    '''The same for the potential, which feeds the energy diagnostics: the limit from just
+    off the axis, or NaN where galpy can't evaluate R = 0.'''
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        pot_fn = _galpy_bridge._galpy_pot_to_pot_fn(pot)
+        on_axis = pot_fn(_ON_AXIS, t=0)[0]
+        if nan_expected:
+            assert np.isnan(on_axis)
+            return
+        near = _near_axis_mean(pot_fn, _NEAR_AXIS_H)
+        scale = _field_scale(pot_fn)
+    assert np.isfinite(on_axis)
+    # Tolerance as for the acceleration; the h^2 test below checks the reference here too.
+    np.testing.assert_allclose(on_axis, near, rtol=0, atol=1e-10 * scale)
+
+
+def _assert_the_gap_shrinks_as_h_squared(fn):
+    on_axis = fn(_ON_AXIS, t=0)[0]
+    scale = _field_scale(fn)
+    gap = [np.abs(on_axis - _near_axis_mean(fn, h)).max() / scale for h in (1e-3, 1e-4)]
+    if gap[0] < 1e-12:
+        # No curvature at the axis (e.g. a uniform field or a constant potential): both gaps
+        # are rounding error.
+        assert gap[1] < 1e-12
+    else:
+        assert 90. < gap[0] / gap[1] < 110.
+
+
 @pytest.mark.parametrize("pot, nan_expected", _FINITE_ON_AXIS_CASES)
 def test_the_near_axis_reference_converges_as_h_squared(pot, nan_expected):
-    '''The test above trusts the four-point mean to be accurate to O(h^2). Shrinking h by 10
+    '''The tests above trust the four-point mean to be accurate to O(h^2). Shrinking h by 10
     must then shrink its gap to the on-axis value by 100. A gap that doesn't shrink would
     mean the on-axis value isn't the limit at all.'''
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
-        on_axis = acc_fn(_ON_AXIS, t=0)[0]
-        scale = _field_scale(acc_fn)
-        gap = [np.abs(on_axis - _near_axis_mean(acc_fn, h)).max() / scale for h in (1e-3, 1e-4)]
-    if gap[0] < 1e-12:
-        # No curvature at the axis (a uniform or zero field): both gaps are rounding error.
-        assert gap[1] < 1e-12
-    else:
-        assert 90. < gap[0] / gap[1] < 110.
+        _assert_the_gap_shrinks_as_h_squared(_galpy_bridge._galpy_pot_to_acc_fn(pot))
+
+
+@pytest.mark.parametrize("pot, nan_expected", _POT_FINITE_ON_AXIS_CASES)
+def test_the_near_axis_potential_converges_as_h_squared(pot, nan_expected):
+    '''The same check for the potential.'''
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        _assert_the_gap_shrinks_as_h_squared(_galpy_bridge._galpy_pot_to_pot_fn(pot))
 
 
 @pytest.mark.parametrize("pot", OFF_CENTRE_GALPY_POTENTIALS, ids=lambda p: type(p).__name__)
