@@ -1,6 +1,7 @@
 import pytest
 import warnings
 from galpy import potential
+from galpy.orbit import Orbit
 from galpy.util.coords import rect_to_cyl, cyl_to_rect_vec
 import numpy as np
 from tambora.tools.util import _galpy_bridge
@@ -468,13 +469,16 @@ def test_check_supported_warns_non_vectorized(pot):
 
 # ---  Edge Cases ------------------------------------------------------------------------------------ #
 
-def test_z_axis_nan():
-    '''Positions on the z-axis (R=0) should produce NaN — documenting the known galpy singularity.'''
+def test_z_axis_is_finite():
+    '''Positions on the z-axis (R=0) give a finite acceleration, pointing along -z for a
+    spherical potential. galpy's phi-torque divided by R used to give NaN here.'''
     pot = potential.NFWPotential()
     acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
     pos = np.array([[0.0, 0.0, 5.0]])
     acc = acc_fn(pos, t=0)
-    assert np.any(np.isnan(acc)), "Expected NaN on z-axis due to galpy R=0 singularity"
+    assert np.all(np.isfinite(acc))
+    np.testing.assert_allclose(acc[0, :2], 0.0, atol=1e-8 * abs(acc[0, 2]))
+    assert acc[0, 2] < 0
 
 def test_very_large_radius():
     '''Bridge should return finite values at very large radii.'''
@@ -846,6 +850,118 @@ def test_warns_for_inconsistent_physical_units_in_composite():
                 r"which differs from the first potential \(ro=8\.0, vo=220\.0\)\. "
                 r"Using the first potential's values\."):
         _galpy_bridge._get_ro_vo(combo)
+
+# --- On the z-axis (R = 0), every supported potential ------------------------------------------ #
+
+# galpy can't evaluate these at R = 0 (as configured in the lists above), so their on-axis
+# force stays NaN, as it always was, instead of becoming a plausible but wrong number.
+_NAN_ON_AXIS = (
+    potential.RingPotential,
+    potential.DoubleExponentialDiskPotential,
+    potential.RazorThinExponentialDiskPotential,
+    potential.SpiralArmsPotential,
+    potential.CorotatingRotationWrapperPotential,
+) + ((potential.RotateAndTiltWrapperPotential,)
+     if hasattr(potential, 'RotateAndTiltWrapperPotential') else ())
+
+
+def _satellite_orbit():
+    o = Orbit([1., 0.1, 1.1, 0.1, 0., 0.3])
+    o.integrate(np.linspace(-1., 1., 101), potential.MWPotential2014)
+    return o
+
+
+# Masses off to one side pull sideways on the axis, so these exercise the phi-term there.
+# Every potential in the lists above has no sideways pull on the axis.
+OFF_CENTRE_GALPY_POTENTIALS = (
+    [potential.RotateAndTiltWrapperPotential(pot=potential.NFWPotential(), offset=[0.3 / 8., 0.4 / 8., 0.])]
+    if hasattr(potential, 'RotateAndTiltWrapperPotential') else []
+) + [
+    potential.MovingObjectPotential(_satellite_orbit(), pot=potential.PlummerPotential(amp=0.1, b=0.1)),
+]
+
+_ON_AXIS_CASES = (
+    [pytest.param(p, isinstance(p, _NAN_ON_AXIS), id=type(p).__name__)
+     for p in ALL_SUPPORTED_GALPY_POTENTIALS + ALL_WRAPPER_POTENTIALS]
+    + [pytest.param(p, False, id='off_centre_' + type(p).__name__) for p in OFF_CENTRE_GALPY_POTENTIALS]
+)
+_FINITE_ON_AXIS_CASES = [c for c in _ON_AXIS_CASES if not c.values[1]]
+
+_ON_AXIS = np.array([[0., 0., 2.]])     # kpc
+_NEAR_AXIS_H = 1e-6                     # kpc
+
+
+def _near_axis_mean(acc_fn, h):
+    '''Mean acceleration at four points a distance h off the axis (+-x, +-y). The terms
+    linear in h cancel, leaving the on-axis value plus an O(h^2) error.'''
+    pts = np.array([[h, 0., 2.], [-h, 0., 2.], [0., h, 2.], [0., -h, 2.]])
+    return acc_fn(pts, t=0).mean(axis=0)
+
+
+def _field_scale(acc_fn):
+    '''Size of the field one step off the axis, for tolerances. 1 where it is exactly 0.'''
+    return np.abs(acc_fn(np.array([[2., 0., 2.]]), t=0)).max() or 1.0
+
+
+@pytest.mark.parametrize("pot, nan_expected", _ON_AXIS_CASES)
+def test_on_axis_acc_is_the_limit_from_nearby_or_nan(pot, nan_expected):
+    '''On the z-axis the acceleration is either the limit approached from just off the axis
+    or, where galpy can't evaluate R = 0, NaN. Never a finite number that is wrong.'''
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
+        on_axis = acc_fn(_ON_AXIS, t=0)[0]
+        if nan_expected:
+            assert not np.all(np.isfinite(on_axis))
+            return
+        near = _near_axis_mean(acc_fn, _NEAR_AXIS_H)
+        scale = _field_scale(acc_fn)
+    assert np.all(np.isfinite(on_axis))
+    # The tolerance is relative to the field, not per component: components that should be
+    # zero come out exactly 0 on the axis but ~1e-16 in the reference. The reference is good
+    # to ~1e-12 of the field at this h (see the h^2 test below), so 1e-10 leaves a 100x margin.
+    np.testing.assert_allclose(on_axis, near, rtol=0, atol=1e-10 * scale)
+
+
+@pytest.mark.parametrize("pot, nan_expected", _FINITE_ON_AXIS_CASES)
+def test_the_near_axis_reference_converges_as_h_squared(pot, nan_expected):
+    '''The test above trusts the four-point mean to be accurate to O(h^2). Shrinking h by 10
+    must then shrink its gap to the on-axis value by 100. A gap that doesn't shrink would
+    mean the on-axis value isn't the limit at all.'''
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
+        on_axis = acc_fn(_ON_AXIS, t=0)[0]
+        scale = _field_scale(acc_fn)
+        gap = [np.abs(on_axis - _near_axis_mean(acc_fn, h)).max() / scale for h in (1e-3, 1e-4)]
+    if gap[0] < 1e-12:
+        # No curvature at the axis (a uniform or zero field): both gaps are rounding error.
+        assert gap[1] < 1e-12
+    else:
+        assert 90. < gap[0] / gap[1] < 110.
+
+
+@pytest.mark.parametrize("pot", OFF_CENTRE_GALPY_POTENTIALS, ids=lambda p: type(p).__name__)
+def test_the_off_centre_cases_pull_sideways_on_the_axis(pot):
+    '''Guard for the tests above: if these had no sideways pull on the axis, an on-axis
+    branch that dropped the phi-term would still pass them.'''
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
+        on_axis = acc_fn(_ON_AXIS, t=0)[0]
+        scale = _field_scale(acc_fn)
+    assert np.hypot(on_axis[0], on_axis[1]) > 0.1 * scale
+
+
+def test_the_origin_is_nan_for_a_cusp_and_zero_for_a_core():
+    '''At the centre the force of a cusped profile is undefined, so it stays NaN; a cored
+    profile has zero force there.'''
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        cusp = _galpy_bridge._galpy_pot_to_acc_fn(potential.NFWPotential())(np.zeros((1, 3)), t=0)
+        core = _galpy_bridge._galpy_pot_to_acc_fn(potential.PlummerPotential())(np.zeros((1, 3)), t=0)
+    assert np.all(np.isnan(cusp))
+    np.testing.assert_array_equal(core, 0.0)
 
 ### ExternalGalpyPotential and CompositeForce Tests ------------------------------------------------------------------ #
 
