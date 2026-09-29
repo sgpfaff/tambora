@@ -19,7 +19,7 @@ from galpy import potential
 from galpy import __version__ as galpy_version
 from galpy.potential.WrapperPotential import WrapperPotential as _WrapperPotentialCls
 from packaging.version import parse as parse_version
-from .units import KMS_TO_KPCGYR
+from ...units import KMS_TO_KPCGYR
 import numpy as np
 import warnings
 

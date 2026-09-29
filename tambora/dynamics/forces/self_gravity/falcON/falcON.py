@@ -1,5 +1,5 @@
 from ._falcon import gravity
-from .....tools.util import G_INTERNAL
+from .....units import G_INTERNAL
 
 def _falcON_gravity(pos, mass, eps, theta, kernel, return_potential):
     """

@@ -1,4 +1,4 @@
-from .....tools.util import G_INTERNAL
+from .....units import G_INTERNAL
 from ._direct_summation import gravity
 import numpy as np
 

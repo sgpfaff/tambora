@@ -1,5 +1,5 @@
 import numpy as np
-from .util.units import KMS_TO_KPCGYR
+from ..units import KMS_TO_KPCGYR
 
 _GALPY_INSTALL_URL = "https://docs.galpy.org/en/stable/installation.html"
 

@@ -6,8 +6,8 @@ import pytest
 from tambora.simulation import Sim
 from tambora.simulation.simulation import _force_label, Component
 import numpy as np
-from tambora.tools.util import G_INTERNAL
-from tambora.tools.util.units import KMS_TO_KPCGYR
+from tambora.units import G_INTERNAL
+from tambora.units import KMS_TO_KPCGYR
 from tambora.dynamics import DirectSummationGravity
 from tambora.dynamics.hooks import (Hook, ConservationMonitor, BoundednessHook,
                                     EveryOutput, EveryStep, EveryNSteps, EveryNOutputs)
@@ -389,7 +389,7 @@ def test_add_external_force_rejects_self_gravity():
         sim.add_external_force(force)
 
 from tambora.dynamics import Force
-from tambora.tools.util import KMS_TO_KPCGYR
+from tambora.units import KMS_TO_KPCGYR
 class CustomBaseForce(Force):
     def __init__(self):
         ...
