@@ -1,3 +1,4 @@
+import dataclasses
 import functools
 
 '''
@@ -71,3 +72,15 @@ def unit_handler(unit_key):
             return result * factor
         return wrapper
     return decorator
+
+
+@dataclasses.dataclass(frozen=True)
+class UnitSystem:
+    """Another package's units, as their sizes in tambora's units.
+
+    Multiply a value in that package's units by the matching field to get it in tambora's.
+    For galpy these are ``ro`` [kpc], ``vo`` [km/s], and the mass unit they imply (G = 1).
+    """
+    length_kpc: float       # one length unit, in kpc
+    velocity_kms: float     # one velocity unit, in km/s
+    mass_msun: float        # one mass unit, in Msun
