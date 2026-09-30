@@ -16,7 +16,7 @@ def _ps(n=4, meta=None):
                        meta if meta is not None else {'seed': 7})
 
 
-def test_it_unpacks_like_the_old_tuple():
+def test_it_unpacks_like_tuple():
     ps = _ps()
     pos, vel, mass = ps
     assert pos is ps.pos and vel is ps.vel and mass is ps.mass

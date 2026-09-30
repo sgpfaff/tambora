@@ -11,11 +11,6 @@ import numpy as np
 class ParticleSet:
     """Positions, velocities and masses of N particles, and where they came from.
 
-    Pass it straight to ``sim.add_particles(name, ps)``, or unpack it like the old
-    ``(pos, vel, mass)`` tuple::
-
-        pos, vel, mass = ps
-
     Parameters
     ----------
     pos : (N, 3) array
