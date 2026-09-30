@@ -5,7 +5,8 @@ Importing this module never imports an optional package; a backend is only loade
 once an object from its package has been seen.
 """
 
-from ._backend import PotentialBackend
-from ._registry import available_potential_backends, potential_backend_for
+from ._backend import PotentialBackend, SamplerBackend
+from ._registry import available_potential_backends, potential_backend_for, sampler_backend_for
 
-__all__ = ['PotentialBackend', 'available_potential_backends', 'potential_backend_for']
+__all__ = ['PotentialBackend', 'SamplerBackend', 'available_potential_backends',
+           'potential_backend_for', 'sampler_backend_for']
