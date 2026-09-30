@@ -9,6 +9,7 @@ from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, NullSelf
 
 from ..dynamics.forces.CompositeForce import _CompositeConservative, _CompositePlain
 from ..units import unit_handler, KMS_TO_KPCGYR
+from ..ic import ParticleSet
 import warnings
 import inspect
 from typing import Optional
@@ -141,23 +142,27 @@ class Sim:
     
     # --- Setup ---------------------------------------------------------------------------------                                                   
 
-    def add_particles(self, name, pos, vel, mass):
+    def add_particles(self, name, pos, vel=None, mass=None):
         """
         Add a named particle component.
-        Provide (pos, vel, mass) directly [kpc, km/s, Msun].
+        Provide a :class:`~tambora.ic.ParticleSet`, or (pos, vel, mass) directly [kpc, km/s, Msun]::
+
+            sim.add_particles('cluster', ps)
+            sim.add_particles('cluster', pos, vel, mass)
 
         Parameters
         ----------
         name : str
             Name of the component, e.g. 'sat' or 'host'.
-        pos : (N, 3) array
-            Initial positions of particles.
+        pos : (N, 3) array or ParticleSet
+            Initial positions of particles, or a ParticleSet holding the positions,
+            velocities and masses.
             Units: `kpc`
-        vel : (N, 3) array
-            Initial velocities of particles.
+        vel : (N, 3) array, optional
+            Initial velocities of particles. Required unless ``pos`` is a ParticleSet.
             Units: `km/s`
-        mass : (N,) array
-            Masses of particles.
+        mass : (N,) array, optional
+            Masses of particles. Required unless ``pos`` is a ParticleSet.
             Units: `Msun`
 
         Returns
@@ -169,10 +174,17 @@ class Sim:
         ValueError
             If the component already exists or if the input arrays have incompatible shapes.
         TypeError
-            If the input types are incorrect.
+            If the input types are incorrect, or if a ParticleSet is given together with
+            ``vel`` or ``mass``, or neither is given.
         RuntimeError
             If the simulation has already been run.
         """
+        if isinstance(pos, ParticleSet):
+            if vel is not None or mass is not None:
+                raise TypeError("Pass either a ParticleSet or pos, vel and mass, not both.")
+            pos, vel, mass = pos
+        elif vel is None or mass is None:
+            raise TypeError("vel and mass are required unless pos is a ParticleSet.")
         pos = np.asarray(pos, dtype=np.float64)
         vel = np.asarray(vel, dtype=np.float64) * KMS_TO_KPCGYR
         mass = np.asarray(mass, dtype=np.float64)
