@@ -112,7 +112,7 @@ def sampler_backend_for(obj, backend: Optional[str] = None) -> SamplerBackend:
     Parameters
     ----------
     obj : object
-        A model from a supported package, e.g. a galpy distribution function.
+        A model from a supported package, e.g. a galpy potential or distribution function.
     backend : str, optional
         Name of the backend to use, e.g. ``'galpy'``. By default it is chosen
         from ``obj``: the first backend, in priority order, that accepts it.
