@@ -18,9 +18,9 @@ def sample(model, n: int, *, seed: Optional[int] = None, backend: Optional[str] 
     Parameters
     ----------
     model : object
-        A model from a supported package, e.g. a galpy distribution function such as
-        ``galpy.df.kingdf(...)``. An ``eddingtondf(pot=total, denspot=tracer)`` samples a
-        tracer in a different total potential, with the tracer's mass.
+        A model from a supported package: a galpy potential, whose density is drawn in
+        equilibrium in its own potential, or a galpy distribution function such as
+        ``galpy.df.kingdf(...)``.
     n : int
         Number of particles.
     seed : int, optional
