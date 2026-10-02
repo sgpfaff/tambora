@@ -52,17 +52,13 @@ def _as_potential(obj):
 
 
 def _rmax(dens):
-    """Where to stop sampling ``dens`` [natural units]: once all but 1e-10 of its mass is inside.
-
-    eddingtondf's default rmax (1e4) is too far for a density whose mass converges fast:
-    the enclosed mass stops growing in floating point and galpy's sampler fails.
-    """
+    """Where to stop sampling ``dens`` [natural units]: once all but 1e-10 of its mass is inside."""
     m = np.array([_mass(dens, r, use_physical=False) for r in _RADII])
     m_far = _mass(dens, _FAR, use_physical=False)
     if not np.isfinite(m_far) or m_far > 1.01 * m[-1]:
         raise ValueError(
             f"Can't sample a {_names(dens)}: its mass is infinite, or so spread out that more "
-            f"than 1% of it is beyond {_RADII[-1]:g} natural units. Use a density with a finite "
+            f"than 1% of it is beyond R={_RADII[-1]:g} natural units. Use a density with a finite "
             f"mass, or build a galpy DF with an rmax yourself and sample that.")
     converged = 1 - m / m_far < 1e-10
     return _RADII[np.argmax(converged)] if converged.any() else _RADII[-1]
@@ -84,9 +80,7 @@ def _df_for(pot):
         if not (hasattr(p, '_ddensdr') and hasattr(p, '_d2densdr2')):
             raise TypeError(
                 f"Can't sample a {name}: galpy can only draw from spherical densities that "
-                f"define their first two radial derivatives (_ddensdr and _d2densdr2), such "
-                f"as Plummer, Hernquist, Dehnen, Jaffe and TwoPowerSpherical. A custom "
-                f"spherical potential can add them.")
+                f"define their first two radial derivatives (_ddensdr and _d2densdr2).")
         _check_physical(p)
     ro, vo = _get_ro_vo(pot)
     exact = _EXACT_DFS.get(type(pot))
@@ -116,8 +110,7 @@ class GalpySampler(SamplerBackend):
                     f"This {type(obj).__name__} draws a tracer ({_names(obj._denspot)}) in a "
                     f"different potential ({_names(obj._pot)}). galpy's sampler can give such "
                     f"tracers speeds that are too high when the potential is much deeper than "
-                    f"the tracer's own: a star cluster at the centre of a dark halo can come "
-                    f"out with 1.6 times its equilibrium kinetic energy. Check the particles' "
+                    f"the tracer's own. Check the particles' "
                     f"virial ratio in the total potential.")
             self.df, self._label = obj, type(obj).__name__
         else:
