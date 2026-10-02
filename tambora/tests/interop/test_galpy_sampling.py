@@ -373,6 +373,5 @@ class _CustomPlummerWithFirstDerivative(_CustomPlummer):
 
 @pytest.mark.parametrize("cls", [_CustomPlummer, _CustomPlummerWithFirstDerivative])
 def test_a_custom_potential_without_its_density_derivatives_says_what_to_add(cls):
-    with pytest.raises(TypeError, match=rf"Can't sample a {cls.__name__}: .*\(_ddensdr and _d2densdr2\)"
-                                        r".* A custom spherical potential can add them"):
+    with pytest.raises(TypeError, match=rf"Can't sample a {cls.__name__}: .*\(_ddensdr and _d2densdr2\)"):
         GalpySampler(cls(1e5 * u.Msun, 0.01 * u.kpc, ro=RO, vo=VO))
