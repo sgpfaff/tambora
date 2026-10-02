@@ -5,6 +5,7 @@ Test the Sim class and its methods.
 import pytest 
 from tambora.simulation import Sim
 from tambora.simulation.simulation import _force_label, Component
+from tambora.ic import ParticleSet
 import numpy as np
 from tambora.units import G_INTERNAL
 from tambora.units import KMS_TO_KPCGYR
@@ -180,6 +181,23 @@ def test_add_particles_different_number_of_particles():
                           pos=COMP1_POS,
                           vel=COMP2_VEL,
                           mass=COMP1_MASS)
+
+def test_add_particles_takes_a_particle_set():
+    by_arrays, by_set = Sim(), Sim()
+    by_arrays.add_particles('comp1', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS)
+    by_set.add_particles('comp1', ParticleSet(COMP1_POS, COMP1_VEL, COMP1_MASS))
+    np.testing.assert_array_equal(by_set._init_pos, by_arrays._init_pos)
+    np.testing.assert_array_equal(by_set._init_vel, by_arrays._init_vel)   # km/s converted once
+    np.testing.assert_array_equal(by_set._mass, by_arrays._mass)
+
+def test_add_particles_rejects_a_particle_set_with_arrays():
+    ps = ParticleSet(COMP1_POS, COMP1_VEL, COMP1_MASS)
+    with pytest.raises(TypeError, match="either a ParticleSet or pos, vel and mass, not both"):
+        Sim().add_particles('comp1', ps, vel=COMP1_VEL)
+
+def test_add_particles_without_vel_and_mass_needs_a_particle_set():
+    with pytest.raises(TypeError, match="vel and mass are required unless pos is a ParticleSet"):
+        Sim().add_particles('comp1', COMP1_POS)
 
 # --- Multi-component slicing ------------------------------------------------------------------------ #
 #

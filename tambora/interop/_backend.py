@@ -1,4 +1,4 @@
-"""The interface a package backend implements."""
+"""The interfaces a package backend implements."""
 
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Hashable, Optional
@@ -62,4 +62,50 @@ class PotentialBackend(ABC):
 
     def describe(self) -> str:
         """Short label for ``Sim.__repr__``."""
+        return type(self.obj).__name__
+
+
+class SamplerBackend(ABC):
+    """Adapter that draws particles from one package's models.
+
+    A backend wraps a single model and prepares it for sampling once, when wrapped, so
+    drawing again is cheap. Backends are found through
+    :func:`tambora.interop.sampler_backend_for`; :func:`tambora.ic.sample` is built on them.
+    Seeds, masses and the returned :class:`~tambora.ic.ParticleSet` are tambora's job.
+    """
+
+    #: Short name used for ``backend=`` arguments, e.g. ``'galpy'``. Must match
+    #: the backend's registry entry, which also records the package it wraps.
+    name: ClassVar[str]
+
+    #: The model this backend wraps.
+    obj: Any
+
+    @classmethod
+    @abstractmethod
+    def accepts(cls, obj) -> bool:
+        """Whether ``obj`` is a model this backend can sample.
+
+        Only called once the backend's package has been imported, so it may import it.
+        """
+
+    @abstractmethod
+    def __init__(self, obj):
+        """Validate ``obj``, record its units, and prepare it for sampling."""
+
+    @property
+    @abstractmethod
+    def total_mass(self) -> float:
+        """Mass of the model being sampled [Msun]. Each of n particles gets ``total_mass / n``."""
+
+    @abstractmethod
+    def draw(self, n: int, seed: int) -> tuple:
+        """Positions (n, 3) [kpc] and velocities (n, 3) [km/s] of n particles.
+
+        The same ``seed`` must give the same particles, and drawing must leave any random
+        state outside the backend as it found it.
+        """
+
+    def describe(self) -> str:
+        """Short label for ``ParticleSet.meta``."""
         return type(self.obj).__name__

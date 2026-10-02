@@ -127,6 +127,33 @@ jobs:
               raise SystemExit('Expected ImportError, none raised')
           "
 
+      - name: Sampling explains that galpy is missing
+        working-directory: /tmp
+        run: |
+          python -c "
+          from tambora import ic
+          try:
+              ic.sample(None, 10)
+          except TypeError as e:
+              assert 'installed: none' in str(e), f'unexpected message: {e}'
+          else:
+              raise SystemExit('Expected TypeError, none raised')
+          try:
+              ic.sample(None, 10, backend='galpy')
+          except ImportError as e:
+              assert 'needs galpy' in str(e), f'unexpected message: {e}'
+          else:
+              raise SystemExit('Expected ImportError, none raised')
+          plummer = ic.Plummer(M=1e5, rscale=0.01)    # tambora's own profiles need no package
+          try:
+              ic.sample(plummer, 10)
+          except TypeError as e:
+              assert "Can't sample a Plummer" in str(e) and 'installed: none' in str(e), f'unexpected message: {e}'
+          else:
+              raise SystemExit('Expected TypeError, none raised')
+          print('Helpful errors raised as expected')
+          "
+
   galpy-astropy-units:
     # galpy can be configured to return astropy Quantities from every accessor
     # instead of plain floats. That is an ordinary user setting, and tambora used

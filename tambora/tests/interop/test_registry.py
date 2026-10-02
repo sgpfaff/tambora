@@ -5,7 +5,7 @@ Tests for the backend registry and the ``PotentialBackend`` interface.
 import numpy as np
 import pytest
 
-from tambora.interop import PotentialBackend, available_potential_backends, potential_backend_for
+from tambora.interop import PotentialBackend, SamplerBackend, available_potential_backends, potential_backend_for
 from tambora.interop import _registry
 
 
@@ -45,6 +45,27 @@ def test_the_defaults_are_harmless():
     assert b.describe() == 'float'
 
 
+class _SamplerMissingDraw(SamplerBackend):
+    name = 'missing_draw'
+
+    @classmethod
+    def accepts(cls, obj):
+        return True
+
+    def __init__(self, obj):
+        self.obj = obj
+
+    @property
+    def total_mass(self):
+        return 1.
+    # no draw()
+
+
+def test_a_sampler_backend_missing_a_method_cannot_be_instantiated():
+    with pytest.raises(TypeError, match="draw"):
+        _SamplerMissingDraw(object())
+
+
 # --- dispatch ----------------------------------------------------------------
 
 class _FakeEntry:
@@ -80,7 +101,9 @@ def test_the_available_backends_are_the_ones_whose_package_is_installed(monkeypa
     assert available_potential_backends() == ('present',)
 
 
-@pytest.mark.parametrize("entry", _registry._POTENTIAL_BACKENDS, ids=lambda e: e.name)
+@pytest.mark.parametrize("entry", (
+    [pytest.param(e, id=e.name) for e in _registry._POTENTIAL_BACKENDS]
+    + [pytest.param(e, id=f'{e.name}_sampler') for e in _registry._SAMPLER_BACKENDS]))
 def test_backend_class_name_matches_its_registry_entry(entry):
     # The registry needs the name before importing the backend, and the class needs
     # it afterwards (repr, dedup key), so there are two copies. This keeps them equal,
