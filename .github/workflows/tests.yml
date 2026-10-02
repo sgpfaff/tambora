@@ -144,6 +144,13 @@ jobs:
               assert 'needs galpy' in str(e), f'unexpected message: {e}'
           else:
               raise SystemExit('Expected ImportError, none raised')
+          plummer = ic.Plummer(M=1e5, rscale=0.01)    # tambora's own profiles need no package
+          try:
+              ic.sample(plummer, 10)
+          except TypeError as e:
+              assert "Can't sample a Plummer" in str(e) and 'installed: none' in str(e), f'unexpected message: {e}'
+          else:
+              raise SystemExit('Expected TypeError, none raised')
           print('Helpful errors raised as expected')
           "
 

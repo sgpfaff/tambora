@@ -2,6 +2,8 @@
 Tests for ``tambora.ic.sample``, through a stand-in backend so they don't need a package.
 """
 
+import sys
+
 import numpy as np
 import pytest
 
@@ -96,3 +98,38 @@ def test_the_backend_can_be_named():
     assert ic.sample(_Model(), 2, seed=1, backend='stand_in').meta['backend'] == 'stand_in'
     with pytest.raises(ValueError, match="Unknown sampler backend 'nope'"):
         ic.sample(_Model(), 2, seed=1, backend='nope')
+
+
+class _ProfileStandIn(_StandIn):
+    name = 'profile_stand_in'
+
+    @classmethod
+    def accepts(cls, obj):
+        return isinstance(obj, (_Model, ic.Plummer))
+
+
+def _only_a_backend_whose_package_isnt_imported(monkeypatch):
+    # 'wave' is installed (it's in the standard library) but nothing here imports it.
+    monkeypatch.delitem(sys.modules, 'wave', raising=False)
+    entry = _registry._Entry('profile_stand_in', 'wave', __name__, '_ProfileStandIn', 'https://example.org/install')
+    monkeypatch.setattr(_registry, "_SAMPLER_BACKENDS", (entry,))
+
+
+def test_a_profile_goes_to_an_installed_backend_even_before_its_package_is_imported(monkeypatch):
+    _only_a_backend_whose_package_isnt_imported(monkeypatch)
+    assert ic.sample(ic.Plummer(M=1., rscale=1.), 3, seed=1).meta['backend'] == 'profile_stand_in'
+
+
+def test_another_packages_object_still_needs_its_package_imported(monkeypatch):
+    # _Model stands for another package's object: it can't be one if that package was never imported.
+    _only_a_backend_whose_package_isnt_imported(monkeypatch)
+    with pytest.raises(TypeError, match="Can't sample a _Model"):
+        ic.sample(_Model(), 3, seed=1)
+
+
+def test_a_profile_skips_a_backend_whose_package_isnt_installed(monkeypatch):
+    entry = _registry._Entry('profile_stand_in', 'no_such_package_anywhere', __name__, '_ProfileStandIn',
+                             'https://example.org/install')
+    monkeypatch.setattr(_registry, "_SAMPLER_BACKENDS", (entry,))
+    with pytest.raises(TypeError, match=r"Can't sample a Plummer\. .*\(installed: none\)"):
+        ic.sample(ic.Plummer(M=1., rscale=1.), 3, seed=1)
