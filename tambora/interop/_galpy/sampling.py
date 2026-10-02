@@ -1,4 +1,5 @@
-"""galpy distribution functions and potentials as a :class:`~tambora.interop.SamplerBackend`."""
+"""galpy distribution functions and potentials, and tambora's profiles, as a
+:class:`~tambora.interop.SamplerBackend`."""
 
 import inspect
 import warnings
@@ -12,7 +13,8 @@ from galpy.util.conversion import get_physical, mass_in_msol
 from .bridge import _check_physical, _ensure_pot, _get_ro_vo, _iter_components
 from .potential import _flatten
 from .._backend import SamplerBackend
-from ...units import UnitSystem
+from ...ic.profiles import PROFILES, Hernquist, King, Plummer
+from ...units import G_KPC_KMS, UnitSystem
 
 # galpy's exact isotropic DFs, used when a potential of exactly this type is sampled in itself.
 _EXACT_DFS = {
@@ -89,10 +91,26 @@ def _df_for(pot):
     return _df.eddingtondf(pot=pot, rmax=_rmax(pot), ro=ro, vo=vo), f'eddingtondf({_names(pot)})'
 
 
+def _df_for_profile(profile):
+    """The galpy DF for one of tambora's profiles.
+
+    galpy's units are set by the profile itself (its scale radius and the speed
+    sqrt(G M / radius)), so galpy works with numbers of order 1 whatever its size.
+    """
+    ro = profile.rt if isinstance(profile, King) else profile.rscale
+    vo = np.sqrt(G_KPC_KMS * profile.M / ro)    # makes M one galpy mass unit
+    if isinstance(profile, Plummer):
+        return _df.isotropicPlummerdf(pot=_gp.PlummerPotential(amp=1., b=1., ro=ro, vo=vo), ro=ro, vo=vo)
+    if isinstance(profile, Hernquist):          # galpy's amp is twice the mass
+        return _df.isotropicHernquistdf(pot=_gp.HernquistPotential(amp=2., a=1., ro=ro, vo=vo), ro=ro, vo=vo)
+    return _df.kingdf(W0=profile.W0, M=1., rt=1., ro=ro, vo=vo)
+
+
 class GalpySampler(SamplerBackend):
-    """A galpy spherical DF (e.g. ``kingdf``, ``eddingtondf``), or a spherical galpy potential
-    whose density is drawn in its own potential: with galpy's exact DF for a Plummer or
-    Hernquist, and an Eddington-inversion DF otherwise."""
+    """A galpy spherical DF (e.g. ``kingdf``, ``eddingtondf``); a spherical galpy potential,
+    whose density is drawn in its own potential, with galpy's exact DF for a Plummer or
+    Hernquist and an Eddington-inversion DF otherwise; or one of tambora's profiles
+    (:class:`~tambora.ic.Plummer`, :class:`~tambora.ic.Hernquist`, :class:`~tambora.ic.King`)."""
 
     name = 'galpy'
 
@@ -100,7 +118,7 @@ class GalpySampler(SamplerBackend):
     def accepts(cls, obj) -> bool:
         if isinstance(obj, (list, tuple)):
             return any(isinstance(p, _gp.Potential) for p in _flatten(obj))
-        return isinstance(obj, (_df.sphericaldf, _gp.Potential))
+        return isinstance(obj, (_df.sphericaldf, _gp.Potential) + PROFILES)
 
     def __init__(self, obj):
         if isinstance(obj, _df.sphericaldf):
@@ -113,6 +131,8 @@ class GalpySampler(SamplerBackend):
                     f"the tracer's own. Check the particles' "
                     f"virial ratio in the total potential.")
             self.df, self._label = obj, type(obj).__name__
+        elif isinstance(obj, PROFILES):
+            self.df, self._label = _df_for_profile(obj), obj.describe()
         else:
             self.df, self._label = _df_for(obj)
         self.obj = obj

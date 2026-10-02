@@ -14,6 +14,7 @@ import astropy.units as u                                             # noqa: E4
 from galpy import df, potential                                       # noqa: E402
 from galpy.potential.SphericalPotential import SphericalPotential     # noqa: E402
 
+from tambora import ic                                                 # noqa: E402
 from tambora.interop._galpy.sampling import GalpySampler               # noqa: E402
 from tambora.units import G_KPC_KMS                                    # noqa: E402
 
@@ -375,3 +376,50 @@ class _CustomPlummerWithFirstDerivative(_CustomPlummer):
 def test_a_custom_potential_without_its_density_derivatives_says_what_to_add(cls):
     with pytest.raises(TypeError, match=rf"Can't sample a {cls.__name__}: .*\(_ddensdr and _d2densdr2\)"):
         GalpySampler(cls(1e5 * u.Msun, 0.01 * u.kpc, ro=RO, vo=VO))
+
+
+# --- tambora's profiles --------------------------------------------------------------------
+
+
+PROFILE_EQUIVALENTS = [
+    pytest.param(lambda: ic.Plummer(M=1e5, rscale=0.01), _plummer_pot, id='Plummer'),
+    pytest.param(lambda: ic.Hernquist(M=1e10, rscale=2.), _hernquist_pot, id='Hernquist'),
+    pytest.param(lambda: ic.King(M=1e4, W0=6., rt=0.03),
+                 lambda: df.kingdf(W0=6., M=1e4 * u.Msun, rt=0.03 * u.kpc, ro=RO, vo=VO), id='King'),
+]
+
+
+@pytest.mark.parametrize("make_profile, make_native", PROFILE_EQUIVALENTS)
+def test_a_profile_samples_the_galpy_model_it_stands_for(make_profile, make_native):
+    # The same seed draws the same particles, whatever units galpy works in, so this checks
+    # the translation (e.g. a Hernquist's galpy amplitude is twice its mass) exactly.
+    profile, native = GalpySampler(make_profile()), GalpySampler(make_native())
+    assert profile.total_mass == pytest.approx(native.total_mass, rel=1e-12)
+    for a, b in zip(profile.draw(2000, 4), native.draw(2000, 4)):
+        np.testing.assert_allclose(a, b, rtol=0, atol=1e-6 * np.median(np.abs(b)))
+
+
+@pytest.mark.parametrize("make_profile, make_native", PROFILE_EQUIVALENTS)
+def test_a_profile_is_sampled_with_its_mass(make_profile, make_native):
+    profile = make_profile()
+    assert GalpySampler(profile).total_mass == pytest.approx(profile.M, rel=1e-12)
+
+
+def test_a_profile_scales_exactly_with_its_mass_and_radius():
+    # A Plummer of any size is the same model: positions go with rscale, speeds with sqrt(G M / rscale).
+    small, big = ic.Plummer(M=1e2, rscale=1e-4), ic.Plummer(M=1e14, rscale=300.)
+    (pos_s, vel_s), (pos_b, vel_b) = GalpySampler(small).draw(1000, 8), GalpySampler(big).draw(1000, 8)
+    np.testing.assert_allclose(pos_s / small.rscale, pos_b / big.rscale, rtol=1e-10)
+    v_unit = lambda p: np.sqrt(G_KPC_KMS * p.M / p.rscale)
+    np.testing.assert_allclose(vel_s / v_unit(small), vel_b / v_unit(big), rtol=1e-10)
+
+
+def test_ic_sample_draws_a_profile():
+    ps = ic.sample(ic.Hernquist(M=1e10, rscale=2.), 1000, seed=2)
+    assert ps.mass.sum() == pytest.approx(1e10, rel=1e-12)
+    assert ps.meta == {'backend': 'galpy', 'model': 'Hernquist(M=1e+10, rscale=2)', 'seed': 2}
+
+
+@pytest.mark.parametrize("make_profile, make_native", PROFILE_EQUIVALENTS)
+def test_profiles_are_accepted(make_profile, make_native):
+    assert GalpySampler.accepts(make_profile())

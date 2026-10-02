@@ -2,7 +2,8 @@
 
 Backends are listed by import path, so a backend module (and its package) is only
 imported once an object that could belong to it has been seen: an object can only
-come from a package that is already in ``sys.modules``.
+come from a package that is already in ``sys.modules``. tambora's own models (e.g.
+``tambora.ic.Plummer``) belong to no package, so any installed backend may take them.
 """
 
 import importlib
@@ -47,6 +48,11 @@ def available_potential_backends() -> tuple:
     return _installed(_POTENTIAL_BACKENDS)
 
 
+def _is_tamboras(obj) -> bool:
+    """Whether ``obj`` is one of tambora's own models, which mark themselves (``_tambora_model``)."""
+    return getattr(type(obj), '_tambora_model', False) is True
+
+
 def _backend_for(entries, kind, cant, hint, obj, backend):
     """Dispatch shared by the potential and sampler registries.
 
@@ -67,8 +73,9 @@ def _backend_for(entries, kind, cant, hint, obj, backend):
         return cls(obj)
 
     for entry in entries:
-        if entry.package not in sys.modules:    # obj can't come from a package never imported
-            continue
+        if entry.package not in sys.modules:    # obj can't come from a package never imported,
+            if not _is_tamboras(obj) or importlib.util.find_spec(entry.package) is None:
+                continue                        # unless it's tambora's own
         cls = _load(entry)
         if cls.accepts(obj):
             return cls(obj)
