@@ -12,6 +12,7 @@ from scipy import stats
 galpy = pytest.importorskip("galpy")
 import astropy.units as u                                             # noqa: E402
 from galpy import df, potential                                       # noqa: E402
+from packaging.version import parse as parse_version                  # noqa: E402
 from galpy.potential.SphericalPotential import SphericalPotential     # noqa: E402
 
 from tambora import ic                                                 # noqa: E402
@@ -118,7 +119,11 @@ def test_the_half_mass_radius_is_plummers():
     assert np.median(np.linalg.norm(pos, axis=1)) == pytest.approx(r_half, rel=0.01)
 
 
-@pytest.mark.xfail(raises=AssertionError, strict=True,
+# galpy #1568 fixes #1343 after galpy 1.12.0; this test then passes, so it's only xfailed before.
+_GALPY_SPEEDS_FIXED = parse_version(galpy.__version__) > parse_version("1.12.0")
+
+
+@pytest.mark.xfail(not _GALPY_SPEEDS_FIXED, raises=AssertionError, strict=True,
                    reason="galpy #1343: sampled speeds are too slow, <v^2> about 1.5% low")
 def test_the_mean_square_speed_is_plummers_virial_value():
     M, b = 1e5, 0.01
