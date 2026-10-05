@@ -90,8 +90,12 @@ class SamplerBackend(ABC):
         """
 
     @abstractmethod
-    def __init__(self, obj):
-        """Validate ``obj``, record its units, and prepare it for sampling."""
+    def __init__(self, obj, potential=None):
+        """Validate ``obj``, record its units, and prepare it for sampling.
+
+        Given a ``potential``, prepare to draw ``obj``'s density in equilibrium in it, rather
+        than in ``obj``'s own potential. A backend that can't do that raises TypeError.
+        """
 
     @property
     @abstractmethod

@@ -16,6 +16,7 @@ from packaging.version import parse as parse_version                  # noqa: E4
 from galpy.potential.SphericalPotential import SphericalPotential     # noqa: E402
 
 from tambora import ic                                                 # noqa: E402
+from tambora.interop._galpy import sampling                            # noqa: E402
 from tambora.interop._galpy.sampling import GalpySampler               # noqa: E402
 from tambora.units import G_KPC_KMS                                    # noqa: E402
 
@@ -158,6 +159,12 @@ def test_describe_names_the_df():
     assert GalpySampler(_king()).describe() == 'kingdf'
 
 
+# Up to 1.12.0, galpy draws a tracer deep in a much deeper potential far too fast; tambora
+# then refuses to draw one itself, and warns about a galpy DF that does.
+_GALPY_DRAWS_TRACERS = parse_version(galpy.__version__) > parse_version("1.12.0")
+
+
+@pytest.mark.skipif(_GALPY_DRAWS_TRACERS, reason="only galpy up to 1.12.0 draws tracers too fast")
 def test_a_tracer_df_warns_that_its_speeds_can_be_too_high():
     with pytest.warns(UserWarning, match=r"draws a tracer \(PlummerPotential\) in a different "
                                          r"potential \(PlummerPotential\+NFWPotential\)"):
@@ -168,8 +175,10 @@ def test_a_tracer_df_warns_that_its_speeds_can_be_too_high():
     pytest.param(_king, id='kingdf'),
     pytest.param(_plummer, id='isotropicPlummerdf'),
     pytest.param(lambda: df.eddingtondf(pot=_plummer_pot(), rmax=1. * u.kpc, ro=RO, vo=VO), id='eddingtondf'),
+    pytest.param(_tracer, id='tracer_eddingtondf', marks=pytest.mark.skipif(
+        not _GALPY_DRAWS_TRACERS, reason="galpy up to 1.12.0 draws tracers too fast")),
 ])
-def test_a_self_consistent_df_doesnt_warn(make):
+def test_a_df_that_galpy_draws_right_doesnt_warn(make):
     d = make()
     with warnings.catch_warnings():
         warnings.simplefilter('error')
@@ -490,3 +499,155 @@ def test_galpys_own_truncation_of_an_nfw_samples_with_its_mass():
     ps = ic.sample(truncated, 1000, seed=1)
     expected = potential.mass(truncated, 1e8, use_physical=False) * GalpySampler(truncated).units.mass_msun
     assert ps.mass.sum() == pytest.approx(expected, rel=1e-8)
+
+
+# --- a density drawn in another potential --------------------------------------------------
+
+STARS = ic.Plummer(M=1e5, rscale=0.005)         # a star cluster...
+HALO = ic.Hernquist(M=1e9, rscale=1.)           # ...at the centre of a dark halo
+_needs_galpy_drawing_tracers = pytest.mark.skipif(
+    not _GALPY_DRAWS_TRACERS, reason="galpy up to 1.12.0 draws tracers too fast")
+
+
+@pytest.fixture
+def tracers_allowed(monkeypatch):
+    """Lifts the galpy-version guard, for what doesn't depend on the tracers' speeds."""
+    monkeypatch.setattr(sampling, '_TRACERS_FIXED', True)
+
+
+@pytest.mark.skipif(_GALPY_DRAWS_TRACERS, reason="only galpy up to 1.12.0 draws tracers too fast")
+@pytest.mark.parametrize("draw", [
+    pytest.param(lambda: ic.sample(STARS, 10, potential=[STARS, HALO]), id='sample'),
+    pytest.param(lambda: ic.sample_components([STARS, HALO], n=[10, 10]), id='sample_components'),
+])
+def test_older_galpy_refuses_to_draw_a_density_in_another_potential(draw):
+    with pytest.raises(ImportError, match=r"Drawing a density in another potential needs galpy newer "
+                                          r"than 1\.12\.0 \(this is galpy "):
+        draw()
+
+
+@pytest.mark.parametrize("potential", [
+    pytest.param(STARS, id='itself'),
+    pytest.param([STARS], id='list_of_itself'),
+    pytest.param(ic.Plummer(M=1e5, rscale=0.005), id='an_equal_profile'),
+])
+def test_a_model_in_its_own_potential_is_sampled_as_usual(potential):
+    # On any galpy: this is no tracer.
+    ps, usual = ic.sample(STARS, 500, potential=potential, seed=1), ic.sample(STARS, 500, seed=1)
+    assert ps.meta == usual.meta
+    np.testing.assert_array_equal(ps.pos, usual.pos)
+    np.testing.assert_array_equal(ps.vel, usual.vel)
+
+
+def test_a_galpy_potential_in_itself_is_sampled_as_usual():
+    pot = _plummer_pot()
+    assert ic.sample(pot, 10, potential=[pot], seed=1).meta['model'] == 'isotropicPlummerdf(PlummerPotential)'
+
+
+def test_one_component_is_sampled_as_usual():
+    (stars,) = ic.sample_components([STARS], n=[500], seed=1)
+    usual = ic.sample(STARS, 500, seed=stars.meta['seed'])
+    np.testing.assert_array_equal(stars.pos, usual.pos)
+
+
+@pytest.mark.usefixtures('tracers_allowed')
+def test_a_density_in_another_potential_gets_an_eddington_df_of_the_total():
+    sampler = GalpySampler(STARS, potential=[STARS, HALO])
+    assert type(sampler.df) is df.eddingtondf
+    assert sampling._names(sampler.df._denspot) == 'PlummerPotential'
+    assert sampling._names(sampler.df._pot) == 'PlummerPotential+HernquistPotential'
+    assert sampler.describe() == 'Plummer(M=100000, rscale=0.005) in Plummer(M=100000, rscale=0.005) + ' \
+                                 'Hernquist(M=1e+09, rscale=1)'
+
+
+@pytest.mark.usefixtures('tracers_allowed')
+def test_ic_sample_draws_a_density_in_another_potential_with_its_own_mass():
+    ps = ic.sample(STARS, 1000, potential=[STARS, HALO], seed=2)
+    assert ps.mass.sum() == pytest.approx(1e5, rel=1e-6)    # what's beyond rmax is left out
+    assert ps.meta == {'backend': 'galpy', 'model': GalpySampler(STARS, potential=[STARS, HALO]).describe(),
+                       'seed': 2}
+
+
+@pytest.mark.usefixtures('tracers_allowed')
+def test_ic_sample_components_draws_each_with_its_own_mass():
+    stars, dm = ic.sample_components([STARS, HALO], n=[1000, 2000], seed=4)
+    assert stars.mass.sum() == pytest.approx(1e5, rel=1e-6)
+    # A Hernquist is cut at 10^4 of its scale radii, which leaves out 0.02% of its mass.
+    assert dm.mass.sum() == pytest.approx(1e9 * (1e4 / (1e4 + 1.))**2, rel=1e-6)
+    assert dm.meta['model'].startswith('Hernquist(M=1e+09, rscale=1) in Plummer(')
+
+
+@pytest.mark.usefixtures('tracers_allowed')
+def test_a_tracers_radii_follow_its_own_density():
+    pos, _ = GalpySampler(STARS, potential=[STARS, HALO]).draw(10_000, 3)
+    assert stats.kstest(np.linalg.norm(pos, axis=1), lambda r: _plummer_cdf(r, b=0.005)).pvalue > 1e-3
+
+
+@pytest.mark.usefixtures('tracers_allowed')
+def test_a_profile_among_galpy_potentials_takes_their_units():
+    halo = _hernquist_pot(M=1e9, a=1.)
+    mixed = GalpySampler(STARS, potential=[STARS, halo])
+    assert (mixed.units.length_kpc, mixed.units.velocity_kms) == (RO, VO)
+    assert mixed.total_mass == pytest.approx(1e5, rel=1e-6)
+    # The same model as with the halo as a profile, built in other units. galpy tabulates it on
+    # grids set by the units, so the radii agree to 1e-5 and the speeds' quantiles to 0.2%; a
+    # velocity unit of 220 instead of 230 km/s would put them 4.5% apart.
+    (pos, vel), (pos0, vel0) = mixed.draw(2000, 4), GalpySampler(STARS, potential=[STARS, HALO]).draw(2000, 4)
+    np.testing.assert_allclose(np.linalg.norm(pos, axis=1), np.linalg.norm(pos0, axis=1), rtol=1e-4)
+    quantiles = [10, 25, 50, 75, 90]
+    np.testing.assert_allclose(np.percentile(np.linalg.norm(vel, axis=1), quantiles),
+                               np.percentile(np.linalg.norm(vel0, axis=1), quantiles), rtol=5e-3)
+
+
+@pytest.mark.usefixtures('tracers_allowed')
+@pytest.mark.parametrize("model, potential, error, match", [
+    pytest.param(lambda: ic.King(M=1e4, W0=6., rt=0.03), lambda: [HALO], TypeError,
+                 "A King model is defined by its own potential", id='King'),
+    pytest.param(lambda: STARS, lambda: [STARS, potential.MiyamotoNagaiPotential(
+                     amp=1e10 * u.Msun, a=3 * u.kpc, b=0.3 * u.kpc, ro=RO, vo=VO)], TypeError,
+                 "Can't sample in a MiyamotoNagaiPotential: galpy's samplers need a spherical potential",
+                 id='not_spherical'),
+    pytest.param(lambda: STARS, lambda: [STARS, 'halo'], TypeError,
+                 r"potential= takes galpy potentials and tambora's profiles, got str \(element 1 of the list\)",
+                 id='not_a_potential'),
+    pytest.param(lambda: STARS, lambda: [], ValueError, "potential= is an empty list", id='empty'),
+    pytest.param(lambda: potential.BurkertPotential(amp=1., a=0.5 * u.kpc, ro=RO, vo=VO), lambda: [HALO],
+                 TypeError, r"Can't sample a BurkertPotential: .*\(_ddensdr and _d2densdr2\)", id='density'),
+    pytest.param(lambda: _plummer_pot(), lambda: [_plummer_pot(), potential.HernquistPotential(ro=8., vo=VO)],
+                 ValueError, r"The galpy potentials have different units \(ro, vo\)", id='mixed_units'),
+])
+def test_what_cant_be_drawn_in_another_potential_says_why(model, potential, error, match):
+    with pytest.raises(error, match=match):
+        GalpySampler(model(), potential=potential())
+
+
+@pytest.mark.usefixtures('tracers_allowed')
+@_needs_exp_trunc_nfw
+def test_a_truncated_nfw_cut_off_far_inside_its_scale_radius_is_refused_in_another_potential_too():
+    with pytest.raises(ValueError, match="galpy's sampler is unreliable when rtrunc is under a fifth of rscale"):
+        GalpySampler(ic.TruncatedNFW(M=1e9, rscale=1., rtrunc=0.1), potential=[STARS])
+
+
+def test_a_galpy_df_cant_take_another_potential():
+    with pytest.raises(TypeError, match="A galpy DF has its potential already"):
+        GalpySampler(_plummer(), potential=[_plummer_pot(), _hernquist_pot()])
+
+
+# galpy 1.12.0 gives the stars here a virial ratio of 1.4, and galpy main before the
+# follow-up to #1568 1.05; drawn right, it's 1.005 +/- 0.005 with 50,000 particles.
+_HALOS = [pytest.param(HALO, id='Hernquist'),
+          pytest.param(ic.TruncatedNFW(M=1e9, rscale=1., rtrunc=10.), id='TruncatedNFW', marks=_needs_exp_trunc_nfw)]
+
+
+@_needs_galpy_drawing_tracers
+@pytest.mark.parametrize("halo", _HALOS)
+def test_stars_at_the_centre_of_a_dark_halo_are_in_equilibrium_in_the_total_potential(halo):
+    sampler = GalpySampler(STARS, potential=[STARS, halo])
+    assert _virial_ratio(sampler, sampler.df._pot, n=50_000) == pytest.approx(1., abs=0.025)
+
+
+@_needs_galpy_drawing_tracers
+@pytest.mark.parametrize("halo", _HALOS)
+def test_the_dark_halo_around_the_stars_is_in_equilibrium_in_the_total_potential(halo):
+    sampler = GalpySampler(halo, potential=[STARS, halo])
+    assert _virial_ratio(sampler, sampler.df._pot, n=20_000) == pytest.approx(1., abs=0.025)
