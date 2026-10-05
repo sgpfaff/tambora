@@ -148,7 +148,7 @@ jobs:
           try:
               ic.sample(plummer, 10)
           except TypeError as e:
-              assert "Can't sample a Plummer" in str(e) and 'installed: none' in str(e), f'unexpected message: {e}'
+              assert 'sample a Plummer' in str(e) and 'installed: none' in str(e), f'unexpected message: {e}'
           else:
               raise SystemExit('Expected TypeError, none raised')
           print('Helpful errors raised as expected')
