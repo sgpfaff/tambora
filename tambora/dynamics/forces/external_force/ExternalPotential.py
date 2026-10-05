@@ -1,5 +1,3 @@
-from typing import Optional
-
 import numpy as np
 
 from .ExternalConservativeForce import ExternalConservativeForce
@@ -13,22 +11,17 @@ class ExternalPotential(ExternalConservativeForce):
 
         sim.add_external_force(ExternalPotential(MWPotential2014))    # galpy
 
-    Combine with other forces via ``+``. To choose the backend explicitly (for an
-    object more than one package accepts), pass its name::
-
-        ExternalPotential(pot, backend='galpy')
+    Combine with other forces via ``+``.
 
     Parameters
     ----------
     potential : object
         A potential from a supported package, e.g. a galpy ``Potential``, a galpy
         ``CompositePotential``, or a list of galpy potentials.
-    backend : str, optional
-        Name of the backend to use. Default: chosen from ``potential``.
     """
 
-    def __init__(self, potential, *, backend: Optional[str] = None):
-        self._backend = potential_backend_for(potential, backend)
+    def __init__(self, potential):
+        self._backend = potential_backend_for(potential)
         key = self._backend.dedup_key()
         self._key = None if key is None else (type(self), self._backend.name, key)
 

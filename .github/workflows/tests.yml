@@ -85,20 +85,6 @@ jobs:
         working-directory: /tmp
         run: python -c "from tambora.simulation import Sim; print('Sim import OK')"
 
-      - name: Asking for the galpy backend raises a helpful ImportError
-        working-directory: /tmp
-        run: |
-          python -c "
-          from tambora.dynamics.forces import ExternalPotential
-          try:
-              ExternalPotential(None, backend='galpy')
-          except ImportError as e:
-              assert 'needs galpy' in str(e) and 'docs.galpy.org' in str(e), f'unexpected message: {e}'
-              print('Helpful ImportError raised as expected')
-          else:
-              raise SystemExit('Expected ImportError, none raised')
-          "
-
       - name: An unusable potential says no package is installed
         working-directory: /tmp
         run: |
@@ -138,12 +124,6 @@ jobs:
               assert 'installed: none' in str(e), f'unexpected message: {e}'
           else:
               raise SystemExit('Expected TypeError, none raised')
-          try:
-              ic.sample(None, 10, backend='galpy')
-          except ImportError as e:
-              assert 'needs galpy' in str(e), f'unexpected message: {e}'
-          else:
-              raise SystemExit('Expected ImportError, none raised')
           plummer = ic.Plummer(M=1e5, rscale=0.01)    # tambora's own profiles need no package
           try:
               ic.sample(plummer, 10)

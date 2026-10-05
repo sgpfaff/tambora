@@ -278,20 +278,17 @@ class Sim:
         else:
             _assign_force(force)
             
-    def add_external_pot(self, potential, *, backend=None):
+    def add_external_pot(self, potential):
         '''
         Add an external potential from a supported package.
 
-        Shorthand for ``add_external_force(ExternalPotential(potential, backend=backend))``.
+        Shorthand for ``add_external_force(ExternalPotential(potential))``.
 
         Parameters
         ----------
         potential : object
             A potential from a supported package, e.g. a galpy ``Potential``,
             a galpy ``CompositePotential``, or a list of galpy potentials.
-        backend : str, optional
-            Name of the backend to use (e.g. ``'galpy'``). Default: chosen from
-            ``potential``.
 
         Returns
         -------
@@ -309,7 +306,7 @@ class Sim:
         UserWarning
             If the provided galpy potential has physical outputs turned off.
         '''
-        self.add_external_force(ExternalPotential(potential, backend=backend))
+        self.add_external_force(ExternalPotential(potential))
 
     def add_subhalos(self, pos, vel, mass):
         '''

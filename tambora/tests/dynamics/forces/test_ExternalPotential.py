@@ -57,20 +57,6 @@ def test_a_list_containing_a_non_potential_names_the_bad_element():
         ExternalPotential([_plummer(), 'not a potential'])
 
 
-def test_the_backend_can_be_named_explicitly():
-    assert ExternalPotential(_plummer(), backend='galpy').backend.name == 'galpy'
-
-
-def test_an_unknown_backend_name_is_a_value_error():
-    with pytest.raises(ValueError, match="Unknown potential backend 'nope'"):
-        ExternalPotential(_plummer(), backend='nope')
-
-
-def test_a_named_backend_that_cannot_use_the_object_is_a_type_error():
-    with pytest.raises(TypeError, match="'galpy' backend can't use a str"):
-        ExternalPotential('not a potential', backend='galpy')
-
-
 # --- evaluation ---------------------------------------------------------------
 
 _ON_AXIS = np.array([[0., 0., 2.]])
@@ -113,14 +99,6 @@ def test_acceleration_on_the_z_axis_matches_the_exact_value(case):
 
 def test_repr_names_the_backend_and_potential():
     assert repr(ExternalPotential(_plummer())) == "ExternalPotential(galpy: PlummerPotential)"
-
-
-def test_add_external_pot_passes_the_backend_on():
-    sim = Sim()
-    sim.add_external_pot(_plummer(), backend='galpy')
-    assert "ExternalPotential(PlummerPotential)" in repr(sim)
-    with pytest.raises(ValueError, match="Unknown potential backend 'nope'"):
-        sim.add_external_pot(_nfw(), backend='nope')
 
 
 def test_the_sim_summary_labels_the_potential_by_its_components():
