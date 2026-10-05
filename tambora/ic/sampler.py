@@ -18,7 +18,8 @@ def sample(model, n: int, *, seed: Optional[int] = None, backend: Optional[str] 
     Parameters
     ----------
     model : object
-        One of tambora's profiles (:class:`Plummer`, :class:`Hernquist`, :class:`King`), or a
+        One of tambora's profiles (:class:`Plummer`, :class:`Hernquist`, :class:`King`,
+        :class:`TruncatedNFW`), or a
         model from a supported package: a galpy potential, whose density is drawn in
         equilibrium in its own potential, or a galpy distribution function such as
         ``galpy.df.kingdf(...)``.

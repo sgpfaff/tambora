@@ -1,5 +1,5 @@
-"""Common profiles, given by their total mass and scale: :class:`Plummer`, :class:`Hernquist`
-and :class:`King`.
+"""Common profiles, given by their total mass and scale: :class:`Plummer`, :class:`Hernquist`,
+:class:`King` and :class:`TruncatedNFW`.
 
 Pass one to :func:`tambora.ic.sample`. Each package's backend translates it into that package's
 own model, so the parameters mean the same thing whichever backend samples it.
@@ -117,4 +117,39 @@ class King(_Profile):
     rt: float = _field('kpc')
 
 
-PROFILES = (Plummer, Hernquist, King)
+@dataclasses.dataclass(frozen=True)
+class TruncatedNFW(_Profile):
+    r"""An NFW halo cut off exponentially, which gives it a finite mass.
+
+    Its density is
+
+    .. math::
+
+        \rho(r) = \frac{\rho_s\, e^{-r/r_t}}{(r/r_s)\,(1 + r/r_s)^2},
+
+    with :math:`r_s` = ``rscale``, :math:`r_t` = ``rtrunc``, and :math:`\rho_s` set by the
+    total mass :math:`M`. Sampled with an Eddington-inversion distribution function, which
+    needs galpy 1.12 or later.
+
+    To truncate an NFW halo you've already defined in galpy, pass galpy's
+    ``ExpTruncNFWPotential.from_nfw(nfw, rc=...)`` to :func:`~tambora.ic.sample` instead.
+
+    Parameters
+    ----------
+    M : float
+        Total mass :math:`M` [Msun], including what lies beyond :math:`r_t`.
+    rscale : float
+        NFW scale radius :math:`r_s` [kpc].
+    rtrunc : float
+        Truncation radius :math:`r_t` [kpc], the scale of the exponential cutoff.
+
+    References
+    ----------
+    Navarro, J. F., Frenk, C. S. & White, S. D. M. 1996, ApJ, 462, 563.
+    """
+    M: float = _field('Msun')
+    rscale: float = _field('kpc')
+    rtrunc: float = _field('kpc')
+
+
+PROFILES = (Plummer, Hernquist, King, TruncatedNFW)
