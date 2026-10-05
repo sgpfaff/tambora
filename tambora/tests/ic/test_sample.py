@@ -44,7 +44,7 @@ class _StandIn(SamplerBackend):
 
 @pytest.fixture(autouse=True)
 def only_the_stand_in(monkeypatch):
-    entry = _registry._Entry('stand_in', 'numpy', __name__, '_StandIn', 'https://example.org/install')
+    entry = _registry._Entry('stand_in', 'numpy', __name__, '_StandIn')
     monkeypatch.setattr(_registry, "_SAMPLER_BACKENDS", (entry,))
 
 
@@ -102,12 +102,6 @@ def test_an_object_no_backend_accepts_is_a_type_error():
         ic.sample('not a model', 5)
 
 
-def test_the_backend_can_be_named():
-    assert ic.sample(_Model(), 2, seed=1, backend='stand_in').meta['backend'] == 'stand_in'
-    with pytest.raises(ValueError, match="Unknown sampler backend 'nope'"):
-        ic.sample(_Model(), 2, seed=1, backend='nope')
-
-
 class _ProfileStandIn(_StandIn):
     name = 'profile_stand_in'
 
@@ -123,7 +117,7 @@ class _ProfileStandIn(_StandIn):
 def _only_a_backend_whose_package_isnt_imported(monkeypatch):
     # 'wave' is installed (it's in the standard library) but nothing here imports it.
     monkeypatch.delitem(sys.modules, 'wave', raising=False)
-    entry = _registry._Entry('profile_stand_in', 'wave', __name__, '_ProfileStandIn', 'https://example.org/install')
+    entry = _registry._Entry('profile_stand_in', 'wave', __name__, '_ProfileStandIn')
     monkeypatch.setattr(_registry, "_SAMPLER_BACKENDS", (entry,))
 
 
@@ -140,8 +134,7 @@ def test_another_packages_object_still_needs_its_package_imported(monkeypatch):
 
 
 def test_a_profile_skips_a_backend_whose_package_isnt_installed(monkeypatch):
-    entry = _registry._Entry('profile_stand_in', 'no_such_package_anywhere', __name__, '_ProfileStandIn',
-                             'https://example.org/install')
+    entry = _registry._Entry('profile_stand_in', 'no_such_package_anywhere', __name__, '_ProfileStandIn')
     monkeypatch.setattr(_registry, "_SAMPLER_BACKENDS", (entry,))
     with pytest.raises(TypeError, match=r"Can't sample a Plummer\. .*\(installed: none\)"):
         ic.sample(ic.Plummer(M=1., rscale=1.), 3, seed=1)
@@ -207,12 +200,6 @@ def test_without_a_seed_a_fresh_parent_seed_is_drawn_and_recorded():
     assert a[0].meta['parent_seed'] != b[0].meta['parent_seed']
     again = _components(seed=a[0].meta['parent_seed'])
     np.testing.assert_array_equal(again[1].pos, a[1].pos)
-
-
-def test_the_components_backend_can_be_named():
-    parts = _components(seed=1, backend='stand_in')
-    assert {ps.meta['backend'] for ps in parts} == {'stand_in'}
-    assert parts[1].meta['model'] == 'dm in [stars, dm]'
 
 
 @pytest.mark.parametrize("components, n, error, match", [

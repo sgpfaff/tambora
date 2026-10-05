@@ -9,29 +9,26 @@ come from a package that is already in ``sys.modules``. tambora's own models (e.
 import importlib
 import importlib.util
 import sys
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 from ._backend import PotentialBackend, SamplerBackend
 
 
 class _Entry(NamedTuple):
-    name: str           # value for backend=
+    name: str           # the backend class's `name`
     package: str        # top-level module of the external package
     module: str         # tambora module defining the backend class
     cls: str            # backend class name
-    install: str        # where to point users who don't have the package
 
 
 #: Potential backends in priority order: the first whose ``accepts`` is True wins.
 _POTENTIAL_BACKENDS = (
-    _Entry('galpy', 'galpy', 'tambora.interop._galpy.potential', 'GalpyPotential',
-           'https://docs.galpy.org/en/stable/installation.html'),
+    _Entry('galpy', 'galpy', 'tambora.interop._galpy.potential', 'GalpyPotential'),
 )
 
 #: Sampler backends, in the same form and order of priority.
 _SAMPLER_BACKENDS = (
-    _Entry('galpy', 'galpy', 'tambora.interop._galpy.sampling', 'GalpySampler',
-           'https://docs.galpy.org/en/stable/installation.html'),
+    _Entry('galpy', 'galpy', 'tambora.interop._galpy.sampling', 'GalpySampler'),
 )
 
 
@@ -53,26 +50,13 @@ def _is_tamboras(obj) -> bool:
     return getattr(type(obj), '_tambora_model', False) is True
 
 
-def _backend_for(entries, kind, cant, hint, obj, backend, **kwargs):
+def _backend_for(entries, cant, hint, obj, **kwargs):
     """Dispatch shared by the potential and sampler registries.
 
-    ``kind`` names the backends in errors (``'potential'``), ``cant`` completes "can't ..."
-    for this object, and ``hint`` ends the error for an object no backend accepts. The
-    backend is chosen by ``obj`` alone, and built with ``obj`` and ``kwargs``.
+    ``cant`` completes "can't ..." for this object, and ``hint`` ends the error for an
+    object no backend accepts. The backend is chosen by ``obj`` alone: the first, in
+    priority order, that accepts it. It is built with ``obj`` and ``kwargs``.
     """
-    if backend is not None:
-        entry = next((e for e in entries if e.name == backend), None)
-        if entry is None:
-            known = ', '.join(repr(e.name) for e in entries)
-            raise ValueError(f"Unknown {kind} backend {backend!r}. Known backends: {known}.")
-        if importlib.util.find_spec(entry.package) is None:
-            raise ImportError(f"The {entry.name!r} backend needs {entry.package}, which isn't "
-                              f"installed. See {entry.install}")
-        cls = _load(entry)
-        if not cls.accepts(obj):
-            raise TypeError(f"The {entry.name!r} backend can't {cant}.")
-        return cls(obj, **kwargs)
-
     for entry in entries:
         if entry.package not in sys.modules:    # obj can't come from a package never imported,
             if not _is_tamboras(obj) or importlib.util.find_spec(entry.package) is None:
@@ -87,7 +71,7 @@ def _backend_for(entries, kind, cant, hint, obj, backend, **kwargs):
                     f"(installed: {', '.join(installed) or 'none'}). {hint}")
 
 
-def potential_backend_for(obj, backend: Optional[str] = None) -> PotentialBackend:
+def potential_backend_for(obj) -> PotentialBackend:
     """Wrap ``obj`` in the backend for its package.
 
     Parameters
@@ -95,44 +79,34 @@ def potential_backend_for(obj, backend: Optional[str] = None) -> PotentialBacken
     obj : object
         A potential from a supported package (e.g. a galpy ``Potential``, or a
         list of them).
-    backend : str, optional
-        Name of the backend to use, e.g. ``'galpy'``. By default it is chosen
-        from ``obj``: the first backend, in priority order, that accepts it.
 
     Raises
     ------
-    ValueError
-        If ``backend`` names no known backend.
-    ImportError
-        If ``backend`` is given but its package isn't installed.
     TypeError
-        If no backend accepts ``obj`` (or the named one doesn't).
+        If no backend accepts ``obj``.
     """
     return _backend_for(
-        _POTENTIAL_BACKENDS, 'potential', f"use a {type(obj).__name__} as an external potential",
+        _POTENTIAL_BACKENDS, f"use a {type(obj).__name__} as an external potential",
         "For a custom force, subclass tambora.dynamics.forces.ExternalConservativeForce.",
-        obj, backend)
+        obj)
 
 
-def sampler_backend_for(obj, backend: Optional[str] = None, *, potential=None) -> SamplerBackend:
+def sampler_backend_for(obj, *, potential=None) -> SamplerBackend:
     """Wrap the model ``obj`` in the sampler backend for its package.
 
     Parameters
     ----------
     obj : object
         A model from a supported package, e.g. a galpy potential or distribution function.
-    backend : str, optional
-        Name of the backend to use, e.g. ``'galpy'``. By default it is chosen
-        from ``obj``: the first backend, in priority order, that accepts it.
     potential : object, optional
         A potential to draw ``obj``'s density in, rather than its own; passed to the backend.
 
     Raises
     ------
-    ValueError, ImportError, TypeError
-        As for :func:`potential_backend_for`.
+    TypeError
+        If no backend accepts ``obj``.
     """
     return _backend_for(
-        _SAMPLER_BACKENDS, 'sampler', f"sample a {type(obj).__name__}",
-        "Particles made some other way can go straight into Sim.add_particles.",
-        obj, backend, potential=potential)
+        _SAMPLER_BACKENDS, f"sample a {type(obj).__name__}",
+        "Particles made another way can go straight into Sim.add_particles.",
+        obj, potential=potential)

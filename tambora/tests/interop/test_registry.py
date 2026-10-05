@@ -72,7 +72,7 @@ class _FakeEntry:
     """Registry entries pointing at a package that is *not* imported."""
     @staticmethod
     def make(name, package='tambora_no_such_package', module='tambora_no_such_module'):
-        return _registry._Entry(name, package, module, 'Nope', 'https://example.org/install')
+        return _registry._Entry(name, package, module, 'Nope')
 
 
 def test_a_backend_whose_package_was_never_imported_is_skipped(monkeypatch):
@@ -81,12 +81,6 @@ def test_a_backend_whose_package_was_never_imported_is_skipped(monkeypatch):
     monkeypatch.setattr(_registry, "_POTENTIAL_BACKENDS", entries)
     with pytest.raises(TypeError, match="Can't use a str"):
         potential_backend_for('not a potential')
-
-
-def test_naming_a_backend_whose_package_is_missing_says_how_to_install_it(monkeypatch):
-    monkeypatch.setattr(_registry, "_POTENTIAL_BACKENDS", (_FakeEntry.make('ghost'),))
-    with pytest.raises(ImportError, match=r"needs tambora_no_such_package.*https://example.org/install"):
-        potential_backend_for(object(), backend='ghost')
 
 
 def test_the_error_for_an_unusable_object_lists_the_supported_packages():
@@ -122,21 +116,3 @@ def test_nested_lists_of_galpy_potentials_go_to_the_galpy_backend():
     gp = pytest.importorskip("galpy.potential")
     p, q = gp.PlummerPotential(ro=8., vo=220.), gp.NFWPotential(ro=8., vo=220.)
     assert potential_backend_for([[p, q]]).name == 'galpy'
-
-
-# --- naming the backend explicitly -------------------------------------------
-
-def test_the_named_backend_is_used():
-    gp = pytest.importorskip("galpy.potential")
-    assert potential_backend_for(gp.PlummerPotential(ro=8., vo=220.), backend='galpy').name == 'galpy'
-
-
-def test_an_unknown_backend_name_is_a_value_error_listing_the_known_ones():
-    with pytest.raises(ValueError, match=r"Unknown potential backend 'nope'. Known backends: 'galpy'"):
-        potential_backend_for(object(), backend='nope')
-
-
-def test_a_named_backend_that_cannot_use_the_object_is_a_type_error():
-    pytest.importorskip("galpy")
-    with pytest.raises(TypeError, match=r"The 'galpy' backend can't use a str"):
-        potential_backend_for('not a potential', backend='galpy')

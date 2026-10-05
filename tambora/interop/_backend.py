@@ -15,8 +15,8 @@ class PotentialBackend(ABC):
     :class:`~tambora.dynamics.forces.ExternalPotential` is the force built on them.
     """
 
-    #: Short name used for ``backend=`` arguments, e.g. ``'galpy'``. Must match
-    #: the backend's registry entry, which also records the package it wraps.
+    #: Short name, e.g. ``'galpy'``, shown in reprs and part of the duplicate check. Must
+    #: match the backend's registry entry, which also records the package it wraps.
     name: ClassVar[str]
 
     #: The (possibly normalised) object this backend wraps.
@@ -74,8 +74,8 @@ class SamplerBackend(ABC):
     Seeds, masses and the returned :class:`~tambora.ic.ParticleSet` are tambora's job.
     """
 
-    #: Short name used for ``backend=`` arguments, e.g. ``'galpy'``. Must match
-    #: the backend's registry entry, which also records the package it wraps.
+    #: Short name, e.g. ``'galpy'``, recorded in a sample's ``meta['backend']``. Must
+    #: match the backend's registry entry, which also records the package it wraps.
     name: ClassVar[str]
 
     #: The model this backend wraps.

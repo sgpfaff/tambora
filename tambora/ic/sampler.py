@@ -22,8 +22,7 @@ def _check_seed(seed) -> int:
     return int(seed)
 
 
-def sample(model, n: int, *, potential=None, seed: Optional[int] = None,
-           backend: Optional[str] = None) -> ParticleSet:
+def sample(model, n: int, *, potential=None, seed: Optional[int] = None) -> ParticleSet:
     """Draw ``n`` particles from ``model``.
 
     Each particle gets an equal share of the model's mass, so the set has the model's
@@ -42,8 +41,6 @@ def sample(model, n: int, *, potential=None, seed: Optional[int] = None,
         profiles, a galpy potential, or a list of them.
     seed : int, optional
         Seed to use for the draws, in ``[0, 2**32)``. Default: a fresh seed.
-    backend : str, optional
-        Name of the backend to use, e.g. ``'galpy'``. By default it is chosen from ``model``.
 
     Returns
     -------
@@ -60,15 +57,14 @@ def sample(model, n: int, *, potential=None, seed: Optional[int] = None,
     if n < 1:
         raise ValueError(f"n must be at least 1, got {n}")
     seed = _check_seed(seed)
-    sampler = sampler_backend_for(model, backend, potential=potential)
+    sampler = sampler_backend_for(model, potential=potential)
     pos, vel = sampler.draw(n, seed)
     mass = np.full(n, sampler.total_mass / n)
     return ParticleSet(pos, vel, mass,
                        meta={'backend': sampler.name, 'model': sampler.describe(), 'seed': seed})
 
 
-def sample_components(components, n, *, seed: Optional[int] = None,
-                      backend: Optional[str] = None) -> tuple:
+def sample_components(components, n, *, seed: Optional[int] = None) -> tuple:
     """Draw several components, each in equilibrium in the potential of them all.
 
     Parameters
@@ -80,8 +76,6 @@ def sample_components(components, n, *, seed: Optional[int] = None,
     seed : int, optional
         Seed in ``[0, 2**32)`` that each component's own seed is drawn from.
         Default: a fresh seed.
-    backend : str, optional
-        Name of the backend to use, e.g. ``'galpy'``. By default it is chosen from each model.
 
     Returns
     -------
@@ -115,6 +109,6 @@ def sample_components(components, n, *, seed: Optional[int] = None,
     children = np.random.SeedSequence(seed).spawn(len(components))
     parts = []
     for model, n_model, child in zip(components, n, children):
-        ps = sample(model, n_model, potential=total, seed=int(child.generate_state(1)[0]), backend=backend)
+        ps = sample(model, n_model, potential=total, seed=int(child.generate_state(1)[0]))
         parts.append(dataclasses.replace(ps, meta={**ps.meta, 'parent_seed': seed}))
     return tuple(parts)
