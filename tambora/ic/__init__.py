@@ -2,6 +2,6 @@
 
 from .particles import ParticleSet
 from .profiles import Hernquist, King, Plummer, TruncatedNFW
-from .sampler import sample
+from .sampler import sample, sample_components
 
-__all__ = ['ParticleSet', 'sample', 'Plummer', 'Hernquist', 'King', 'TruncatedNFW']
+__all__ = ['ParticleSet', 'sample', 'sample_components', 'Plummer', 'Hernquist', 'King', 'TruncatedNFW']

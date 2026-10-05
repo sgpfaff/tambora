@@ -53,11 +53,12 @@ def _is_tamboras(obj) -> bool:
     return getattr(type(obj), '_tambora_model', False) is True
 
 
-def _backend_for(entries, kind, cant, hint, obj, backend):
+def _backend_for(entries, kind, cant, hint, obj, backend, **kwargs):
     """Dispatch shared by the potential and sampler registries.
 
     ``kind`` names the backends in errors (``'potential'``), ``cant`` completes "can't ..."
-    for this object, and ``hint`` ends the error for an object no backend accepts.
+    for this object, and ``hint`` ends the error for an object no backend accepts. The
+    backend is chosen by ``obj`` alone, and built with ``obj`` and ``kwargs``.
     """
     if backend is not None:
         entry = next((e for e in entries if e.name == backend), None)
@@ -70,7 +71,7 @@ def _backend_for(entries, kind, cant, hint, obj, backend):
         cls = _load(entry)
         if not cls.accepts(obj):
             raise TypeError(f"The {entry.name!r} backend can't {cant}.")
-        return cls(obj)
+        return cls(obj, **kwargs)
 
     for entry in entries:
         if entry.package not in sys.modules:    # obj can't come from a package never imported,
@@ -78,7 +79,7 @@ def _backend_for(entries, kind, cant, hint, obj, backend):
                 continue                        # unless it's tambora's own
         cls = _load(entry)
         if cls.accepts(obj):
-            return cls(obj)
+            return cls(obj, **kwargs)
 
     installed = _installed(entries)
     supported = ', '.join(e.name for e in entries)
@@ -113,7 +114,7 @@ def potential_backend_for(obj, backend: Optional[str] = None) -> PotentialBacken
         obj, backend)
 
 
-def sampler_backend_for(obj, backend: Optional[str] = None) -> SamplerBackend:
+def sampler_backend_for(obj, backend: Optional[str] = None, *, potential=None) -> SamplerBackend:
     """Wrap the model ``obj`` in the sampler backend for its package.
 
     Parameters
@@ -123,6 +124,8 @@ def sampler_backend_for(obj, backend: Optional[str] = None) -> SamplerBackend:
     backend : str, optional
         Name of the backend to use, e.g. ``'galpy'``. By default it is chosen
         from ``obj``: the first backend, in priority order, that accepts it.
+    potential : object, optional
+        A potential to draw ``obj``'s density in, rather than its own; passed to the backend.
 
     Raises
     ------
@@ -132,4 +135,4 @@ def sampler_backend_for(obj, backend: Optional[str] = None) -> SamplerBackend:
     return _backend_for(
         _SAMPLER_BACKENDS, 'sampler', f"sample a {type(obj).__name__}",
         "Particles made some other way can go straight into Sim.add_particles.",
-        obj, backend)
+        obj, backend, potential=potential)

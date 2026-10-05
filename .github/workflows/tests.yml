@@ -294,3 +294,48 @@ jobs:
         working-directory: /tmp
         run: |
           python -m pytest --pyargs tambora.tests -o "addopts=" -q
+
+  galpy-main:
+    # Up to 1.12.0, galpy draws a density deep in a much deeper potential far too fast, so
+    # tambora refuses to (ic.sample with potential=, ic.sample_components) and those tests skip
+    # on every pinned galpy above. This job runs them against galpy's development version, ahead
+    # of the release that is to fix it. Until the fix is on galpy's main branch they fail, so
+    # this job can't fail the build; once galpy releases it, pin that release above instead.
+    name: galpy main (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install GSL, for galpy's C extension
+        run: sudo apt-get update && sudo apt-get install -y libgsl-dev
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[test]"
+          pip install "galpy @ git+https://github.com/jobovy/galpy.git@main"
+
+      - name: Confirm galpy is the development version
+        working-directory: /tmp
+        run: |
+          python -c "
+          import galpy
+          assert 'dev' in galpy.__version__, f'expected galpy main, got {galpy.__version__}'
+          print(f'confirmed galpy {galpy.__version__}')
+          "
+
+      - name: Run full suite
+        working-directory: /tmp
+        run: python -m pytest --pyargs tambora.tests -o "addopts=" -q

@@ -44,8 +44,6 @@ class _Profile:
 class Plummer(_Profile):
     r"""A Plummer sphere, sampled with its exact isotropic distribution function.
 
-    Its density is
-
     .. math::
 
         \rho(r) = \frac{3M}{4\pi b^3} \left(1 + \frac{r^2}{b^2}\right)^{-5/2},
@@ -70,8 +68,6 @@ class Plummer(_Profile):
 @dataclasses.dataclass(frozen=True)
 class Hernquist(_Profile):
     r"""A Hernquist sphere, sampled with its exact isotropic distribution function.
-
-    Its density is
 
     .. math::
 
@@ -119,17 +115,14 @@ class King(_Profile):
 
 @dataclasses.dataclass(frozen=True)
 class TruncatedNFW(_Profile):
-    r"""An NFW halo cut off exponentially, which gives it a finite mass.
-
-    Its density is
+    r"""An exponentially truncated NFW halo.
 
     .. math::
 
         \rho(r) = \frac{\rho_s\, e^{-r/r_t}}{(r/r_s)\,(1 + r/r_s)^2},
 
     with :math:`r_s` = ``rscale``, :math:`r_t` = ``rtrunc``, and :math:`\rho_s` set by the
-    total mass :math:`M`. Sampled with an Eddington-inversion distribution function, which
-    needs galpy 1.12 or later.
+    total mass :math:`M`.
 
     To truncate an NFW halo you've already defined in galpy, pass galpy's
     ``ExpTruncNFWPotential.from_nfw(nfw, rc=...)`` to :func:`~tambora.ic.sample` instead.
@@ -142,6 +135,10 @@ class TruncatedNFW(_Profile):
         NFW scale radius :math:`r_s` [kpc].
     rtrunc : float
         Truncation radius :math:`r_t` [kpc], the scale of the exponential cutoff.
+
+    Notes
+    -----
+    Requires galpy 1.12 or later.
 
     References
     ----------
