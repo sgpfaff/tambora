@@ -256,12 +256,17 @@ def _virial_ratio(sampler, pot, n=10_000, seed=3):
     return np.sum(vel**2) / sampler.units.velocity_kms**2 / -np.sum(r * rforce)
 
 
+# Up to 1.12.0, galpy #1343 draws speeds about 1.6% slow (the strict xfail above). With 50,000
+# particles the ratio scatters by 0.3% from seed to seed, so 1.5% is 5 sigma once that's fixed.
+_EQUILIBRIUM_N = 50_000
+_EQUILIBRIUM_RTOL = 0.015 if _GALPY_SPEEDS_FIXED else 0.03
+
+
 @pytest.mark.parametrize("make, cdf", PROFILES)
 def test_a_sampled_potential_is_close_to_equilibrium(make, cdf):
-    # galpy #1343 makes the speeds about 1.5% slow (the strict xfail above), so allow 5%.
     # A velocity unit of 220 instead of 230 km/s gives 0.92.
     sampler = GalpySampler(make())
-    assert _virial_ratio(sampler, sampler.df._pot) == pytest.approx(1., rel=0.05)
+    assert _virial_ratio(sampler, sampler.df._pot, n=_EQUILIBRIUM_N) == pytest.approx(1., rel=_EQUILIBRIUM_RTOL)
 
 
 @pytest.mark.filterwarnings(_TRACER_WARNING)
@@ -463,7 +468,7 @@ def test_a_truncated_nfw_samples_the_galpy_model_it_stands_for():
 @_needs_exp_trunc_nfw
 def test_a_truncated_nfw_is_close_to_equilibrium():
     sampler = GalpySampler(ic.TruncatedNFW(M=1e12, rscale=20., rtrunc=200.))
-    assert _virial_ratio(sampler, sampler.df._pot, n=5000) == pytest.approx(1., rel=0.05)
+    assert _virial_ratio(sampler, sampler.df._pot, n=_EQUILIBRIUM_N) == pytest.approx(1., rel=_EQUILIBRIUM_RTOL)
 
 
 @_needs_exp_trunc_nfw
