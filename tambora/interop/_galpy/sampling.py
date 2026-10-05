@@ -5,6 +5,7 @@ import inspect
 import warnings
 
 import numpy as np
+from galpy import __version__ as _galpy_version
 from galpy import df as _df
 from galpy import potential as _gp
 from galpy.potential import mass as _mass
@@ -13,7 +14,7 @@ from galpy.util.conversion import get_physical, mass_in_msol
 from .bridge import _check_physical, _ensure_pot, _get_ro_vo, _iter_components
 from .potential import _flatten
 from .._backend import SamplerBackend
-from ...ic.profiles import PROFILES, Hernquist, King, Plummer
+from ...ic.profiles import PROFILES, Hernquist, King, Plummer, TruncatedNFW
 from ...units import G_KPC_KMS, UnitSystem
 
 # galpy's exact isotropic DFs, used when a potential of exactly this type is sampled in itself.
@@ -58,10 +59,13 @@ def _rmax(dens):
     m = np.array([_mass(dens, r, use_physical=False) for r in _RADII])
     m_far = _mass(dens, _FAR, use_physical=False)
     if not np.isfinite(m_far) or m_far > 1.01 * m[-1]:
+        hint = ("For an NFW halo, use ic.TruncatedNFW, or truncate yours with galpy's "
+                "ExpTruncNFWPotential.from_nfw(nfw, rc=...) (galpy 1.12 or later). "
+                if any(isinstance(p, _gp.NFWPotential) for p in _iter_components(dens)) else "")
         raise ValueError(
             f"Can't sample a {_names(dens)}: its mass is infinite, or so spread out that more "
-            f"than 1% of it is beyond R={_RADII[-1]:g} natural units. Use a density with a finite "
-            f"mass, or build a galpy DF with an rmax yourself and sample that.")
+            f"than 1% of it is beyond R={_RADII[-1]:g} natural units. {hint}Use a density with a "
+            f"finite mass.")
     converged = 1 - m / m_far < 1e-10
     return _RADII[np.argmax(converged)] if converged.any() else _RADII[-1]
 
@@ -103,14 +107,29 @@ def _df_for_profile(profile):
         return _df.isotropicPlummerdf(pot=_gp.PlummerPotential(amp=1., b=1., ro=ro, vo=vo), ro=ro, vo=vo)
     if isinstance(profile, Hernquist):          # galpy's amp is twice the mass
         return _df.isotropicHernquistdf(pot=_gp.HernquistPotential(amp=2., a=1., ro=ro, vo=vo), ro=ro, vo=vo)
+    if isinstance(profile, TruncatedNFW):
+        return _truncated_nfw_df(profile, ro, vo)
     return _df.kingdf(W0=profile.W0, M=1., rt=1., ro=ro, vo=vo)
+
+
+def _truncated_nfw_df(profile, ro, vo):
+    if not hasattr(_gp, 'ExpTruncNFWPotential'):
+        raise ImportError(f"Sampling a TruncatedNFW needs galpy 1.12 or later, for its "
+                          f"ExpTruncNFWPotential; this is galpy {_galpy_version}.")
+    ratio = profile.rtrunc / profile.rscale
+    if ratio < 0.2:     # measured: galpy fails, or samples out of equilibrium, below this
+        raise ValueError(f"Can't sample {profile.describe()}: galpy's sampler is unreliable "
+                         f"when rtrunc is under a fifth of rscale (here {ratio:.3g} of it).")
+    pot = _gp.ExpTruncNFWPotential(mass=1., a=1., rc=ratio, ro=ro, vo=vo)
+    return _df_for(pot)[0]
 
 
 class GalpySampler(SamplerBackend):
     """A galpy spherical DF (e.g. ``kingdf``, ``eddingtondf``); a spherical galpy potential,
     whose density is drawn in its own potential, with galpy's exact DF for a Plummer or
     Hernquist and an Eddington-inversion DF otherwise; or one of tambora's profiles
-    (:class:`~tambora.ic.Plummer`, :class:`~tambora.ic.Hernquist`, :class:`~tambora.ic.King`)."""
+    (:class:`~tambora.ic.Plummer`, :class:`~tambora.ic.Hernquist`, :class:`~tambora.ic.King`,
+    :class:`~tambora.ic.TruncatedNFW`)."""
 
     name = 'galpy'
 

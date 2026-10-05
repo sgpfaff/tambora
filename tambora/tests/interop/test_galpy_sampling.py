@@ -242,9 +242,9 @@ def test_the_sampled_radii_follow_the_potentials_density(make, cdf):
 def _virial_ratio(sampler, pot, n=10_000, seed=3):
     """2K / -sum(m x.F) for the particles in pot, which is 1 in equilibrium."""
     pos, vel = sampler.draw(n, seed)
-    r = np.linalg.norm(pos, axis=1) / RO
+    r = np.linalg.norm(pos, axis=1) / sampler.units.length_kpc     # pot's natural units
     rforce = potential.evaluaterforces(pot, r, 0 * r, use_physical=False)
-    return np.sum(vel**2) / VO**2 / -np.sum(r * rforce)
+    return np.sum(vel**2) / sampler.units.velocity_kms**2 / -np.sum(r * rforce)
 
 
 @pytest.mark.parametrize("make, cdf", PROFILES)
@@ -425,6 +425,68 @@ def test_ic_sample_draws_a_profile():
     assert ps.meta == {'backend': 'galpy', 'model': 'Hernquist(M=1e+10, rscale=2)', 'seed': 2}
 
 
-@pytest.mark.parametrize("make_profile, make_native", PROFILE_EQUIVALENTS)
-def test_profiles_are_accepted(make_profile, make_native):
+@pytest.mark.parametrize("make_profile", [p.values[0] for p in PROFILE_EQUIVALENTS]
+                         + [lambda: ic.TruncatedNFW(M=1e12, rscale=20., rtrunc=200.)])
+def test_profiles_are_accepted(make_profile):
     assert GalpySampler.accepts(make_profile())
+
+
+_HAS_EXP_TRUNC_NFW = hasattr(potential, 'ExpTruncNFWPotential')
+_needs_exp_trunc_nfw = pytest.mark.skipif(not _HAS_EXP_TRUNC_NFW, reason="ExpTruncNFWPotential is new in galpy 1.12")
+
+
+@_needs_exp_trunc_nfw
+def test_a_truncated_nfw_samples_the_galpy_model_it_stands_for():
+    profile = GalpySampler(ic.TruncatedNFW(M=1e12, rscale=20., rtrunc=200.))
+    native = GalpySampler(potential.ExpTruncNFWPotential(mass=1e12 * u.Msun, a=20 * u.kpc, rc=200 * u.kpc,
+                                                         ro=RO, vo=VO))
+    assert profile.total_mass == pytest.approx(1e12, rel=1e-8)
+    assert profile.total_mass == pytest.approx(native.total_mass, rel=1e-8)
+    (pos, vel), (pos0, vel0) = profile.draw(2000, 4), native.draw(2000, 4)
+    # Same radii; the speeds come from a numerical DF, built in different units, so compare
+    # their distribution.
+    np.testing.assert_allclose(np.linalg.norm(pos, axis=1), np.linalg.norm(pos0, axis=1), rtol=1e-6)
+    quantiles = [10, 25, 50, 75, 90]
+    np.testing.assert_allclose(np.percentile(np.linalg.norm(vel, axis=1), quantiles),
+                               np.percentile(np.linalg.norm(vel0, axis=1), quantiles), rtol=1e-3)
+
+
+@_needs_exp_trunc_nfw
+def test_a_truncated_nfw_is_close_to_equilibrium():
+    sampler = GalpySampler(ic.TruncatedNFW(M=1e12, rscale=20., rtrunc=200.))
+    assert _virial_ratio(sampler, sampler.df._pot, n=5000) == pytest.approx(1., rel=0.05)
+
+
+@_needs_exp_trunc_nfw
+def test_a_truncated_nfw_cut_off_far_inside_its_scale_radius_is_refused():
+    with pytest.raises(ValueError, match=r"Can't sample TruncatedNFW\(M=1e\+12, rscale=20, rtrunc=3\): "
+                                         r"galpy's sampler is unreliable when rtrunc is under a fifth of rscale"):
+        GalpySampler(ic.TruncatedNFW(M=1e12, rscale=20., rtrunc=3.))
+
+
+@pytest.mark.skipif(_HAS_EXP_TRUNC_NFW, reason="only galpy before 1.12 lacks ExpTruncNFWPotential")
+def test_a_truncated_nfw_says_it_needs_galpy_1_12():
+    with pytest.raises(ImportError, match=r"Sampling a TruncatedNFW needs galpy 1.12 or later"):
+        GalpySampler(ic.TruncatedNFW(M=1e12, rscale=20., rtrunc=200.))
+
+
+def test_an_nfw_points_to_its_truncated_versions():
+    with pytest.raises(ValueError, match=r"For an NFW halo, use ic.TruncatedNFW, or truncate yours with "
+                                         r"galpy's ExpTruncNFWPotential.from_nfw"):
+        GalpySampler(potential.NFWPotential(amp=1e12 * u.Msun, a=20 * u.kpc, ro=RO, vo=VO))
+
+
+def test_another_infinite_mass_doesnt_mention_nfw():
+    with pytest.raises(ValueError, match="its mass is infinite") as caught:
+        GalpySampler(potential.PowerSphericalPotential(amp=1., alpha=2., ro=RO, vo=VO))
+    assert 'NFW' not in str(caught.value)
+
+
+@_needs_exp_trunc_nfw
+def test_galpys_own_truncation_of_an_nfw_samples_with_its_mass():
+    # The route the NFW error points to.
+    nfw = potential.NFWPotential(amp=1e12 * u.Msun, a=20 * u.kpc, ro=RO, vo=VO)
+    truncated = potential.ExpTruncNFWPotential.from_nfw(nfw, rc=200 * u.kpc)
+    ps = ic.sample(truncated, 1000, seed=1)
+    expected = potential.mass(truncated, 1e8, use_physical=False) * GalpySampler(truncated).units.mass_msun
+    assert ps.mass.sum() == pytest.approx(expected, rel=1e-8)

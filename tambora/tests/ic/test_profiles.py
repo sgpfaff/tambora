@@ -13,6 +13,8 @@ PROFILES = [
     pytest.param(ic.Plummer, dict(M=1e5, rscale=0.01), 'Plummer(M=100000, rscale=0.01)', id='Plummer'),
     pytest.param(ic.Hernquist, dict(M=1e10, rscale=2.), 'Hernquist(M=1e+10, rscale=2)', id='Hernquist'),
     pytest.param(ic.King, dict(M=1e5, W0=5., rt=0.03), 'King(M=100000, W0=5, rt=0.03)', id='King'),
+    pytest.param(ic.TruncatedNFW, dict(M=1e12, rscale=20., rtrunc=200.),
+                 'TruncatedNFW(M=1e+12, rscale=20, rtrunc=200)', id='TruncatedNFW'),
 ]
 
 
