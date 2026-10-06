@@ -337,7 +337,7 @@ class Sim:
         RuntimeError
             If the simulation has already been run.
         '''
-        raise NotImplementedError("Adding subhalos as Plummer spheres is not yet implemented. Please sample subhalo particles with galpysampler() and add them as a component with add_particles().")
+        raise NotImplementedError("Adding subhalos as Plummer spheres is not yet implemented. Please sample subhalo particles with ic.sample() and add them as a component with add_particles().")
 
     def tag(self, name, mask):
         '''
