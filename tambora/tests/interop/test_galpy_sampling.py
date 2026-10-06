@@ -14,6 +14,7 @@ import astropy.units as u                                             # noqa: E4
 from galpy import df, potential                                       # noqa: E402
 from packaging.version import parse as parse_version                  # noqa: E402
 from galpy.potential.SphericalPotential import SphericalPotential     # noqa: E402
+from galpy.util.conversion import mass_in_msol                        # noqa: E402
 
 from tambora import ic                                                 # noqa: E402
 from tambora.interop._galpy import sampling                            # noqa: E402
@@ -478,8 +479,9 @@ def test_a_truncated_nfw_cut_off_far_inside_its_scale_radius_is_refused():
         GalpySampler(ic.TruncatedNFW(M=1e12, rscale=20., rtrunc=3.))
 
 
-@pytest.mark.skipif(_HAS_EXP_TRUNC_NFW, reason="only galpy before 1.12 lacks ExpTruncNFWPotential")
-def test_a_truncated_nfw_says_it_needs_galpy_1_12():
+def test_a_truncated_nfw_says_it_needs_galpy_1_12(monkeypatch):
+    # galpy before 1.12 has no ExpTruncNFWPotential; take it away so this runs on any galpy.
+    monkeypatch.delattr(potential, 'ExpTruncNFWPotential', raising=False)
     with pytest.raises(ImportError, match=r"Sampling a TruncatedNFW needs galpy 1.12 or later"):
         GalpySampler(ic.TruncatedNFW(M=1e12, rscale=20., rtrunc=200.))
 
@@ -580,6 +582,28 @@ def test_ic_sample_components_draws_each_with_its_own_mass():
     # A Hernquist is cut at 10^4 of its scale radii, which leaves out 0.02% of its mass.
     assert dm.mass.sum() == pytest.approx(1e9 * (1e4 / (1e4 + 1.))**2, rel=1e-6)
     assert dm.meta['model'].startswith('Hernquist(M=1e+09, rscale=1) in Plummer(')
+
+
+@pytest.mark.usefixtures('tracers_allowed')
+@pytest.mark.parametrize("profile, native", [
+    pytest.param(ic.Plummer(M=1e6, rscale=0.01), lambda: _plummer_pot(M=1e6, b=0.01), id='Plummer'),
+    pytest.param(HALO, lambda: _hernquist_pot(M=1e9, a=1.), id='Hernquist'),
+    pytest.param(ic.King(M=1e6, W0=6., rt=0.05),
+                 lambda: potential.KingPotential(W0=6., M=1e6 * u.Msun, rt=0.05 * u.kpc, ro=RO, vo=VO), id='King'),
+    pytest.param(ic.TruncatedNFW(M=1e9, rscale=1., rtrunc=10.),
+                 lambda: potential.ExpTruncNFWPotential(mass=1e9 * u.Msun, a=1. * u.kpc, rc=10. * u.kpc, ro=RO, vo=VO),
+                 id='TruncatedNFW', marks=_needs_exp_trunc_nfw),
+])
+def test_a_profile_in_the_potential_is_the_galpy_potential_it_stands_for(profile, native):
+    # The profile is built in the stars' units; compare its enclosed mass with the same model
+    # built directly in galpy, in other units.
+    sampler = GalpySampler(STARS, potential=[STARS, profile])
+    _, member = sampling._iter_components(sampler.df._pot)
+    radii = [0.003, 0.01, 0.03, 0.3, 3., 30.]     # kpc
+    got = [potential.mass(member, r / sampler.units.length_kpc, use_physical=False) * sampler.units.mass_msun
+           for r in radii]
+    want = [potential.mass(native(), r / RO, use_physical=False) * mass_in_msol(VO, RO) for r in radii]
+    np.testing.assert_allclose(got, want, rtol=1e-6)
 
 
 @pytest.mark.usefixtures('tracers_allowed')
