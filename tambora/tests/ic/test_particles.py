@@ -46,6 +46,27 @@ def test_it_is_frozen():
         _ps().pos = np.zeros((4, 3))
 
 
+def test_no_meta_is_empty():
+    assert ParticleSet(np.zeros((1, 3)), np.zeros((1, 3)), np.ones(1), meta=None).meta == {}
+
+
+def test_the_arrays_are_copies_of_the_callers():
+    pos, vel, mass = np.zeros((2, 3)), np.zeros((2, 3)), np.ones(2)     # float already: not converted
+    ps = ParticleSet(pos, vel, mass)
+    pos[0, 0] = vel[0, 0] = mass[0] = 9.
+    assert ps.pos[0, 0] == ps.vel[0, 0] == 0. and ps.mass[0] == 1.
+
+
+@pytest.mark.parametrize("make", [
+    pytest.param(_ps, id='made'),
+    pytest.param(lambda: _ps().shifted(pos=[1., 0., 0.]), id='shifted'),
+])
+@pytest.mark.parametrize("field", ['pos', 'vel', 'mass'])
+def test_the_arrays_are_read_only(make, field):
+    with pytest.raises(ValueError, match="read-only"):
+        getattr(make(), field)[0] = 0.
+
+
 def test_meta_is_copied_from_the_caller():
     meta = {'seed': 7}
     ps = _ps(meta=meta)
