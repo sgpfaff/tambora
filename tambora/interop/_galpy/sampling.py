@@ -2,6 +2,7 @@
 :class:`~tambora.interop.SamplerBackend`, including densities drawn in another potential."""
 
 import inspect
+import os
 import warnings
 
 import numpy as np
@@ -34,11 +35,54 @@ _ALSO_SPHERICAL = (
 )
 
 # Up to 1.12.0, galpy's sampler draws a density in a much deeper potential than its own far too
-# fast (virial ratios up to 1.6). galpy's next release is to fix it (#1568, and a follow-up).
-_TRACERS_FIXED = _parse_version(_galpy_version) > _parse_version("1.12.0")
+# fast (virial ratios up to 1.6). galpy's main branch has part of the fix (#1568) and the rest is
+# to follow; this is the first galpy release with all of it, None until there is one.
+_TRACERS_RELEASE = None
+
+# galpy's development versions don't say whether they have a fix (main reads 1.12.1.dev0 before
+# and after it), so tambora draws tracers with one only if this environment variable is 1.
+_DEV_TRACERS_ENV = 'TAMBORA_GALPY_DEV_TRACERS'
 
 _RADII = np.logspace(-8, 4, 121)    # [natural units]; 1e4 is eddingtondf's default rmax
 _FAR = 1e8                          # [natural units]: "infinity", for the mass check
+
+
+def _galpy_has(release):
+    """Whether this galpy is ``release`` or later (never, while ``release`` is None)."""
+    return release is not None and _parse_version(_galpy_version) >= _parse_version(release)
+
+
+def _dev_galpy():
+    """Whether this galpy is a development version after 1.12.0, which may have the fix."""
+    version = _parse_version(_galpy_version)
+    return version.is_devrelease and version > _parse_version("1.12.0")
+
+
+def _tracers_fixed():
+    """Whether galpy draws a density in another potential right, as far as tambora knows: a
+    release with the fix does, and so may a development version the user vouches for."""
+    if _galpy_has(_TRACERS_RELEASE):
+        return True
+    return _dev_galpy() and os.environ.get(_DEV_TRACERS_ENV) == '1'
+
+
+def _warn_if_unchecked():
+    """Warn, if galpy is a development version the user vouches for, that tambora can't check it."""
+    if _tracers_fixed() and not _galpy_has(_TRACERS_RELEASE):
+        warnings.warn(f"Drawing a density in another potential with a development version of galpy "
+                      f"({_galpy_version}), as {_DEV_TRACERS_ENV}=1 asks. tambora can't tell whether "
+                      f"this galpy has the fix; without it, the particles are too fast. Check their "
+                      f"virial ratio in the total potential.")
+
+
+def _tracers_unfixed():
+    """The error for a galpy that can't draw a density in another potential."""
+    needs = (f"galpy {_TRACERS_RELEASE} or later" if _TRACERS_RELEASE is not None
+             else "a fix to galpy that's in no release yet")
+    hint = (f" This development version of galpy may have the fix: set {_DEV_TRACERS_ENV}=1 to "
+            f"use it." if _dev_galpy() else "")
+    return ImportError(f"Drawing a density in another potential needs {needs} (this is galpy "
+                       f"{_galpy_version}).{hint}")
 
 
 def _sampling_rmin(d):
@@ -205,9 +249,9 @@ def _tracer_df(model, potential):
     ``model`` and ``potential`` may mix tambora's profiles and galpy potentials. Profiles are
     built in the galpy potentials' units if there are any, and otherwise in the model's own.
     """
-    if not _TRACERS_FIXED:
-        raise ImportError(f"Drawing a density in another potential needs galpy newer than 1.12.0 "
-                          f"(this is galpy {_galpy_version}).")
+    if not _tracers_fixed():
+        raise _tracers_unfixed()
+    _warn_if_unchecked()
     if isinstance(model, King):
         raise TypeError("A King model is defined by its own potential, so it can't be drawn in "
                         "another one.")
@@ -239,7 +283,8 @@ class GalpySampler(SamplerBackend):
     :class:`~tambora.ic.TruncatedNFW`).
 
     Given a ``potential``, the model's density is drawn in it instead, with an Eddington DF.
-    This requires galpy > 1.12.0.
+    This needs a galpy release with the fix made after 1.12.0, or a development version of
+    galpy that has it and ``TAMBORA_GALPY_DEV_TRACERS=1`` in the environment.
     """
 
     name = 'galpy'
@@ -258,13 +303,15 @@ class GalpySampler(SamplerBackend):
                 raise TypeError("A galpy DF has its potential already; potential= is for drawing "
                                 "a galpy potential's or a profile's density in another one.")
             _check_physical(obj)
-            if obj._denspot is not obj._pot and not _TRACERS_FIXED:
-                warnings.warn(
-                    f"This {type(obj).__name__} draws a tracer ({_names(obj._denspot)}) in a "
-                    f"different potential ({_names(obj._pot)}). Up to galpy 1.12.0, galpy's "
-                    f"sampler can give such tracers speeds that are too high when the potential "
-                    f"is much deeper than the tracer's own. Check the particles' "
-                    f"virial ratio in the total potential.")
+            if obj._denspot is not obj._pot:
+                if not _tracers_fixed():
+                    warnings.warn(
+                        f"This {type(obj).__name__} draws a tracer ({_names(obj._denspot)}) in a "
+                        f"different potential ({_names(obj._pot)}). galpy {_galpy_version} can give "
+                        f"such tracers speeds that are too high when the potential is much deeper "
+                        f"than the tracer's own. Check the particles' virial ratio in the total "
+                        f"potential.")
+                _warn_if_unchecked()
             self.df, self._label = obj, type(obj).__name__
         elif potential is not None:
             self.df, self._label = _tracer_df(obj, potential)

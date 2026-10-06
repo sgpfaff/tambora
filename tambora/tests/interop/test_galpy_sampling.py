@@ -3,6 +3,7 @@ Tests for the galpy sampler backend.
 """
 
 import inspect
+import re
 import warnings
 
 import numpy as np
@@ -12,7 +13,6 @@ from scipy import stats
 galpy = pytest.importorskip("galpy")
 import astropy.units as u                                             # noqa: E402
 from galpy import df, potential                                       # noqa: E402
-from packaging.version import parse as parse_version                  # noqa: E402
 from galpy.potential.SphericalPotential import SphericalPotential     # noqa: E402
 from galpy.util.conversion import mass_in_msol                        # noqa: E402
 
@@ -121,8 +121,10 @@ def test_the_half_mass_radius_is_plummers():
     assert np.median(np.linalg.norm(pos, axis=1)) == pytest.approx(r_half, rel=0.01)
 
 
-# galpy #1568 fixes #1343 after galpy 1.12.0; this test then passes, so it's only xfailed before.
-_GALPY_SPEEDS_FIXED = parse_version(galpy.__version__) > parse_version("1.12.0")
+# galpy #1568 fixes #1343 on galpy's main branch after 1.12.0, so in its development versions
+# since and in the release that draws tracers right; this test then passes, so it's only xfailed
+# before.
+_GALPY_SPEEDS_FIXED = sampling._dev_galpy() or sampling._galpy_has(sampling._TRACERS_RELEASE)
 
 
 @pytest.mark.xfail(not _GALPY_SPEEDS_FIXED, raises=AssertionError, strict=True,
@@ -160,12 +162,13 @@ def test_describe_names_the_df():
     assert GalpySampler(_king()).describe() == 'kingdf'
 
 
-# Up to 1.12.0, galpy draws a tracer deep in a much deeper potential far too fast; tambora
-# then refuses to draw one itself, and warns about a galpy DF that does.
-_GALPY_DRAWS_TRACERS = parse_version(galpy.__version__) > parse_version("1.12.0")
+# Up to 1.12.0, galpy draws a tracer deep in a much deeper potential far too fast. Until a
+# release with the fix, or a development version vouched for, tambora refuses to draw one
+# itself, and warns about a galpy DF that does.
+_GALPY_DRAWS_TRACERS = sampling._tracers_fixed()
 
 
-@pytest.mark.skipif(_GALPY_DRAWS_TRACERS, reason="only galpy up to 1.12.0 draws tracers too fast")
+@pytest.mark.skipif(_GALPY_DRAWS_TRACERS, reason="this galpy draws tracers right")
 def test_a_tracer_df_warns_that_its_speeds_can_be_too_high():
     with pytest.warns(UserWarning, match=r"draws a tracer \(PlummerPotential\) in a different "
                                          r"potential \(PlummerPotential\+NFWPotential\)"):
@@ -177,7 +180,7 @@ def test_a_tracer_df_warns_that_its_speeds_can_be_too_high():
     pytest.param(_plummer, id='isotropicPlummerdf'),
     pytest.param(lambda: df.eddingtondf(pot=_plummer_pot(), rmax=1. * u.kpc, ro=RO, vo=VO), id='eddingtondf'),
     pytest.param(_tracer, id='tracer_eddingtondf', marks=pytest.mark.skipif(
-        not _GALPY_DRAWS_TRACERS, reason="galpy up to 1.12.0 draws tracers too fast")),
+        not sampling._galpy_has(sampling._TRACERS_RELEASE), reason="until a galpy release draws tracers right")),
 ])
 def test_a_df_that_galpy_draws_right_doesnt_warn(make):
     d = make()
@@ -513,24 +516,100 @@ def test_galpys_own_truncation_of_an_nfw_samples_with_its_mass():
 STARS = ic.Plummer(M=1e5, rscale=0.005)         # a star cluster...
 HALO = ic.Hernquist(M=1e9, rscale=1.)           # ...at the centre of a dark halo
 _needs_galpy_drawing_tracers = pytest.mark.skipif(
-    not _GALPY_DRAWS_TRACERS, reason="galpy up to 1.12.0 draws tracers too fast")
+    not _GALPY_DRAWS_TRACERS, reason="this galpy may draw tracers too fast")
 
 
 @pytest.fixture
 def tracers_allowed(monkeypatch):
     """Lifts the galpy-version guard, for what doesn't depend on the tracers' speeds."""
-    monkeypatch.setattr(sampling, '_TRACERS_FIXED', True)
+    monkeypatch.setattr(sampling, '_TRACERS_RELEASE', galpy.__version__)
 
 
-@pytest.mark.skipif(_GALPY_DRAWS_TRACERS, reason="only galpy up to 1.12.0 draws tracers too fast")
+@pytest.mark.skipif(_GALPY_DRAWS_TRACERS, reason="this galpy draws tracers right")
 @pytest.mark.parametrize("draw", [
     pytest.param(lambda: ic.sample(STARS, 10, potential=[STARS, HALO]), id='sample'),
     pytest.param(lambda: ic.sample_components([STARS, HALO], n=[10, 10]), id='sample_components'),
 ])
 def test_older_galpy_refuses_to_draw_a_density_in_another_potential(draw):
-    with pytest.raises(ImportError, match=r"Drawing a density in another potential needs galpy newer "
-                                          r"than 1\.12\.0 \(this is galpy "):
+    with pytest.raises(ImportError, match=r"Drawing a density in another potential needs .*\(this is galpy "):
         draw()
+
+
+@pytest.fixture
+def galpy_as(monkeypatch):
+    """Makes tambora take galpy for ``version``, with the fix in ``release``, and ``vouch`` as
+    the environment variable that vouches for a development version (None: unset)."""
+    def take(version, release=None, vouch=None):
+        monkeypatch.setattr(sampling, '_galpy_version', version)
+        monkeypatch.setattr(sampling, '_TRACERS_RELEASE', release)
+        if vouch is None:
+            monkeypatch.delenv('TAMBORA_GALPY_DEV_TRACERS', raising=False)
+        else:
+            monkeypatch.setenv('TAMBORA_GALPY_DEV_TRACERS', vouch)
+    return take
+
+
+@pytest.mark.parametrize("version, release, vouch, fixed", [
+    pytest.param('1.12.0', None, None, False, id='1.12.0'),
+    pytest.param('1.12.1', None, None, False, id='a_later_release_without_the_fix'),
+    pytest.param('1.12.1', None, '1', False, id='a_release_cant_be_vouched_for'),
+    pytest.param('1.12.1.dev0', None, None, False, id='a_development_version'),
+    pytest.param('1.12.1.dev0', None, '1', True, id='a_development_version_vouched_for'),
+    pytest.param('1.12.1.dev0', None, 'true', False, id='only_1_vouches'),
+    pytest.param('1.12.0.dev0', None, '1', False, id='a_development_version_of_1.12.0'),
+    pytest.param('1.13.0', '1.13.0', None, True, id='the_release_with_the_fix'),
+    pytest.param('1.13.2', '1.13.0', None, True, id='a_release_after_it'),
+    pytest.param('1.12.1', '1.13.0', None, False, id='a_release_before_it'),
+    pytest.param('1.13.0.dev0', '1.13.0', '1', True, id='its_development_version_vouched_for'),
+])
+def test_galpy_draws_a_density_in_another_potential_from_the_release_with_the_fix(galpy_as, version, release,
+                                                                                  vouch, fixed):
+    galpy_as(version, release, vouch)
+    assert sampling._tracers_fixed() is fixed
+
+
+@pytest.mark.parametrize("version, release, match", [
+    pytest.param('1.12.0', None, r"needs a fix to galpy that's in no release yet \(this is galpy 1\.12\.0\)\.$",
+                 id='no_release_yet'),
+    pytest.param('1.12.1', '1.13.0', r"needs galpy 1\.13\.0 or later \(this is galpy 1\.12\.1\)\.$", id='release'),
+    pytest.param('1.12.1.dev0', None, r"needs a fix to galpy that's in no release yet \(this is galpy "
+                                      r"1\.12\.1\.dev0\)\. This development version of galpy may have the fix: "
+                                      r"set TAMBORA_GALPY_DEV_TRACERS=1 to use it\.$",
+                 id='development_version'),
+])
+def test_galpy_without_the_fix_says_what_it_needs(galpy_as, version, release, match):
+    galpy_as(version, release)
+    with pytest.raises(ImportError, match=r"^Drawing a density in another potential " + match):
+        GalpySampler(STARS, potential=[STARS, HALO])
+
+
+_UNCHECKED = (r"with a development version of galpy \(1\.12\.1\.dev0\), as TAMBORA_GALPY_DEV_TRACERS=1 "
+              r"asks\. tambora can't tell whether this galpy has the fix")
+
+
+def test_a_development_galpy_vouched_for_draws_with_a_warning(galpy_as):
+    galpy_as('1.12.1.dev0', vouch='1')
+    with pytest.warns(UserWarning, match=_UNCHECKED):
+        ps = ic.sample(STARS, 10, potential=[STARS, HALO], seed=1)
+    assert ps.meta['model'].startswith('Plummer(M=100000, rscale=0.005) in ')
+
+
+def test_a_tracer_df_warns_that_a_development_galpy_vouched_for_is_unchecked(galpy_as):
+    galpy_as('1.12.1.dev0', vouch='1')
+    d = _tracer()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        GalpySampler(d)
+    assert [str(w.message) for w in caught if 'too high' in str(w.message)] == []
+    assert any(re.search(_UNCHECKED, str(w.message)) for w in caught)
+
+
+def test_a_tracer_df_doesnt_warn_with_the_release_with_the_fix(galpy_as):
+    galpy_as('1.13.0', release='1.13.0')
+    d = _tracer()
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        GalpySampler(d)
 
 
 @pytest.mark.parametrize("potential", [
