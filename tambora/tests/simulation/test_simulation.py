@@ -195,6 +195,18 @@ def test_add_particles_rejects_a_particle_set_with_arrays():
     with pytest.raises(TypeError, match="either a ParticleSet or pos, vel and mass, not both"):
         Sim().add_particles('comp1', ps, vel=COMP1_VEL)
 
+@pytest.mark.parametrize("as_set", [False, True], ids=['arrays', 'particle_set'])
+def test_add_particles_copies_the_arrays(as_set):
+    pos, vel, mass = COMP1_POS.copy(), COMP1_VEL.copy(), COMP1_MASS.copy()
+    sim = Sim()
+    sim.add_particles('comp1', ParticleSet(pos, vel, mass)) if as_set else sim.add_particles('comp1', pos, vel, mass)
+    pos[0, 0] = vel[0, 0] = mass[0] = 99.
+    np.testing.assert_array_equal(sim._init_pos, COMP1_POS)
+    np.testing.assert_array_equal(sim._init_vel, COMP1_VEL * KMS_TO_KPCGYR)
+    np.testing.assert_array_equal(sim._mass, COMP1_MASS)
+    # A ParticleSet's arrays are read-only; the simulation's own aren't.
+    assert sim._init_pos.flags.writeable and sim._init_vel.flags.writeable and sim._mass.flags.writeable
+
 def test_add_particles_without_vel_and_mass_needs_a_particle_set():
     with pytest.raises(TypeError, match="vel and mass are required unless pos is a ParticleSet"):
         Sim().add_particles('comp1', COMP1_POS)

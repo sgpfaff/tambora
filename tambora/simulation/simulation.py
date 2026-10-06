@@ -185,9 +185,11 @@ class Sim:
             pos, vel, mass = pos
         elif vel is None or mass is None:
             raise TypeError("vel and mass are required unless pos is a ParticleSet.")
-        pos = np.asarray(pos, dtype=np.float64)
+        # Copies: the simulation's initial state can't change through the caller's arrays,
+        # and a ParticleSet's read-only arrays don't make it read-only.
+        pos = np.array(pos, dtype=np.float64)
         vel = np.asarray(vel, dtype=np.float64) * KMS_TO_KPCGYR
-        mass = np.asarray(mass, dtype=np.float64)
+        mass = np.array(mass, dtype=np.float64)
         if self._has_run:
             raise RuntimeError("Cannot add components after run()")
         if not isinstance(name, str):

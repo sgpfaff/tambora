@@ -10,7 +10,6 @@ import numpy as np
 @dataclasses.dataclass(frozen=True, eq=False)
 class ParticleSet:
     """Positions, velocities and masses of N particles, and where they came from.
-
     Parameters
     ----------
     pos : (N, 3) array
@@ -21,6 +20,7 @@ class ParticleSet:
         Masses [Msun].
     meta : mapping, optional
         Where the particles came from, e.g. the sampler, its settings and the seed.
+        Default: empty.
     """
     pos: np.ndarray
     vel: np.ndarray
@@ -28,9 +28,9 @@ class ParticleSet:
     meta: Mapping[str, Any] = dataclasses.field(default_factory=dict)
 
     def __post_init__(self):
-        pos = np.asarray(self.pos, dtype=float)
-        vel = np.asarray(self.vel, dtype=float)
-        mass = np.asarray(self.mass, dtype=float)
+        pos = np.array(self.pos, dtype=float)       # copies, so the caller's arrays stay theirs
+        vel = np.array(self.vel, dtype=float)
+        mass = np.array(self.mass, dtype=float)
         if pos.ndim != 2 or pos.shape[1] != 3:
             raise ValueError(f"pos must have shape (N, 3), got {pos.shape}")
         if vel.shape != pos.shape:
@@ -38,10 +38,10 @@ class ParticleSet:
         if mass.shape != (len(pos),):
             raise ValueError(f"mass must have shape ({len(pos)},), got {mass.shape}")
         # The class is frozen, so the checked values go in through object.__setattr__.
-        object.__setattr__(self, 'pos', pos)
-        object.__setattr__(self, 'vel', vel)
-        object.__setattr__(self, 'mass', mass)
-        object.__setattr__(self, 'meta', dict(self.meta))
+        for name, value in (('pos', pos), ('vel', vel), ('mass', mass)):
+            value.flags.writeable = False
+            object.__setattr__(self, name, value)
+        object.__setattr__(self, 'meta', dict(self.meta) if self.meta is not None else {})
 
     def __iter__(self):
         yield from (self.pos, self.vel, self.mass)
