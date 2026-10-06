@@ -66,6 +66,17 @@ def test_a_sampler_backend_missing_a_method_cannot_be_instantiated():
         _SamplerMissingDraw(object())
 
 
+class _MinimalSampler(_SamplerMissingDraw):
+    name = 'minimal_sampler'
+
+    def draw(self, n, seed):
+        return np.zeros((n, 3)), np.zeros((n, 3))
+
+
+def test_a_sampler_backend_describes_its_model_by_type_by_default():
+    assert _MinimalSampler(3.0).describe() == 'float'
+
+
 # --- dispatch ----------------------------------------------------------------
 
 class _FakeEntry:
