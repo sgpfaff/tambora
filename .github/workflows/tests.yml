@@ -9,6 +9,11 @@ on:
 # Fix hash randomization so dict/set ordering is reproducible across runs.
 env:
   PYTHONHASHSEED: "0"
+  # The galpy release that core and galpy-astropy-units test. It's pinned, like galpy-compat's,
+  # so that a new galpy release can't change what passes. When galpy releases the fix for
+  # drawing a density in another potential, set this, and _TRACERS_RELEASE in
+  # tambora/interop/_galpy/sampling.py, to that release, and add it to galpy-compat.
+  GALPY_VERSION: "1.12.0"
 
 jobs:
   core:
@@ -32,7 +37,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ".[test]"
+          pip install ".[test]" "galpy==$GALPY_VERSION"
 
       - name: Verify C extensions
         working-directory: /tmp
@@ -165,7 +170,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ".[test]"
+          pip install ".[test]" "galpy==$GALPY_VERSION"
 
       - name: Write ~/.galpyrc with astropy-units=${{ matrix.astropy-units }}
         # galpy resolves its config from ./.galpyrc then ~/.galpyrc, and writes a
@@ -228,14 +233,15 @@ jobs:
 
   galpy-compat:
     # pyproject declares galpy>=1.9, so every minor from 1.9 to the current
-    # release is supported and must be pinned here explicitly.
+    # release is supported and must be pinned here explicitly, each to its
+    # latest release.
     name: galpy ${{ matrix.galpy-version }} (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12"]
-        galpy-version: ["1.9", "1.10", "1.11", "1.12"]
+        galpy-version: ["1.9.2", "1.10.2", "1.11.2", "1.12.0"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -250,10 +256,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install ".[test]"
-          pip install "galpy==${{ matrix.galpy-version }}.*"
+          pip install "galpy==${{ matrix.galpy-version }}"
 
       - name: Pin scipy for older galpy
-        if: matrix.galpy-version == '1.9'
+        if: matrix.galpy-version == '1.9.2'
         run: pip install "scipy<1.14"
 
       - name: Confirm the pinned galpy is the one under test
@@ -265,7 +271,7 @@ jobs:
           python -c "
           import galpy
           got, want = galpy.__version__, '${{ matrix.galpy-version }}'
-          assert got.startswith(want), f'pinned {want}, got {got}'
+          assert got == want, f'pinned {want}, got {got}'
           print(f'confirmed galpy {got}')
           "
 
@@ -279,8 +285,9 @@ jobs:
     # Up to 1.12.0, galpy draws a density deep in a much deeper potential far too fast, so
     # tambora refuses to (ic.sample with potential=, ic.sample_components) and those tests skip
     # on every pinned galpy above. This job runs them against galpy's development version, ahead
-    # of the release that is to fix it. Until the fix is on galpy's main branch they fail, so
-    # this job can't fail the build; once galpy releases it, pin that release above instead.
+    # of the release that is to fix it, vouching for it as a user would with
+    # TAMBORA_GALPY_DEV_TRACERS=1. Until the fix is on galpy's main branch they fail, so this job
+    # can't fail the build; once they pass, a fresh install of galpy main draws tracers right.
     name: galpy main (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -318,4 +325,6 @@ jobs:
 
       - name: Run full suite
         working-directory: /tmp
+        env:
+          TAMBORA_GALPY_DEV_TRACERS: "1"
         run: python -m pytest --pyargs tambora.tests -o "addopts=" -q
