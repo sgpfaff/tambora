@@ -5,6 +5,7 @@ Tests for the galpy sampler backend.
 import inspect
 import re
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pytest
@@ -104,6 +105,16 @@ def test_the_same_seed_gives_the_same_particles():
     np.testing.assert_array_equal(a[0], b[0])
     np.testing.assert_array_equal(a[1], b[1])
     assert not np.array_equal(a[0], c[0])
+
+
+def test_draws_in_threads_get_their_own_seeds():
+    s = GalpySampler(_plummer())
+    seeds = range(16)
+    alone = [s.draw(2000, seed)[0] for seed in seeds]
+    with ThreadPoolExecutor(8) as pool:
+        together = list(pool.map(lambda seed: s.draw(2000, seed)[0], seeds))
+    for a, b in zip(alone, together):
+        np.testing.assert_array_equal(a, b)
 
 
 def test_drawing_leaves_numpys_global_generator_as_it_was():
