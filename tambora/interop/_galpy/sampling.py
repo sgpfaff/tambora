@@ -14,7 +14,7 @@ from galpy.potential.SphericalPotential import SphericalPotential as _SphericalP
 from galpy.util.conversion import get_physical, mass_in_msol
 from packaging.version import parse as _parse_version
 
-from .bridge import _check_physical, _ensure_pot, _get_ro_vo, _iter_components
+from .bridge import _check_physical, _ensure_pot, _iter_components
 from .potential import _flatten
 from .._backend import SamplerBackend
 from ...ic.profiles import PROFILES, Hernquist, King, Plummer, TruncatedNFW
@@ -109,6 +109,7 @@ def _as_potential(obj):
         if not isinstance(p, _gp.Potential):
             raise TypeError(f"Expected a galpy Potential (element {i} of the list), "
                             f"got {type(p).__name__}.")
+    _common_units(items)    # before combining, which galpy checks only with an assert
     return items[0] if len(items) == 1 else _ensure_pot(items)
 
 
@@ -151,7 +152,7 @@ def _df_for(pot):
     for p in _iter_components(pot):
         _check_density(p)
         _check_physical(p)
-    ro, vo = _get_ro_vo(pot)
+    ro, vo = _common_units([pot])
     exact = _EXACT_DFS.get(type(pot))
     if exact is not None:
         return exact(pot=pot, ro=ro, vo=vo), f'{exact.__name__}({_names(pot)})'
@@ -222,11 +223,13 @@ def _members(obj, what):
 
 
 def _common_units(natives):
-    """The galpy units [kpc, km/s] shared by galpy potentials, which must all have the same ones."""
-    leaves = [leaf for p in natives for leaf in _iter_components(p)]
-    for p in leaves:
-        _check_physical(p)
-    units = {(get_physical(p)['ro'], get_physical(p)['vo']) for p in leaves}
+    """The galpy units [kpc, km/s] shared by galpy potentials, which must all have the same ones.
+
+    galpy checks this when combining potentials, but with an assert, which ``python -O`` drops,
+    and galpy before 1.11 doesn't combine a list, so doesn't check it at all.
+    """
+    units = {(get_physical(leaf)['ro'], get_physical(leaf)['vo'])
+             for p in natives for leaf in _iter_components(p)}
     if len(units) > 1:
         raise ValueError(f"The galpy potentials have different units (ro, vo): {sorted(units)}. "
                          f"Give them all the same ro and vo.")
@@ -258,6 +261,9 @@ def _tracer_df(model, potential):
     parts = _members(model, "The model")
     members = _members(potential, "potential=")
     natives = [p for p in parts + members if isinstance(p, _gp.Potential)]
+    for p in natives:
+        for leaf in _iter_components(p):
+            _check_physical(leaf)
     ro, vo = _common_units(natives) if natives else _profile_units(parts[0])
     as_galpy = lambda p: _profile_potential(p, ro, vo) if isinstance(p, PROFILES) else p
     dens = _as_potential([as_galpy(p) for p in parts])

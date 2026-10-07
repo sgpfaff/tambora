@@ -501,6 +501,26 @@ def test_another_infinite_mass_doesnt_mention_nfw():
     assert 'NFW' not in str(caught.value)
 
 
+def _combined_then_given_other_units():
+    # galpy checks that potentials it combines share their units only with an assert, which
+    # python -O drops: this is what combining these would give then.
+    pot = _plummer_pot() + _hernquist_pot()
+    list(sampling._iter_components(pot))[1].turn_physical_on(ro=8., vo=VO)
+    return pot
+
+
+@pytest.mark.parametrize("make", [
+    pytest.param(lambda: [_plummer_pot(), potential.HernquistPotential(amp=2e10 * u.Msun, a=2. * u.kpc, ro=8., vo=VO)],
+                 id='list'),
+    pytest.param(_combined_then_given_other_units, id='combined'),
+])
+def test_galpy_potentials_with_different_units_are_refused(make):
+    # Taking the first one's units instead, as tambora did, gave a Hernquist 9/8 of its mass on galpy 1.9.
+    with pytest.raises(ValueError, match=r"The galpy potentials have different units \(ro, vo\): "
+                                         r"\[\(8\.0, 230\.0\), \(9\.0, 230\.0\)\]"):
+        GalpySampler(make())
+
+
 @_needs_exp_trunc_nfw
 def test_galpys_own_truncation_of_an_nfw_samples_with_its_mass():
     # The route the NFW error points to.
@@ -727,6 +747,12 @@ def test_a_profile_among_galpy_potentials_takes_their_units():
 def test_what_cant_be_drawn_in_another_potential_says_why(model, potential, error, match):
     with pytest.raises(error, match=match):
         GalpySampler(model(), potential=potential())
+
+
+@pytest.mark.usefixtures('tracers_allowed')
+def test_a_galpy_potential_without_physical_units_warns_in_the_potential_too():
+    with pytest.warns(UserWarning, match="does not have physical units explicitly set"):
+        GalpySampler(STARS, potential=[STARS, potential.HernquistPotential()])
 
 
 @pytest.mark.usefixtures('tracers_allowed')
