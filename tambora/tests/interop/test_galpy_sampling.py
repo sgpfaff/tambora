@@ -296,13 +296,14 @@ def _exp_truncated_nfw():
 ])
 def test_a_density_with_a_cutoff_is_sampled_whole(make):
     # With eddingtondf's default rmax, these stop gaining mass in floating point long before
-    # it and galpy's sampler fails ("x must be increasing").
+    # it and galpy's sampler fails ("x must be increasing"). They're sampled to exactly where
+    # all but 1e-9 of their mass is inside.
     pot = make()
     sampler = GalpySampler(pot)
     pos, _ = sampler.draw(1000, 1)
     assert np.isfinite(pos).all()
     everything = potential.mass(pot, 1e8, use_physical=False) * sampler.units.mass_msun
-    assert sampler.total_mass == pytest.approx(everything, rel=1e-9)
+    assert sampler.total_mass == pytest.approx(everything * (1 - 1e-9), rel=1e-11)
 
 
 def test_a_potentials_units_are_its_own():
@@ -391,7 +392,7 @@ class _CustomPlummerWithDerivatives(_CustomPlummer):
 def test_a_custom_potential_with_its_density_derivatives_is_sampled_like_a_built_in_one():
     custom = GalpySampler(_CustomPlummerWithDerivatives(1e5 * u.Msun, 0.01 * u.kpc, ro=RO, vo=VO))
     assert custom.describe() == 'eddingtondf(_CustomPlummerWithDerivatives)'
-    assert custom.total_mass == pytest.approx(1e5, rel=1e-9)
+    assert custom.total_mass == pytest.approx(1e5 * (1 - 1e-9), rel=1e-11)    # all but 1e-9 of it, to rmax
     # Same seed, so the same quantiles; galpy only grids the custom one more coarsely (it has
     # no _scale), which moves the innermost particles a little.
     (pos, vel), (pos0, vel0) = custom.draw(2000, 4), GalpySampler(_plummer_pot()).draw(2000, 4)
@@ -487,9 +488,9 @@ def test_a_truncated_nfw_is_close_to_equilibrium():
 
 @_needs_exp_trunc_nfw
 def test_a_truncated_nfw_cut_off_far_inside_its_scale_radius_is_refused():
-    with pytest.raises(ValueError, match=r"Can't sample TruncatedNFW\(M=1e\+12, rscale=20, rtrunc=3\): "
-                                         r"galpy's sampler is unreliable when rtrunc is under a fifth of rscale"):
-        GalpySampler(ic.TruncatedNFW(M=1e12, rscale=20., rtrunc=3.))
+    with pytest.raises(ValueError, match=r"Can't sample TruncatedNFW\(M=1e\+12, rscale=20, rtrunc=0\.5\): "
+                                         r"galpy's sampler is unreliable when rtrunc is under a twentieth of rscale"):
+        GalpySampler(ic.TruncatedNFW(M=1e12, rscale=20., rtrunc=0.5))
 
 
 def test_a_truncated_nfw_says_it_needs_galpy_1_12(monkeypatch):
@@ -556,6 +557,31 @@ def test_galpys_own_truncation_of_an_nfw_samples_with_its_mass():
     ps = ic.sample(truncated, 1000, seed=1)
     expected = potential.mass(truncated, 1e8, use_physical=False) * GalpySampler(truncated).units.mass_msun
     assert ps.mass.sum() == pytest.approx(expected, rel=1e-8)
+
+
+def _galpys_truncated_nfw(rc, ro=RO):
+    nfw = potential.NFWPotential(amp=1e12 * u.Msun, a=20 * u.kpc, ro=ro, vo=VO)
+    return potential.ExpTruncNFWPotential.from_nfw(nfw, rc=rc * u.kpc)
+
+
+@_needs_exp_trunc_nfw
+@pytest.mark.parametrize("rc, ro", [
+    pytest.param(4., RO, id='a_fifth'),
+    pytest.param(4., 20 / 0.178, id='a_fifth_other_units'),
+    pytest.param(5., 20 / 0.562, id='a_quarter'),
+    pytest.param(2., 20., id='a_tenth'),
+    pytest.param(1., RO, id='a_twentieth'),     # the limit, also with rounding in natural units
+])
+def test_galpys_own_truncation_is_sampled_at_any_scale(rc, ro):
+    pos, vel = GalpySampler(_galpys_truncated_nfw(rc, ro)).draw(1000, 1)
+    assert np.isfinite(pos).all() and np.isfinite(vel).all()
+
+
+@_needs_exp_trunc_nfw
+def test_galpys_own_truncation_far_inside_the_scale_radius_is_refused_too():
+    with pytest.raises(ValueError, match=r"Can't sample a ExpTruncNFWPotential: galpy's sampler is unreliable "
+                                         r"when rc is under a twentieth of a \(here 0\.025 of it\)"):
+        GalpySampler(_galpys_truncated_nfw(rc=0.5))
 
 
 # --- a density drawn in another potential --------------------------------------------------
@@ -787,8 +813,11 @@ def test_a_profile_among_galpy_potentials_takes_their_units():
                  ValueError, r"The galpy potentials have different units \(ro, vo\)", id='mixed_units'),
     pytest.param(lambda: potential.NFWPotential(amp=1e9 * u.Msun, a=1. * u.kpc, ro=RO, vo=VO), lambda: [HALO],
                  ValueError, "Can't sample a NFWPotential: its mass is infinite", id='infinite_mass'),
-    pytest.param(lambda: ic.TruncatedNFW(M=1e9, rscale=1., rtrunc=0.1), lambda: [STARS], ValueError,
-                 "galpy's sampler is unreliable when rtrunc is under a fifth of rscale", id='truncated_nfw',
+    pytest.param(lambda: ic.TruncatedNFW(M=1e9, rscale=1., rtrunc=0.02), lambda: [STARS], ValueError,
+                 "galpy's sampler is unreliable when rtrunc is under a twentieth of rscale", id='truncated_nfw',
+                 marks=_needs_exp_trunc_nfw),
+    pytest.param(lambda: _galpys_truncated_nfw(rc=0.5), lambda: [HALO], ValueError,
+                 "galpy's sampler is unreliable when rc is under a twentieth of a", id='galpys_truncated_nfw',
                  marks=_needs_exp_trunc_nfw),
     pytest.param(lambda: STARS, lambda: [STARS, ic.King(M=1e6, W0=46., rt=0.05)], ValueError,
                  r"Can't use King\(M=1e\+06, W0=46, rt=0\.05\): galpy's King models fail for W0 above about 45",
