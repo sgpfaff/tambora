@@ -148,6 +148,7 @@ def test_only_galpy_dfs_and_potentials_are_accepted(obj):
 @pytest.mark.parametrize("make", DFS + [
     pytest.param(_plummer_pot, id='potential'),
     pytest.param(lambda: [_plummer_pot(), _plummer_pot(M=3e5, b=0.05)], id='list'),
+    pytest.param(lambda: [ic.Plummer(M=1e5, rscale=0.01), ic.Hernquist(M=1e9, rscale=1.)], id='list_of_profiles'),
 ])
 def test_galpy_dfs_and_potentials_are_accepted(make):
     assert GalpySampler.accepts(make())
@@ -340,6 +341,15 @@ def test_describe_names_the_df_and_the_potentials():
                  id='not_spherical'),
     pytest.param(lambda: [_plummer_pot(), 'halo'],
                  TypeError, r"Expected a galpy Potential \(element 1 of the list\), got str", id='bad_list'),
+    pytest.param(lambda: [_plummer_pot(), [_hernquist_pot(), 'halo']],
+                 TypeError, r"Expected a galpy Potential \(element \[1\]\[1\] of the list\), got str",
+                 id='bad_nested_list'),
+    pytest.param(lambda: [ic.Plummer(M=1e5, rscale=0.01), ic.Hernquist(M=1e9, rscale=1.)], TypeError,
+                 r"Can't draw a list of models with tambora's profiles in its own potential \(element 0 of the "
+                 r"list is a Plummer\)\. To draw several models in equilibrium together, use ic\.sample_components",
+                 id='list_of_profiles'),
+    pytest.param(lambda: [_plummer_pot(), ic.Hernquist(M=1e9, rscale=1.)], TypeError,
+                 r"\(element 1 of the list is a Hernquist\)", id='profile_among_potentials'),
 ])
 def test_a_potential_that_cant_be_sampled_says_why(make, error, match):
     with pytest.raises(error, match=match):
@@ -650,6 +660,14 @@ def test_a_galpy_potential_in_itself_is_sampled_as_usual():
     assert ic.sample(pot, 10, potential=[pot], seed=1).meta['model'] == 'isotropicPlummerdf(PlummerPotential)'
 
 
+def test_a_list_in_itself_in_another_order_is_sampled_as_usual():
+    # On any galpy: this is no tracer either.
+    a, b = _plummer_pot(), _hernquist_pot()
+    ps, usual = ic.sample([a, b], 500, potential=[b, [a]], seed=1), ic.sample([a, b], 500, seed=1)
+    assert ps.meta == usual.meta
+    np.testing.assert_array_equal(ps.pos, usual.pos)
+
+
 def test_one_component_is_sampled_as_usual():
     (stars,) = ic.sample_components([STARS], n=[500], seed=1)
     usual = ic.sample(STARS, 500, seed=stars.meta['seed'])
@@ -727,7 +745,7 @@ def test_a_profile_among_galpy_potentials_takes_their_units():
                                np.percentile(np.linalg.norm(vel0, axis=1), quantiles), rtol=5e-3)
 
 
-@pytest.mark.usefixtures('tracers_allowed')
+@pytest.mark.parametrize("tracers", ['allowed', 'refused'])
 @pytest.mark.parametrize("model, potential, error, match", [
     pytest.param(lambda: ic.King(M=1e4, W0=6., rt=0.03), lambda: [HALO], TypeError,
                  "A King model is defined by its own potential", id='King'),
@@ -735,31 +753,55 @@ def test_a_profile_among_galpy_potentials_takes_their_units():
                      amp=1e10 * u.Msun, a=3 * u.kpc, b=0.3 * u.kpc, ro=RO, vo=VO)], TypeError,
                  "Can't sample in a MiyamotoNagaiPotential: galpy's samplers need a spherical potential",
                  id='not_spherical'),
+    pytest.param(lambda: STARS, lambda: 'halo', TypeError,
+                 r"The potential takes galpy potentials and tambora's profiles, got str\.$", id='typo'),
     pytest.param(lambda: STARS, lambda: [STARS, 'halo'], TypeError,
-                 r"potential= takes galpy potentials and tambora's profiles, got str \(element 1 of the list\)",
+                 r"The potential takes galpy potentials and tambora's profiles, got str \(element 1 of the list\)",
                  id='not_a_potential'),
-    pytest.param(lambda: STARS, lambda: [], ValueError, "potential= is an empty list", id='empty'),
+    pytest.param(lambda: STARS, lambda: [STARS, [HALO, 'halo']], TypeError,
+                 r"got str \(element \[1\]\[1\] of the list\)", id='nested'),
+    pytest.param(lambda: [STARS, 'halo'], lambda: [HALO], TypeError,
+                 r"The model takes galpy potentials and tambora's profiles, got str \(element 1 of the list\)",
+                 id='model_not_a_potential'),
+    pytest.param(lambda: STARS, lambda: [], ValueError, "The potential is an empty list", id='empty'),
     pytest.param(lambda: potential.BurkertPotential(amp=1., a=0.5 * u.kpc, ro=RO, vo=VO), lambda: [HALO],
                  TypeError, r"Can't sample a BurkertPotential: .*\(_ddensdr and _d2densdr2\)", id='density'),
     pytest.param(lambda: _plummer_pot(), lambda: [_plummer_pot(), potential.HernquistPotential(ro=8., vo=VO)],
                  ValueError, r"The galpy potentials have different units \(ro, vo\)", id='mixed_units'),
+    pytest.param(lambda: potential.NFWPotential(amp=1e9 * u.Msun, a=1. * u.kpc, ro=RO, vo=VO), lambda: [HALO],
+                 ValueError, "Can't sample a NFWPotential: its mass is infinite", id='infinite_mass'),
+    pytest.param(lambda: ic.TruncatedNFW(M=1e9, rscale=1., rtrunc=0.1), lambda: [STARS], ValueError,
+                 "galpy's sampler is unreliable when rtrunc is under a fifth of rscale", id='truncated_nfw',
+                 marks=_needs_exp_trunc_nfw),
 ])
-def test_what_cant_be_drawn_in_another_potential_says_why(model, potential, error, match):
+def test_what_cant_be_drawn_in_another_potential_says_why(galpy_as, tracers, model, potential, error, match):
+    # Mistakes are found before galpy's version, so they're never taken for a need for newer galpy.
+    if tracers == 'allowed':
+        galpy_as(galpy.__version__, release=galpy.__version__)
+    else:
+        galpy_as('1.12.0')
     with pytest.raises(error, match=match):
         GalpySampler(model(), potential=potential())
+
+
+def test_a_component_that_isnt_a_model_is_refused_on_any_galpy():
+    with pytest.raises(TypeError, match=r"The potential takes galpy potentials and tambora's profiles, "
+                                        r"got str \(element 1 of the list\)"):
+        ic.sample_components([STARS, 'halo'], n=[10, 10])
+
+
+@pytest.mark.usefixtures('tracers_allowed')
+def test_a_list_of_profiles_is_drawn_in_another_potential_as_one_model():
+    ps = ic.sample([STARS, HALO], 1000, potential=[STARS, HALO, _hernquist_pot()], seed=1)
+    assert ps.mass.sum() == pytest.approx(1e5 + 1e9, rel=1e-4)
+    assert ps.meta['model'] == ('Plummer(M=100000, rscale=0.005) + Hernquist(M=1e+09, rscale=1) in '
+                                'Plummer(M=100000, rscale=0.005) + Hernquist(M=1e+09, rscale=1) + HernquistPotential')
 
 
 @pytest.mark.usefixtures('tracers_allowed')
 def test_a_galpy_potential_without_physical_units_warns_in_the_potential_too():
     with pytest.warns(UserWarning, match="does not have physical units explicitly set"):
         GalpySampler(STARS, potential=[STARS, potential.HernquistPotential()])
-
-
-@pytest.mark.usefixtures('tracers_allowed')
-@_needs_exp_trunc_nfw
-def test_a_truncated_nfw_cut_off_far_inside_its_scale_radius_is_refused_in_another_potential_too():
-    with pytest.raises(ValueError, match="galpy's sampler is unreliable when rtrunc is under a fifth of rscale"):
-        GalpySampler(ic.TruncatedNFW(M=1e9, rscale=1., rtrunc=0.1), potential=[STARS])
 
 
 def test_a_galpy_df_cant_take_another_potential():

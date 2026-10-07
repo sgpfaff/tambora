@@ -178,7 +178,7 @@ def test_each_component_gets_its_own_seed_from_the_one_given():
     stars, dm = _components(seed=7)
     assert stars.meta['seed'] != dm.meta['seed'] and 7 not in (stars.meta['seed'], dm.meta['seed'])
     assert stars.meta['parent_seed'] == dm.meta['parent_seed'] == 7
-    # A component's own seed redraws it on its own.
+    # Its own seed redraws it with sample, in the potential of them all.
     again = ic.sample(DM, 10, potential=[STARS, DM], seed=dm.meta['seed'])
     np.testing.assert_array_equal(again.pos, dm.pos)
 

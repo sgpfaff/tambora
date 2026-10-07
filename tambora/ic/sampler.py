@@ -83,8 +83,8 @@ def sample_components(components, n, *, seed: Optional[int] = None) -> tuple:
     -------
     tuple
         A :class:`ParticleSet` for each component, in the order of ``components``. Each
-        records ``seed`` in ``meta['parent_seed']``, and its own seed, which redraws it with
-        :func:`sample`, in ``meta['seed']``.
+        records ``seed`` in ``meta['parent_seed']``, and its own seed in ``meta['seed']``:
+        :func:`sample` redraws it given that seed and ``potential=components``.
 
     Notes
     -----
