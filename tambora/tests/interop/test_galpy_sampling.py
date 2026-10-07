@@ -317,6 +317,11 @@ def test_a_density_with_a_cutoff_is_sampled_whole(make):
     assert sampler.total_mass == pytest.approx(everything * (1 - 1e-9), rel=1e-11)
 
 
+def test_a_density_inside_the_smallest_radius_checked_is_sampled_to_it():
+    pot = potential.PowerSphericalPotentialwCutoff(amp=1., alpha=1., rc=1e-10)
+    assert sampling._rmax(pot) == sampling._RADII[0]
+
+
 def test_a_potentials_units_are_its_own():
     units = GalpySampler(_plummer_pot()).units
     assert (units.length_kpc, units.velocity_kms) == (RO, VO)
