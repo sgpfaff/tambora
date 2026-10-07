@@ -3,6 +3,7 @@
 
 import inspect
 import os
+import threading
 import warnings
 
 import numpy as np
@@ -50,6 +51,8 @@ _KING_MAX_W0 = 45.
 # An exponentially truncated NFW's truncation over scale radius below which galpy's sampler
 # can fail, at some scales (measured down to 0.02, with the rmax below).
 _MIN_TRUNCATION = 0.05
+
+_RNG_LOCK = threading.Lock()        # draws seed numpy's global generator, one at a time
 
 _RADII = np.logspace(-8, 4, 121)    # [natural units]; 1e4 is eddingtondf's default rmax
 _FAR = 1e8                          # [natural units]: "infinity", for the mass check
@@ -404,12 +407,13 @@ class GalpySampler(SamplerBackend):
         return self._total_mass
 
     def draw(self, n, seed):
-        state = np.random.get_state()        # galpy draws from numpy's global generator:
-        np.random.seed(seed)                 # seed it, then give the user theirs back
-        try:
-            o = self.df.sample(n=n, return_orbit=True)
-        finally:
-            np.random.set_state(state)
+        with _RNG_LOCK:
+            state = np.random.get_state()        # galpy draws from numpy's global generator:
+            np.random.seed(seed)                 # seed it, then give the user theirs back
+            try:
+                o = self.df.sample(n=n, return_orbit=True)
+            finally:
+                np.random.set_state(state)
         # Natural units, scaled here, so galpy's astropy-units setting can't change the result.
         pos = np.column_stack([o.x(use_physical=False), o.y(use_physical=False), o.z(use_physical=False)])
         vel = np.column_stack([o.vx(use_physical=False), o.vy(use_physical=False), o.vz(use_physical=False)])
