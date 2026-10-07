@@ -100,15 +100,32 @@ def _names(pot):
     return '+'.join(type(p).__name__ for p in _iter_components(pot))
 
 
+def _indexed(obj, path=()):
+    """Each item of ``obj``, one or a nested list/tuple of them, with its indices in it."""
+    if isinstance(obj, (list, tuple)):
+        for i, item in enumerate(obj):
+            yield from _indexed(item, path + (i,))
+    else:
+        yield path, obj
+
+
+def _where(path):
+    """Which element of a list the indices ``path`` point to: 'element 1', 'element [1][0]'."""
+    return f"element {path[0] if len(path) == 1 else ''.join(f'[{i}]' for i in path)} of the list"
+
+
 def _as_potential(obj):
     """``obj``, a galpy Potential or a (nested) list/tuple of them, as one galpy potential."""
     if not isinstance(obj, (list, tuple)):
         return obj
-    items = list(_flatten(obj))
-    for i, p in enumerate(items):   # before combining: galpy's `+` recurses forever on a non-potential
+    for path, p in _indexed(obj):   # before combining: galpy's `+` recurses forever on a non-potential
+        if isinstance(p, PROFILES):
+            raise TypeError(f"Can't draw a list of models with tambora's profiles in its own "
+                            f"potential ({_where(path)} is a {type(p).__name__}). To draw "
+                            f"several models in equilibrium together, use ic.sample_components.")
         if not isinstance(p, _gp.Potential):
-            raise TypeError(f"Expected a galpy Potential (element {i} of the list), "
-                            f"got {type(p).__name__}.")
+            raise TypeError(f"Expected a galpy Potential ({_where(path)}), got {type(p).__name__}.")
+    items = list(_flatten(obj))
     _common_units(items)    # before combining, which galpy checks only with an assert
     return items[0] if len(items) == 1 else _ensure_pot(items)
 
@@ -214,9 +231,9 @@ def _members(obj, what):
     items = _parts(obj)
     if not items:
         raise ValueError(f"{what} is an empty list.")
-    for i, p in enumerate(items):
+    for path, p in _indexed(obj):
         if not isinstance(p, (_gp.Potential,) + PROFILES):
-            where = f" (element {i} of the list)" if isinstance(obj, (list, tuple)) else ""
+            where = f" ({_where(path)})" if path else ""
             raise TypeError(f"{what} takes galpy potentials and tambora's profiles, got "
                             f"{type(p).__name__}{where}.")
     return items
@@ -241,9 +258,15 @@ def _same(a, b):
 
 
 def _is_model(potential, model):
-    """Whether ``potential`` is just ``model`` itself, so the model is in its own potential."""
-    a, b = _parts(potential), _parts(model)
-    return len(a) == len(b) and all(_same(p, q) for p, q in zip(a, b))
+    """Whether ``potential`` is just ``model`` itself, in any order, so the model is in its own
+    potential."""
+    rest = _parts(model)
+    for p in _parts(potential):
+        match = next((i for i, q in enumerate(rest) if _same(p, q)), None)
+        if match is None:
+            return False
+        del rest[match]
+    return not rest
 
 
 def _tracer_df(model, potential):
@@ -252,14 +275,11 @@ def _tracer_df(model, potential):
     ``model`` and ``potential`` may mix tambora's profiles and galpy potentials. Profiles are
     built in the galpy potentials' units if there are any, and otherwise in the model's own.
     """
-    if not _tracers_fixed():
-        raise _tracers_unfixed()
-    _warn_if_unchecked()
     if isinstance(model, King):
         raise TypeError("A King model is defined by its own potential, so it can't be drawn in "
                         "another one.")
     parts = _members(model, "The model")
-    members = _members(potential, "potential=")
+    members = _members(potential, "The potential")
     natives = [p for p in parts + members if isinstance(p, _gp.Potential)]
     for p in natives:
         for leaf in _iter_components(p):
@@ -277,7 +297,11 @@ def _tracer_df(model, potential):
         if not isinstance(p, (_SphericalPotential,) + _ALSO_SPHERICAL):
             raise TypeError(f"Can't sample in a {type(p).__name__}: galpy's samplers need a "
                             f"spherical potential.")
-    d = _df.eddingtondf(pot=total, denspot=dens, rmax=_rmax(dens), ro=ro, vo=vo)
+    rmax = _rmax(dens)
+    if not _tracers_fixed():    # last, so that a mistake isn't taken for a need for newer galpy
+        raise _tracers_unfixed()
+    _warn_if_unchecked()
+    d = _df.eddingtondf(pot=total, denspot=dens, rmax=rmax, ro=ro, vo=vo)
     return d, f"{_label(model)} in {_label(potential)}"
 
 
@@ -298,7 +322,7 @@ class GalpySampler(SamplerBackend):
     @classmethod
     def accepts(cls, obj) -> bool:
         if isinstance(obj, (list, tuple)):
-            return any(isinstance(p, _gp.Potential) for p in _flatten(obj))
+            return any(isinstance(p, (_gp.Potential,) + PROFILES) for p in _flatten(obj))
         return isinstance(obj, (_df.sphericaldf, _gp.Potential) + PROFILES)
 
     def __init__(self, obj, potential=None):
@@ -306,8 +330,8 @@ class GalpySampler(SamplerBackend):
             potential = None
         if isinstance(obj, _df.sphericaldf):
             if potential is not None:
-                raise TypeError("A galpy DF has its potential already; potential= is for drawing "
-                                "a galpy potential's or a profile's density in another one.")
+                raise TypeError("A galpy DF has its potential already, so it can't be drawn in "
+                                "another one. A galpy potential's or a profile's density can.")
             _check_physical(obj)
             if obj._denspot is not obj._pot:
                 if not _tracers_fixed():

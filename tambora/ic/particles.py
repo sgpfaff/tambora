@@ -10,6 +10,7 @@ import numpy as np
 @dataclasses.dataclass(frozen=True, eq=False)
 class ParticleSet:
     """Positions, velocities and masses of N particles, and where they came from.
+
     Parameters
     ----------
     pos : (N, 3) array
