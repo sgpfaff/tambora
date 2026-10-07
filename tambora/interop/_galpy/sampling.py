@@ -13,6 +13,7 @@ from galpy.potential import mass as _mass
 from galpy.potential.SphericalPotential import SphericalPotential as _SphericalPotential
 from galpy.util.conversion import get_physical, mass_in_msol
 from packaging.version import parse as _parse_version
+from scipy import optimize
 
 from .bridge import _check_physical, _ensure_pot, _iter_components
 from .potential import _flatten
@@ -46,8 +47,17 @@ _DEV_TRACERS_ENV = 'TAMBORA_GALPY_DEV_TRACERS'
 # Since galpy 1.10, its King models fail for W0 above 45.7 ("x must be increasing").
 _KING_MAX_W0 = 45.
 
+# An exponentially truncated NFW's truncation over scale radius below which galpy's sampler
+# can fail, at some scales (measured down to 0.02, with the rmax below).
+_MIN_TRUNCATION = 0.05
+
 _RADII = np.logspace(-8, 4, 121)    # [natural units]; 1e4 is eddingtondf's default rmax
 _FAR = 1e8                          # [natural units]: "infinity", for the mass check
+_LEFT_OUT = 1e-9                    # of a density's mass, beyond where it's sampled to
+
+
+def _too_truncated(ratio):
+    return ratio < _MIN_TRUNCATION * (1 - 1e-9)     # not refusing the limit itself for rounding, e.g. by ro
 
 
 def _galpy_has(release):
@@ -134,7 +144,11 @@ def _as_potential(obj):
 
 
 def _rmax(dens):
-    """Where to stop sampling ``dens`` [natural units]: once all but 1e-10 of its mass is inside."""
+    """Where to stop sampling ``dens`` [natural units]: where all but 1e-9 of its mass is inside.
+
+    Found exactly, between the points of ``_RADII``. galpy's sampler inverts the mass profile up
+    to rmax, so the profile must still grow there in floating point.
+    """
     m = np.array([_mass(dens, r, use_physical=False) for r in _RADII])
     m_far = _mass(dens, _FAR, use_physical=False)
     if not np.isfinite(m_far) or m_far > 1.01 * m[-1]:
@@ -145,8 +159,14 @@ def _rmax(dens):
             f"Can't sample a {_names(dens)}: its mass is infinite, or so spread out that more "
             f"than 1% of it is beyond R={_RADII[-1]:g} natural units. {hint}Use a density with a "
             f"finite mass.")
-    converged = 1 - m / m_far < 1e-10
-    return _RADII[np.argmax(converged)] if converged.any() else _RADII[-1]
+    inside = 1 - m / m_far < _LEFT_OUT
+    if not inside.any():
+        return _RADII[-1]
+    i = int(np.argmax(inside))
+    if i == 0:
+        return _RADII[0]
+    return optimize.brentq(lambda r: 1 - _mass(dens, r, use_physical=False) / m_far - _LEFT_OUT,
+                           _RADII[i - 1], _RADII[i], rtol=1e-6)
 
 
 def _check_density(p):
@@ -159,6 +179,9 @@ def _check_density(p):
     if isinstance(p, _gp.KeplerPotential):
         raise TypeError(f"Can't sample a {name}: it's a point mass, with no extended "
                         f"density to draw particles from.")
+    if isinstance(p, getattr(_gp, 'ExpTruncNFWPotential', ())) and _too_truncated(p.rc / p.a):
+        raise ValueError(f"Can't sample a {name}: galpy's sampler is unreliable when rc is under "
+                         f"a twentieth of a (here {p.rc / p.a:.3g} of it).")
     # galpy's Eddington inversion needs the density's first two radial derivatives.
     if not (hasattr(p, '_ddensdr') and hasattr(p, '_d2densdr2')):
         raise TypeError(
@@ -214,9 +237,9 @@ def _check_profile(profile):
     """Raise if galpy can't draw particles from one of tambora's profiles."""
     if isinstance(profile, TruncatedNFW):
         ratio = profile.rtrunc / profile.rscale
-        if ratio < 0.2:     # measured: galpy fails, or samples out of equilibrium, below this
+        if _too_truncated(ratio):
             raise ValueError(f"Can't sample {profile.describe()}: galpy's sampler is unreliable "
-                             f"when rtrunc is under a fifth of rscale (here {ratio:.3g} of it).")
+                             f"when rtrunc is under a twentieth of rscale (here {ratio:.3g} of it).")
 
 
 def _df_for_profile(profile):

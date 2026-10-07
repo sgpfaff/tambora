@@ -134,7 +134,8 @@ class TruncatedNFW(_Profile):
     rscale : float
         NFW scale radius :math:`r_s` [kpc].
     rtrunc : float
-        Truncation radius :math:`r_t` [kpc], the scale of the exponential cutoff.
+        Truncation radius :math:`r_t` [kpc], the scale of the exponential cutoff. At least
+        ``rscale / 20``.
 
     Notes
     -----
