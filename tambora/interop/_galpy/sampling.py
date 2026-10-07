@@ -43,6 +43,9 @@ _TRACERS_RELEASE = None
 # and after it), so tambora draws tracers with one only if this environment variable is 1.
 _DEV_TRACERS_ENV = 'TAMBORA_GALPY_DEV_TRACERS'
 
+# Since galpy 1.10, its King models fail for W0 above 45.7 ("x must be increasing").
+_KING_MAX_W0 = 45.
+
 _RADII = np.logspace(-8, 4, 121)    # [natural units]; 1e4 is eddingtondf's default rmax
 _FAR = 1e8                          # [natural units]: "infinity", for the mass check
 
@@ -196,7 +199,15 @@ def _profile_potential(profile, ro, vo):
             raise ImportError(f"Sampling a TruncatedNFW needs galpy 1.12 or later, for its "
                               f"ExpTruncNFWPotential; this is galpy {_galpy_version}.")
         return _gp.ExpTruncNFWPotential(mass=M, a=profile.rscale / ro, rc=profile.rtrunc / ro, ro=ro, vo=vo)
+    _check_king(profile)
     return _gp.KingPotential(W0=profile.W0, M=M, rt=profile.rt / ro, ro=ro, vo=vo)
+
+
+def _check_king(profile):
+    """Raise if galpy can't build the King model ``profile``."""
+    if profile.W0 > _KING_MAX_W0:
+        raise ValueError(f"Can't use {profile.describe()}: galpy's King models fail for W0 above "
+                         f"about {_KING_MAX_W0:g} (since galpy 1.10).")
 
 
 def _check_profile(profile):
@@ -212,6 +223,7 @@ def _df_for_profile(profile):
     """The galpy DF for one of tambora's profiles, in its own potential."""
     ro, vo = _profile_units(profile)
     if isinstance(profile, King):
+        _check_king(profile)
         return _df.kingdf(W0=profile.W0, M=1., rt=1., ro=ro, vo=vo)
     pot = _profile_potential(profile, ro, vo)
     _check_profile(profile)
