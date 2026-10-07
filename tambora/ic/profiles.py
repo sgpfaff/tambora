@@ -100,7 +100,7 @@ class King(_Profile):
         Total mass [Msun].
     W0 : float
         Dimensionless central potential, :math:`\Psi(0)/\sigma^2`. Larger is more
-        concentrated; galpy handles values up to about 200.
+        concentrated. At most 45.
     rt : float
         Tidal radius [kpc].
 

@@ -499,6 +499,23 @@ def test_a_truncated_nfw_says_it_needs_galpy_1_12(monkeypatch):
         GalpySampler(ic.TruncatedNFW(M=1e12, rscale=20., rtrunc=200.))
 
 
+def test_a_king_model_past_galpys_largest_w0_is_refused():
+    # galpy 1.10 and later fail from W0 = 45.7, with "x must be increasing".
+    with pytest.raises(ValueError, match=r"Can't use King\(M=10000, W0=46, rt=0\.03\): galpy's King models fail "
+                                         r"for W0 above about 45 \(since galpy 1\.10\)"):
+        GalpySampler(ic.King(M=1e4, W0=46., rt=0.03))
+
+
+@pytest.mark.usefixtures('tracers_allowed')
+@pytest.mark.parametrize("make", [
+    pytest.param(lambda king: GalpySampler(king), id='sampled'),
+    pytest.param(lambda king: GalpySampler(STARS, potential=[STARS, king]), id='in_the_potential'),
+])
+def test_a_king_model_at_the_largest_w0_works(make):
+    pos, vel = make(ic.King(M=1e6, W0=45., rt=0.05)).draw(500, 1)
+    assert np.isfinite(pos).all() and np.isfinite(vel).all()
+
+
 def test_an_nfw_points_to_its_truncated_versions():
     with pytest.raises(ValueError, match=r"For an NFW halo, use ic.TruncatedNFW, or truncate yours with "
                                          r"galpy's ExpTruncNFWPotential.from_nfw"):
@@ -773,6 +790,9 @@ def test_a_profile_among_galpy_potentials_takes_their_units():
     pytest.param(lambda: ic.TruncatedNFW(M=1e9, rscale=1., rtrunc=0.1), lambda: [STARS], ValueError,
                  "galpy's sampler is unreliable when rtrunc is under a fifth of rscale", id='truncated_nfw',
                  marks=_needs_exp_trunc_nfw),
+    pytest.param(lambda: STARS, lambda: [STARS, ic.King(M=1e6, W0=46., rt=0.05)], ValueError,
+                 r"Can't use King\(M=1e\+06, W0=46, rt=0\.05\): galpy's King models fail for W0 above about 45",
+                 id='King_W0'),
 ])
 def test_what_cant_be_drawn_in_another_potential_says_why(galpy_as, tracers, model, potential, error, match):
     # Mistakes are found before galpy's version, so they're never taken for a need for newer galpy.
