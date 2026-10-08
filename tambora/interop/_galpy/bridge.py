@@ -16,7 +16,6 @@ import operator
 from galpy.util.coords import rect_to_cyl, cyl_to_rect_vec
 from galpy.util.conversion import get_physical
 from galpy import potential
-from galpy.potential.WrapperPotential import WrapperPotential as _WrapperPotentialCls
 from ...units import KMS_TO_KPCGYR
 import numpy as np
 import warnings
@@ -32,72 +31,6 @@ FROM_GALPY_TO_INTERNAL = {
     'pot' : KMS_TO_KPCGYR**2,   # (km/s)^2 --> (kpc/Gyr)^2
     'acc' : KMS_TO_KPCGYR,      # km/s/Gyr --> kpc/Gyr^2
 }
-
-def _opt(name):
-    """
-    Return getattr(potential, name) or None if it 
-    doesn't exist in this galpy version.
-    """
-    return getattr(potential, name, None)
-
-# The galpy potentials and wrappers tambora accepts.
-SUPPORTED_POTENTIALS = tuple(p for p in (
-    # SPHERICAL POTENTIALS
-    potential.BurkertPotential,
-    potential.DehnenCoreSphericalPotential,
-    potential.DehnenSphericalPotential,
-    _opt('EinastoPotential'),
-    potential.HernquistPotential,
-    potential.HomogeneousSpherePotential,
-    potential.interpSphericalPotential,
-    potential.IsochronePotential,
-    potential.JaffePotential,
-    potential.KeplerPotential,
-    potential.KingPotential,
-    potential.NFWPotential,
-    potential.PlummerPotential,
-    potential.PowerSphericalPotential,
-    potential.PowerSphericalPotentialwCutoff,
-    potential.PseudoIsothermalPotential,
-    potential.SphericalShellPotential,
-    potential.TwoPowerSphericalPotential,
-    # AXISYMMETRIC POTENTIALS
-    potential.DoubleExponentialDiskPotential,
-    potential.FlattenedPowerPotential,
-    potential.KuzminDiskPotential,
-    potential.KuzminKutuzovStaeckelPotential,
-    potential.LogarithmicHaloPotential,
-    potential.MiyamotoNagaiPotential,
-    potential.MN3ExponentialDiskPotential,
-    potential.RazorThinExponentialDiskPotential,
-    potential.RingPotential,
-    # TRIAXIAL POTENTIALS
-    potential.DehnenBarPotential,
-    potential.FerrersPotential,
-    potential.SoftenedNeedleBarPotential,
-    potential.SpiralArmsPotential,
-    potential.interpRZPotential,
-    potential.PerfectEllipsoidPotential,
-    potential.PowerTriaxialPotential,
-    potential.TwoPowerTriaxialPotential,
-    potential.TriaxialGaussianPotential,
-    potential.TriaxialJaffePotential,
-    potential.TriaxialHernquistPotential,
-    potential.TriaxialNFWPotential,
-    # OTHER
-    potential.NullPotential,
-    potential.MovingObjectPotential,
-) if p is not None)
-
-SUPPORTED_WRAPPERS = tuple(p for p in (
-    potential.DehnenSmoothWrapperPotential,
-    potential.GaussianAmplitudeWrapperPotential,
-    potential.SolidBodyRotationWrapperPotential,
-    potential.CorotatingRotationWrapperPotential,
-    _opt('TimeDependentAmplitudeWrapperPotential'),
-    _opt('KuzminLikeWrapperPotential'),
-    _opt('RotateAndTiltWrapperPotential'),
-) if p is not None)
 
 # Where tambora asks, once, whether galpy evaluates a potential on arrays of points as it does
 # one point at a time [natural units].
@@ -134,49 +67,6 @@ def _iter_components(pot):
         yield from pot
     else:
         yield pot
-
-def _unwrap_pot(pot):
-    '''Recursively extract the leaf (non-wrapper) potentials from a galpy potential.
-
-    Wrappers store the inner potential in ``_pot``.  This descends through
-    nested wrappers and CompositePotentials / lists so that only concrete
-    leaf potentials are returned.
-    '''
-    if isinstance(pot, _WrapperPotentialCls):
-        inner = pot._pot
-        for p in _iter_components(inner):
-            yield from _unwrap_pot(p)
-    else:
-        yield pot
-
-def _check_supported_pot(pot):
-    '''Validate that a galpy potential (or composite) is supported by tambora.
-
-    Wrapper potentials are accepted; their inner (leaf) potentials are
-    validated recursively.
-    '''
-    for p in _iter_components(pot):
-        if isinstance(p, potential.MovingObjectPotential):
-             _check_supported_leaf(p._pot)
-        if isinstance(p, _WrapperPotentialCls):
-            # Reject unknown wrappers
-            if not isinstance(p, SUPPORTED_WRAPPERS):
-                raise TypeError(
-                    f"{type(p).__name__} is not supported by tambora."
-                )
-            # Validate inner (leaf) potentials
-            for leaf in _unwrap_pot(p):
-                _check_supported_leaf(leaf)
-        else:
-            _check_supported_leaf(p)
-
-def _check_supported_leaf(p):
-    '''Validate a single non-wrapper galpy potential.'''
-    if not isinstance(p, SUPPORTED_POTENTIALS):
-        raise TypeError(
-            f"{type(p).__name__} is not supported by tambora. "
-            f"Supported potentials: https://tambora.readthedocs.io/en/latest/user_guide/external_conservative_forces_and_potentials.html#galpy"
-        )
 
 def _check_physical(obj):
     '''Warn if a galpy object does not have physical units explicitly set.'''

@@ -1,7 +1,7 @@
 from .ExternalConservativeForce import ExternalConservativeForce
 import numpy as np
 from tambora.interop._galpy.bridge import (
-                _check_physical, _check_supported_pot,
+                _check_physical,
                 _ensure_pot, _iter_components, _get_ro_vo,
              )
 
@@ -16,7 +16,6 @@ class TidalTensorGalpyForce(ExternalConservativeForce):
             if not isinstance(p, potential.Potential):
                 raise TypeError("External potential must be a galpy Potential object.")
             _check_physical(p)
-        _check_supported_pot(pot)
         self._pot = pot
         self._center = None if center is None else np.asarray(center, float)
         self._ro, vo = _get_ro_vo(pot)
