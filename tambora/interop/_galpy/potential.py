@@ -6,7 +6,7 @@ import weakref
 from galpy import potential as _gp
 
 from .bridge import (
-    _check_physical, _check_supported_pot, _ensure_pot, _galpy_pot_to_fns, _iter_components,
+    _check_physical, _ensure_pot, _galpy_pot_to_fns, _iter_components,
 )
 from .._backend import PotentialBackend
 
@@ -71,7 +71,6 @@ class GalpyPotential(PotentialBackend):
         pot = _ensure_pot(items) if is_list else obj
         for p in _iter_components(pot):
             _check_physical(p)
-        _check_supported_pot(pot)
         self.obj = pot
         self._acc_fn, self._pot_fn = _galpy_pot_to_fns(pot)
 

@@ -1,7 +1,9 @@
+import inspect
 import pytest
 import warnings
 from galpy import potential
 from galpy.orbit import Orbit
+from galpy.potential.WrapperPotential import WrapperPotential
 from galpy.util.coords import rect_to_cyl, cyl_to_rect_vec
 import numpy as np
 from tambora.interop._galpy import bridge as _galpy_bridge
@@ -85,11 +87,6 @@ ALL_SUPPORTED_GALPY_POTENTIALS = (SUPPORTED_GALPY_SPHERICAL_POTENTIALS +
                                   SUPPORTED_GALPY_GENERAL_TRIAXIAL_POTENTIALS +
                                   EXAMPLE_GALPY_COMPOSITE_POTENTIALS)
 
-
-UNSUPPORTED_GALPY_POTENTIALS = [
-    potential.DiskSCFPotential(),
-    potential.SCFPotential(),
-]
 
 g = np.linspace(-100, 100, 5)
 FULL_TEST_GRID_POSITIONS = np.array(np.meshgrid(g, g, g)).reshape(3, -1).T
@@ -326,14 +323,6 @@ def test_triaxial_plane_symmetry(triaxial_potential):
 
 # --- Unsupported Potentials ------------------------------------------------------------------------ #
 
-@pytest.fixture(params=UNSUPPORTED_GALPY_POTENTIALS, ids=lambda p: type(p).__name__)
-def unsupported_potential(request):
-    return request.param
-
-def test_identify_unsupported_potential(unsupported_potential):
-    with pytest.raises(TypeError):
-        _galpy_bridge._check_supported_pot(unsupported_potential)
-
 # --- Unit Conversion ------------------------------------------------------------------------ #
 
 def test_acc_units():
@@ -564,6 +553,58 @@ def test_an_error_from_the_potential_itself_is_raised():
     with pytest.raises(RuntimeError, match="this potential is broken"):
         _galpy_bridge._galpy_pot_to_fns(_Broken())
 
+
+# --- Every galpy potential ----------------------------------------------------------------------- #
+
+def _galpys_acc(pot, pos):
+    '''galpy's own acceleration [kpc/Gyr^2] at ``pos`` [kpc], one point at a time, in physical units.'''
+    ro, vo = _galpy_bridge._get_ro_vo(_galpy_bridge._ensure_pot(pot))
+    kw = dict(t=0 * u.Gyr, ro=ro * u.kpc, vo=vo * u.km / u.s, quantity=True)
+    R, phi, z = rect_to_cyl(*pos.T)
+    acc, torque = u.kpc / u.Gyr**2, u.kpc**2 / u.Gyr**2
+    aR, az, pt = (np.array([f(pot, Ri * u.kpc, zi * u.kpc, phi=pi, **kw).to(unit).value for Ri, zi, pi in zip(R, z, phi)])
+                  for f, unit in ((potential.evaluateRforces, acc), (potential.evaluatezforces, acc),
+                                  (potential.evaluatephitorques, torque)))
+    return np.column_stack(cyl_to_rect_vec(aR, pt / R, az, phi))
+
+
+# What galpy's defaults don't build, with arguments that do.
+_BUILT_WITH = {
+    'MovingObjectPotential': lambda: potential.MovingObjectPotential(
+        _satellite_orbit(), pot=potential.PlummerPotential(amp=0.1, b=0.1)),
+    'interpRZPotential': lambda: potential.interpRZPotential(
+        RZPot=potential.MWPotential2014, rgrid=(0.01, 2., 51), zgrid=(0., 1., 51),
+        interpPot=True, interpRforce=True, interpzforce=True),
+    'interpSphericalPotential': lambda: potential.interpSphericalPotential(
+        rforce=potential.NFWPotential(), rgrid=np.geomspace(0.01, 20., 101)),
+    'AdiabaticContractionWrapperPotential': lambda: potential.AdiabaticContractionWrapperPotential(
+        pot=potential.NFWPotential(amp=2.), baryonpot=potential.HernquistPotential(amp=0.3, a=0.2)),
+    'KuzminLikeWrapperPotential': lambda: potential.KuzminLikeWrapperPotential(
+        pot=potential.PlummerPotential(), a=0.5, b=0.1),
+    'RotateAndTiltWrapperPotential': lambda: potential.RotateAndTiltWrapperPotential(
+        pot=potential.MiyamotoNagaiPotential(), zvec=[0., 0.3, 1.]),
+}
+# The snapshot potentials need a pynbody snapshot; a CompositePotential is tested as a sum.
+_NOT_BUILT = {'SnapshotRZPotential', 'InterpSnapshotRZPotential', 'CompositePotential'}
+
+_EVERY_GALPY_POTENTIAL = sorted(name for name, c in inspect.getmembers(potential, inspect.isclass)
+                                if issubclass(c, potential.Potential) and c is not potential.Potential
+                                and name not in _NOT_BUILT)
+
+
+@pytest.mark.parametrize("name", _EVERY_GALPY_POTENTIAL)
+def test_every_potential_galpy_has_is_accepted_with_galpys_forces(name):
+    try:
+        pot = _BUILT_WITH.get(name, getattr(potential, name))()
+    except Exception as e:
+        pytest.fail(f"galpy's {name} doesn't build with its defaults ({type(e).__name__}: {e}); "
+                    f"add arguments that do to _BUILT_WITH")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")     # physical units not set; some go one point at a time
+        force = ExternalPotential(pot)
+    np.testing.assert_allclose(force.acc(_SOME_POINTS, t=0.), _galpys_acc(pot, _SOME_POINTS), rtol=1e-10)
+    np.testing.assert_allclose(force.potential(_SOME_POINTS, t=0.), _point_by_point(pot, _SOME_POINTS), rtol=1e-10)
+
 # ---  Edge Cases ------------------------------------------------------------------------------------ #
 
 def test_z_axis_is_finite():
@@ -662,32 +703,10 @@ ALL_WRAPPER_POTENTIALS = (
 def wrapper_potential(request):
     return request.param
 
-def test_wrapper_passes_check_supported(wrapper_potential):
-    '''Wrapper potentials with supported inner pots should pass validation.'''
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")  # suppress unvectorized warnings
-        _galpy_bridge._check_supported_pot(wrapper_potential)
-
-
-def test_wrapper_rejects_unsupported_inner():
-    '''Wrapper around an unsupported inner pot should be rejected.'''
-    wp = potential.DehnenSmoothWrapperPotential(pot=potential.SCFPotential())
-    with pytest.raises(TypeError, match="SCFPotential"):
-        _galpy_bridge._check_supported_pot(wp)
-
-
-def test_wrapper_rejects_unsupported_wrapper():
-    '''An unknown wrapper class should be rejected by _check_supported_pot.'''
-    from galpy.potential.WrapperPotential import WrapperPotential
-
-    class FakeWrapperPotential(WrapperPotential):
-        pass
-
-    nfw = potential.NFWPotential()
-    fake = object.__new__(FakeWrapperPotential)
-    fake._pot = nfw
-    with pytest.raises(TypeError, match="is not supported by tambora"):
-        _galpy_bridge._check_supported_pot(fake)
+def test_a_wrapper_around_any_galpy_potential_is_accepted():
+    wp = potential.DehnenSmoothWrapperPotential(pot=potential.SCFPotential(), tform=-1.)
+    np.testing.assert_allclose(ExternalPotential(wp).acc(_SOME_POINTS, t=0.), _galpys_acc(wp, _SOME_POINTS),
+                               rtol=1e-10)
 
 
 def test_wrapper_acc_match(wrapper_potential):
@@ -768,9 +787,6 @@ def test_nested_wrapper():
     '''A wrapper inside a wrapper should work.'''
     inner = potential.SolidBodyRotationWrapperPotential(pot=potential.NFWPotential(), omega=1.0)
     outer = potential.DehnenSmoothWrapperPotential(pot=inner)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        _galpy_bridge._check_supported_pot(outer)
     acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(outer)
     pos = np.array([[8.0, 0.0, 1.0]])
     acc = acc_fn(pos, t=0)
@@ -912,9 +928,6 @@ def test_wrapper_in_composite():
         pot=potential.DehnenBarPotential(), omega=1.0
     )
     combo = [nfw, bar_wrapped]
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        _galpy_bridge._check_supported_pot(combo)
     acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(combo)
     pos = np.array([[8.0, 0.0, 1.0]])
     acc = acc_fn(pos, t=0)
@@ -985,11 +998,20 @@ _GALPY_BAR_AXIS_BUG = pytest.mark.xfail(
     reason="galpy bug: DehnenBarPotential's potential is non-zero on the z-axis for array input")
 
 
+def _leaves(p):
+    '''The potentials inside ``p``, through any wrappers.'''
+    if isinstance(p, WrapperPotential):
+        for inner in _galpy_bridge._iter_components(p._pot):
+            yield from _leaves(inner)
+    else:
+        yield p
+
+
 def _hits_galpys_bar_bug(p):
     '''Whether the bridge evaluates a DehnenBarPotential in ``p`` with galpy's array code: it
     does unless the component holding the bar can only be evaluated one point at a time.'''
     return any(_galpy_bridge._takes_arrays(c)
-               and any(isinstance(leaf, potential.DehnenBarPotential) for leaf in _galpy_bridge._unwrap_pot(c))
+               and any(isinstance(leaf, potential.DehnenBarPotential) for leaf in _leaves(c))
                for c in _galpy_bridge._iter_components(_galpy_bridge._ensure_pot(p)))
 
 
@@ -1135,9 +1157,6 @@ def test_acc_for_CompositeForce_of_galpy_matches_sum_of_individual():
     nfw = potential.NFWPotential()
     plummer = potential.PlummerPotential()
     combo = [nfw, plummer]
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        _galpy_bridge._check_supported_pot(combo)
     nfw_class = ExternalPotential(nfw)
     plummer_class = ExternalPotential(plummer)
     combo_class = nfw_class + plummer_class
@@ -1152,9 +1171,6 @@ def test_pot_for_CompositeForce_of_galpy_matches_sum_of_individual():
     nfw = potential.NFWPotential()
     plummer = potential.PlummerPotential()
     combo = [nfw, plummer]
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        _galpy_bridge._check_supported_pot(combo)
     nfw_class = ExternalPotential(nfw)
     plummer_class = ExternalPotential(plummer)
     combo_class = nfw_class + plummer_class
@@ -1169,9 +1185,6 @@ def test_acc_for_CompositeForce_of_galpy_is_same_as_ExternalPotential_of_composi
     nfw = potential.NFWPotential()
     plummer = potential.PlummerPotential()
     combo = nfw + plummer
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        _galpy_bridge._check_supported_pot(combo)
     nfw_class = ExternalPotential(nfw)
     plummer_class = ExternalPotential(plummer)
     summed_combo_class = nfw_class + plummer_class
@@ -1186,9 +1199,6 @@ def test_pot_for_CompositeForce_of_galpy_is_same_as_ExternalPotential_of_composi
     nfw = potential.NFWPotential()
     plummer = potential.PlummerPotential()
     combo = nfw + plummer
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        _galpy_bridge._check_supported_pot(combo)
     nfw_class = ExternalPotential(nfw)
     plummer_class = ExternalPotential(plummer)
     summed_combo_class = nfw_class + plummer_class
