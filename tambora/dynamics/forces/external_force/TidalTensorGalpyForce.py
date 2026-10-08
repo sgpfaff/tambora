@@ -1,11 +1,8 @@
 from .ExternalConservativeForce import ExternalConservativeForce
 import numpy as np
 from tambora.interop._galpy.bridge import (
-                _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn,
                 _check_physical, _check_supported_pot,
-                _ensure_pot, _iter_components, UNVECTORIZED_WRAPPERS, 
-                get_physical, _unwrap_pot, _get_ro_vo, _needs_scalar_loop,
-
+                _ensure_pot, _iter_components, _get_ro_vo,
              )
 
 from tambora.units import KMS_TO_KPCGYR

@@ -86,16 +86,6 @@ ALL_SUPPORTED_GALPY_POTENTIALS = (SUPPORTED_GALPY_SPHERICAL_POTENTIALS +
                                   EXAMPLE_GALPY_COMPOSITE_POTENTIALS)
 
 
-UNVECTORIZED_GALPY_POTENTIALS = [
-    potential.HomogeneousSpherePotential(),
-    potential.SphericalShellPotential(),
-    potential.DoubleExponentialDiskPotential(),
-    potential.RazorThinExponentialDiskPotential(),
-    potential.FerrersPotential(),
-    potential.NullPotential(),
-    potential.SoftenedNeedleBarPotential(),
-]
-
 UNSUPPORTED_GALPY_POTENTIALS = [
     potential.DiskSCFPotential(),
     potential.SCFPotential(),
@@ -461,11 +451,118 @@ def test_check_physical_pot_noop():
         warnings.simplefilter("error")
         _galpy_bridge._check_physical(pot)
 
-@pytest.mark.parametrize("pot", UNVECTORIZED_GALPY_POTENTIALS, ids=lambda p: type(p).__name__)
-def test_check_supported_warns_non_vectorized(pot):
-    '''_check_supported_pot should warn for non-vectorized potentials.'''
-    with pytest.warns(UserWarning, match="not vectorized"):
-        _galpy_bridge._check_supported_pot(pot)
+# --- Evaluating on arrays or one point at a time --------------------------------------------- #
+
+class _PointsOnly(potential.PlummerPotential):
+    '''A Plummer that galpy can only evaluate one point at a time.'''
+    def _evaluate(self, R, z, phi=0., t=0.):
+        if np.ndim(R):
+            raise ValueError("one point at a time")
+        return super()._evaluate(R, z, phi=phi, t=t)
+
+
+class _WrongOnArrays(potential.PlummerPotential):
+    '''A Plummer whose array code gives the wrong potential.'''
+    def _evaluate(self, R, z, phi=0., t=0.):
+        return super()._evaluate(R, z, phi=phi, t=t) * (1.01 if np.ndim(R) else 1.)
+
+
+class _NaNFar(potential.PlummerPotential):
+    '''A Plummer whose potential is NaN beyond R = 1, on arrays as at single points.'''
+    def _evaluate(self, R, z, phi=0., t=0.):
+        return np.where(np.asarray(R) > 1., np.nan, super()._evaluate(R, z, phi=phi, t=t))
+
+
+class _CountsPoints(potential.PlummerPotential):
+    '''A Plummer that counts how often galpy evaluates its potential at a single point.'''
+    points = 0
+
+    def _evaluate(self, R, z, phi=0., t=0.):
+        type(self).points += not np.ndim(R)
+        return super()._evaluate(R, z, phi=phi, t=t)
+
+
+class _LogsForces(_PointsOnly):
+    '''One that records where galpy asks for its forces, and which.'''
+    log = []
+
+    def _Rforce(self, R, z, phi=0., t=0.):
+        type(self).log.append(('R', R))
+        return super()._Rforce(R, z, phi=phi, t=t)
+
+    def _zforce(self, R, z, phi=0., t=0.):
+        type(self).log.append(('z', R))
+        return super()._zforce(R, z, phi=phi, t=t)
+
+
+class _Broken(potential.PlummerPotential):
+    def _evaluate(self, R, z, phi=0., t=0.):
+        raise RuntimeError("this potential is broken")
+
+
+_SOME_POINTS = np.array([[8., 0., 1.], [5., 3., -2.], [-4., 6., 0.5], [1., -1., 0.]])
+
+
+def _point_by_point(pot, pos):
+    '''galpy's potential at each of ``pos`` [kpc], one point at a time, in tambora's units.'''
+    ro, vo = _galpy_bridge._get_ro_vo(pot)
+    R, phi, z = rect_to_cyl(*pos.T)
+    return np.array([potential.evaluatePotentials(pot, Ri / ro, zi / ro, phi=pi, t=0., use_physical=False)
+                     for Ri, zi, pi in zip(R, z, phi)]) * (vo * _galpy_bridge.KMS_TO_KPCGYR)**2
+
+
+@pytest.mark.parametrize("make", [
+    pytest.param(_PointsOnly, id='array_call_fails'),
+    pytest.param(_WrongOnArrays, id='array_call_differs'),
+    pytest.param(potential.FerrersPotential, id='FerrersPotential'),     # galpy's array call fails on any galpy
+])
+def test_a_potential_galpy_cant_evaluate_on_arrays_is_evaluated_one_point_at_a_time(make):
+    pot = make()
+    assert not _galpy_bridge._takes_arrays(pot)
+    with pytest.warns(UserWarning, match=f"galpy can't evaluate {type(pot).__name__} on arrays of points"):
+        acc_fn, pot_fn = _galpy_bridge._galpy_pot_to_fns(pot)
+    np.testing.assert_allclose(pot_fn(_SOME_POINTS, t=0.), _point_by_point(pot, _SOME_POINTS), rtol=1e-14)
+    assert acc_fn(_SOME_POINTS, t=0.).shape == (4, 3)
+
+
+@pytest.mark.parametrize("pot", [
+    pytest.param(potential.PlummerPotential(), id='PlummerPotential'),
+    pytest.param(potential.NullPotential(), id='NullPotential'),          # a single 0 for any number of points
+    pytest.param(potential.DehnenBarPotential(), id='DehnenBarPotential'),
+    pytest.param(_NaNFar(), id='NaN_in_places'),                        # NaNs that agree, agree
+])
+def test_a_potential_galpy_evaluates_on_arrays_is_evaluated_that_way_without_a_warning(pot):
+    assert _galpy_bridge._takes_arrays(pot)
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        _galpy_bridge._galpy_pot_to_fns(pot)
+
+
+def test_only_the_components_galpy_cant_evaluate_on_arrays_are_evaluated_one_point_at_a_time():
+    counted, slow = _CountsPoints(), _PointsOnly(amp=2., b=0.5)
+    with pytest.warns(UserWarning, match="galpy can't evaluate _PointsOnly") as caught:
+        _, pot_fn = _galpy_bridge._galpy_pot_to_fns([counted, slow])
+    assert len([w for w in caught if "on arrays of points" in str(w.message)]) == 1
+    _CountsPoints.points = 0
+    got = pot_fn(_SOME_POINTS, t=0.)
+    assert _CountsPoints.points == 0
+    np.testing.assert_allclose(got, _point_by_point(counted, _SOME_POINTS) + _point_by_point(slow, _SOME_POINTS),
+                               rtol=1e-14)
+
+
+def test_one_point_at_a_time_every_force_is_evaluated_at_a_point_before_the_next():
+    # galpy's triaxial and Ferrers potentials keep their work for the last point; going
+    # through the points once per force made them twice as slow.
+    with pytest.warns(UserWarning, match="one point at a time"):
+        acc_fn, _ = _galpy_bridge._galpy_pot_to_fns(_LogsForces())
+    _LogsForces.log = []
+    acc_fn(_SOME_POINTS[:3], t=0.)
+    assert [which for which, _ in _LogsForces.log] == ['R', 'z'] * 3
+
+
+def test_an_error_from_the_potential_itself_is_raised():
+    with pytest.raises(RuntimeError, match="this potential is broken"):
+        _galpy_bridge._galpy_pot_to_fns(_Broken())
 
 # ---  Edge Cases ------------------------------------------------------------------------------------ #
 
@@ -663,22 +760,8 @@ def test_wrapper_pot_match(wrapper_potential):
         [-4.0, 6.0, 0.5],
     ])
     ez_pot = ez_pot_fn(pos, t=0)
-    # Reference via galpy module-level
-    pot = _galpy_bridge._ensure_pot(wrapper_potential)
-    ro, vo = _galpy_bridge._get_ro_vo(pot)
-    vo_int = vo * _galpy_bridge.KMS_TO_KPCGYR
-    R, phi, z = rect_to_cyl(*pos.T)
-    R_nat, z_nat = R / ro, z / ro
-    if _galpy_bridge._needs_scalar_loop(pot):
-        ref = np.array([
-            potential.evaluatePotentials(pot, Ri, zi, phi=pi, t=0, use_physical=False)
-            for Ri, zi, pi in zip(R_nat, z_nat, phi)
-        ]) * vo_int**2
-    else:
-        ref = np.asarray(potential.evaluatePotentials(
-            pot, R_nat, z_nat, phi=phi, t=0, use_physical=False
-        )) * vo_int**2
-    np.testing.assert_allclose(ez_pot, ref, rtol=1e-15)
+    # Reference: galpy, one point at a time
+    np.testing.assert_allclose(ez_pot, _point_by_point(_galpy_bridge._ensure_pot(wrapper_potential), pos), rtol=1e-14)
 
 
 def test_nested_wrapper():
@@ -696,10 +779,10 @@ def test_nested_wrapper():
 
 
 def test_wrapper_unvectorized_inner_warns():
-    '''Wrapper around unvectorized inner pot should emit a warning.'''
-    wp = potential.DehnenSmoothWrapperPotential(pot=potential.HomogeneousSpherePotential())
-    with pytest.warns(UserWarning, match="not vectorized"):
-        _galpy_bridge._check_supported_pot(wp)
+    '''A wrapper around a potential galpy can't evaluate on arrays is evaluated one point at a time.'''
+    wp = potential.DehnenSmoothWrapperPotential(pot=potential.FerrersPotential())
+    with pytest.warns(UserWarning, match="galpy can't evaluate _?DehnenSmoothWrapperPotential on arrays"):
+        _galpy_bridge._galpy_pot_to_fns(wp)
 
 
 @pytest.mark.skipif(not hasattr(potential, 'RotateAndTiltWrapperPotential'),
@@ -707,8 +790,8 @@ def test_wrapper_unvectorized_inner_warns():
 def test_wrapper_unvectorized_wrapper_warns():
     '''RotateAndTilt wrapper itself should emit an unvectorized warning.'''
     rt = potential.RotateAndTiltWrapperPotential(pot=potential.NFWPotential(), zvec=[0., 0., 1.])
-    with pytest.warns(UserWarning, match="not vectorized"):
-        _galpy_bridge._check_supported_pot(rt)
+    with pytest.warns(UserWarning, match="galpy can't evaluate _?RotateAndTiltWrapperPotential on arrays"):
+        _galpy_bridge._galpy_pot_to_fns(rt)
 
 
 # --- Time-Dependent Potentials -------------------------------------------------------------------- #
@@ -903,13 +986,11 @@ _GALPY_BAR_AXIS_BUG = pytest.mark.xfail(
 
 
 def _hits_galpys_bar_bug(p):
-    '''Whether the bridge evaluates a DehnenBarPotential in ``p`` with galpy's array code. It
-    evaluates the whole of ``p`` one point at a time if any part of it can't be vectorised
-    (the triaxial halos, before galpy 1.12), and then the bar comes out right.'''
-    pot = _galpy_bridge._ensure_pot(p)
-    has_bar = any(isinstance(leaf, potential.DehnenBarPotential)
-                  for c in _galpy_bridge._iter_components(pot) for leaf in _galpy_bridge._unwrap_pot(c))
-    return has_bar and not _galpy_bridge._needs_scalar_loop(pot)
+    '''Whether the bridge evaluates a DehnenBarPotential in ``p`` with galpy's array code: it
+    does unless the component holding the bar can only be evaluated one point at a time.'''
+    return any(_galpy_bridge._takes_arrays(c)
+               and any(isinstance(leaf, potential.DehnenBarPotential) for leaf in _galpy_bridge._unwrap_pot(c))
+               for c in _galpy_bridge._iter_components(_galpy_bridge._ensure_pot(p)))
 
 
 def _pot_on_axis_case(case):
