@@ -16,9 +16,7 @@ import operator
 from galpy.util.coords import rect_to_cyl, cyl_to_rect_vec
 from galpy.util.conversion import get_physical
 from galpy import potential
-from galpy import __version__ as galpy_version
 from galpy.potential.WrapperPotential import WrapperPotential as _WrapperPotentialCls
-from packaging.version import parse as parse_version
 from ...units import KMS_TO_KPCGYR
 import numpy as np
 import warnings
@@ -42,26 +40,15 @@ def _opt(name):
     """
     return getattr(potential, name, None)
 
-# EllipsoidalPotential subclasses are vectorized in galpy > 1.11.2
-_ELLIPSOIDAL_POTENTIALS = (
-    potential.PerfectEllipsoidPotential,
-    potential.PowerTriaxialPotential,
-    potential.TwoPowerTriaxialPotential,
-    potential.TriaxialGaussianPotential,
-    potential.TriaxialJaffePotential,
-    potential.TriaxialHernquistPotential,
-    potential.TriaxialNFWPotential,
-)
-
-_galpy_has_vectorized_ellipsoidal = parse_version(galpy_version) > parse_version("1.11.2")
-
-VECTORIZED_POTENTIALS = tuple(p for p in (
+# The galpy potentials and wrappers tambora accepts.
+SUPPORTED_POTENTIALS = tuple(p for p in (
     # SPHERICAL POTENTIALS
     potential.BurkertPotential,
     potential.DehnenCoreSphericalPotential,
     potential.DehnenSphericalPotential,
     _opt('EinastoPotential'),
     potential.HernquistPotential,
+    potential.HomogeneousSpherePotential,
     potential.interpSphericalPotential,
     potential.IsochronePotential,
     potential.JaffePotential,
@@ -72,36 +59,35 @@ VECTORIZED_POTENTIALS = tuple(p for p in (
     potential.PowerSphericalPotential,
     potential.PowerSphericalPotentialwCutoff,
     potential.PseudoIsothermalPotential,
+    potential.SphericalShellPotential,
     potential.TwoPowerSphericalPotential,
     # AXISYMMETRIC POTENTIALS
+    potential.DoubleExponentialDiskPotential,
     potential.FlattenedPowerPotential,
     potential.KuzminDiskPotential,
     potential.KuzminKutuzovStaeckelPotential,
     potential.LogarithmicHaloPotential,
     potential.MiyamotoNagaiPotential,
     potential.MN3ExponentialDiskPotential,
+    potential.RazorThinExponentialDiskPotential,
     potential.RingPotential,
     # TRIAXIAL POTENTIALS
     potential.DehnenBarPotential,
+    potential.FerrersPotential,
+    potential.SoftenedNeedleBarPotential,
     potential.SpiralArmsPotential,
     potential.interpRZPotential,
-) if p is not None) + (
-    # EllipsoidalPotentials: vectorized in galpy > 1.11.2
-    _ELLIPSOIDAL_POTENTIALS if _galpy_has_vectorized_ellipsoidal else ()
-)
-
-UNVECTORIZED_POTENTIALS = (
-    potential.HomogeneousSpherePotential,
-    potential.SphericalShellPotential,
-    potential.DoubleExponentialDiskPotential,
-    potential.RazorThinExponentialDiskPotential,
-    potential.FerrersPotential,
+    potential.PerfectEllipsoidPotential,
+    potential.PowerTriaxialPotential,
+    potential.TwoPowerTriaxialPotential,
+    potential.TriaxialGaussianPotential,
+    potential.TriaxialJaffePotential,
+    potential.TriaxialHernquistPotential,
+    potential.TriaxialNFWPotential,
+    # OTHER
     potential.NullPotential,
-    potential.SoftenedNeedleBarPotential,
-    potential.MovingObjectPotential
-) + (
-    () if _galpy_has_vectorized_ellipsoidal else _ELLIPSOIDAL_POTENTIALS
-)
+    potential.MovingObjectPotential,
+) if p is not None)
 
 SUPPORTED_WRAPPERS = tuple(p for p in (
     potential.DehnenSmoothWrapperPotential,
@@ -110,15 +96,16 @@ SUPPORTED_WRAPPERS = tuple(p for p in (
     potential.CorotatingRotationWrapperPotential,
     _opt('TimeDependentAmplitudeWrapperPotential'),
     _opt('KuzminLikeWrapperPotential'),
-) if p is not None)
-
-UNVECTORIZED_WRAPPERS = tuple(p for p in (
     _opt('RotateAndTiltWrapperPotential'),
 ) if p is not None)
 
-ALL_SUPPORTED_WRAPPERS = SUPPORTED_WRAPPERS + UNVECTORIZED_WRAPPERS
+# Where tambora asks, once, whether galpy evaluates a potential on arrays of points as it does
+# one point at a time [natural units].
+_PROBE_R = np.array([0.3, 0.9, 1.7, 4.0])
+_PROBE_Z = np.array([0.1, -0.4, 0.8, -2.0])
+_PROBE_PHI = np.array([0.3, 1.9, 4.0, 5.5])
 
-ALL_SUPPORTED_POTENTIALS = VECTORIZED_POTENTIALS + UNVECTORIZED_POTENTIALS
+_FORCES = (potential.evaluateRforces, potential.evaluatezforces, potential.evaluatephitorques)
 
 def _ensure_pot(pot):
     '''Ensure ``pot`` is in the form accepted by galpy's ``evaluate*`` functions.
@@ -173,15 +160,9 @@ def _check_supported_pot(pot):
              _check_supported_leaf(p._pot)
         if isinstance(p, _WrapperPotentialCls):
             # Reject unknown wrappers
-            if not isinstance(p, tuple(w for w in ALL_SUPPORTED_WRAPPERS if w is not None)):
+            if not isinstance(p, SUPPORTED_WRAPPERS):
                 raise TypeError(
                     f"{type(p).__name__} is not supported by tambora."
-                )
-            # Warn for known-but-unvectorized wrappers
-            if isinstance(p, tuple(w for w in UNVECTORIZED_WRAPPERS if w is not None)):
-                warnings.warn(
-                    f"{type(p).__name__} is supported by tambora but not vectorized. "
-                    f"Performance may be poor."
                 )
             # Validate inner (leaf) potentials
             for leaf in _unwrap_pot(p):
@@ -191,12 +172,7 @@ def _check_supported_pot(pot):
 
 def _check_supported_leaf(p):
     '''Validate a single non-wrapper galpy potential.'''
-    if isinstance(p, UNVECTORIZED_POTENTIALS):
-        warnings.warn(
-            f"{type(p).__name__} is supported by tambora but not vectorized. "
-            f"Performance may be poor."
-        )
-    elif not isinstance(p, ALL_SUPPORTED_POTENTIALS):
+    if not isinstance(p, SUPPORTED_POTENTIALS):
         raise TypeError(
             f"{type(p).__name__} is not supported by tambora. "
             f"Supported potentials: https://tambora.readthedocs.io/en/latest/user_guide/external_conservative_forces_and_potentials.html#galpy"
@@ -227,115 +203,94 @@ def _get_ro_vo(pot):
             break
     return ro, vo
 
-def _needs_scalar_loop(pot):
-    '''Check if any component of pot requires scalar-only evaluation.
+def _takes_arrays(p):
+    """Whether galpy evaluates the potential ``p`` on arrays of points as it does one point at a time.
 
-    Handles wrappers: an unvectorized wrapper (e.g. RotateAndTilt) or
-    a wrapper around an unvectorized inner potential both trigger scalar mode.
+    Asked once, at t = 0, at a few points: if galpy's array call fails, or gives other values
+    (NaNs counting as equal), ``p`` is evaluated one point at a time. An error evaluating a
+    single point is the potential's own, and is raised.
+    """
+    kw = dict(t=0., use_physical=False)
+    for f in (potential.evaluatePotentials, potential.evaluateRforces, potential.evaluatezforces,
+              potential.evaluatephitorques):
+        one = np.array([f(p, R, z, phi=phi, **kw) for R, z, phi in zip(_PROBE_R, _PROBE_Z, _PROBE_PHI)],
+                       dtype=float)
+        try:    # an axisymmetric potential's torque is a single 0, for any number of points
+            many = np.broadcast_to(np.asarray(f(p, _PROBE_R, _PROBE_Z, phi=_PROBE_PHI, **kw), dtype=float),
+                                   one.shape)
+        except Exception:
+            return False
+        if not np.allclose(many, one, rtol=1e-10, atol=0., equal_nan=True):
+            return False
+    return True
+
+
+def _galpy_pot_to_fns(pot):
     '''
-    for p in _iter_components(pot):
-        if isinstance(p, _WrapperPotentialCls):
-            if isinstance(p, UNVECTORIZED_WRAPPERS):
-                return True
-            # Check inner leaves
-            if any(isinstance(leaf, UNVECTORIZED_POTENTIALS)
-                   for leaf in _unwrap_pot(p)):
-                return True
-        elif isinstance(p, UNVECTORIZED_POTENTIALS):
-            return True
-    return False
+    Convert a galpy potential to functions that return its accelerations and potentials in
+    tambora internal units: ``acc_fn(pos, t)`` and ``pot_fn(pos, t)``, for Cartesian
+    positions ``(N, 3)`` in kpc and a time in Gyr.
 
-def _Rforces(pot, R_nat, z_nat, phi, t_nat, scalar):
-    '''galpy R-forces in natural units, one point at a time if ``scalar``.'''
-    if scalar:
-        return np.array([potential.evaluateRforces(pot, Ri, zi, phi=pi, t=t_nat, use_physical=False)
-                         for Ri, zi, pi in zip(R_nat, z_nat, phi)])
-    return np.asarray(potential.evaluateRforces(pot, R_nat, z_nat, phi=phi, t=t_nat,
-                                                use_physical=False))
-
-def _galpy_pot_to_pot_fn(pot):
-    '''
-    Convert a galpy potential to a function that 
-    returns potentials in tambora internal units.
+    Each component that galpy evaluates on arrays of points is evaluated that way, together
+    with the others that are; the rest are evaluated one point at a time, with a warning.
     '''
     pot = _ensure_pot(pot)
     ro, vo = _get_ro_vo(pot)
     vo_int = vo * KMS_TO_KPCGYR  # kpc/Gyr
-    scalar = _needs_scalar_loop(pot)
+    arrays, points = [], []
+    for p in _iter_components(pot):
+        if _takes_arrays(p):
+            arrays.append(p)
+        else:
+            warnings.warn(f"galpy can't evaluate {type(p).__name__} on arrays of points, so tambora "
+                          f"evaluates it one point at a time, which can be slow.")
+            points.append(p)
+    together = _ensure_pot(arrays) if arrays else None
+
+    def evaluate(fs, R, z, phi, t):
+        '''galpy's functions ``fs`` summed over the components, one row each [natural units].'''
+        total = np.zeros((len(fs),) + np.shape(R))
+        if together is not None:
+            for row, f in zip(total, fs):
+                row += np.asarray(f(together, R, z, phi=phi, t=t, use_physical=False))
+        for p in points:
+            total += np.array([[f(p, Ri, zi, phi=pi, t=t, use_physical=False) for f in fs]
+                               for Ri, zi, pi in zip(R, z, phi)]).reshape(-1, len(fs)).T
+        return total
+
+    def natural(pos, t):
+        R, phi, z = rect_to_cyl(*np.array(pos).T)
+        return R, R / ro, z / ro, phi, t * vo_int / ro
 
     def pot_fn(pos, t):
-        R, phi, z = rect_to_cyl(*np.array(pos).T)
-        R_nat = R / ro
-        z_nat = z / ro
-        t_nat = t * vo_int / ro
-        if scalar:
-            pv = np.array([
-                potential.evaluatePotentials(
-                    pot, Ri, zi, phi=pi, t=t_nat, use_physical=False
-                ) for Ri, zi, pi in zip(R_nat, z_nat, phi)
-            ])
-        else:
-            pv = np.asarray(potential.evaluatePotentials(
-                pot, R_nat, z_nat, phi=phi, t=t_nat, use_physical=False
-            ))
-        return pv * vo_int**2
-    return pot_fn
-
-def _galpy_pot_to_acc_fn(pot):
-    '''
-    Convert a galpy potential to a function that 
-    returns accelerations in tambora internal units.
-    
-    Parameters
-    ----------
-    pot : galpy potential
-        A single galpy Potential, a list of Potentials, or a
-        CompositePotential (galpy >=1.11).  Physical units need not
-        be turned on; ``get_physical()`` is used to determine ro/vo.
-    
-    Returns
-    -------
-    acc_fn : function
-        A function ``acc_fn(pos, t)`` that takes Cartesian positions
-        ``(N, 3)`` in kpc and time in Gyr, and returns accelerations
-        ``(N, 3)`` in kpc/Gyr^2.
-    '''
-    pot = _ensure_pot(pot)
-    ro, vo = _get_ro_vo(pot)
-    vo_int = vo * KMS_TO_KPCGYR  # kpc/Gyr
-    scalar = _needs_scalar_loop(pot)
+        _, R_nat, z_nat, phi, t_nat = natural(pos, t)
+        return evaluate((potential.evaluatePotentials,), R_nat, z_nat, phi, t_nat)[0] * vo_int**2
 
     def acc_fn(pos, t):
-        R, phi, z = rect_to_cyl(*np.array(pos).T)
-        R_nat = R / ro
-        z_nat = z / ro
-        t_nat = t * vo_int / ro
-        kw = dict(phi=phi, t=t_nat, use_physical=False)
-
-        if scalar:
-            results = np.array([
-                [potential.evaluateRforces(pot, Ri, zi, phi=pi, t=t_nat, use_physical=False),
-                 potential.evaluatezforces(pot, Ri, zi, phi=pi, t=t_nat, use_physical=False),
-                 potential.evaluatephitorques(pot, Ri, zi, phi=pi, t=t_nat, use_physical=False)]
-                for Ri, zi, pi in zip(R_nat, z_nat, phi)
-            ])
-            Rf = results[:, 0]
-            zf = results[:, 1]
-            pt = results[:, 2]
-        else:
-            Rf = np.asarray(potential.evaluateRforces(pot, R_nat, z_nat, **kw))
-            zf = np.asarray(potential.evaluatezforces(pot, R_nat, z_nat, **kw))
-            pt = np.asarray(potential.evaluatephitorques(pot, R_nat, z_nat, **kw))
+        R, R_nat, z_nat, phi, t_nat = natural(pos, t)
+        Rf, zf, pt = evaluate(_FORCES, R_nat, z_nat, phi, t_nat)
 
         aR = Rf * vo_int**2 / ro          # kpc/Gyr^2
         az = zf * vo_int**2 / ro
         on_axis = R == 0
         aphi = pt * vo_int**2 / np.where(on_axis, 1.0, R)
         if np.any(on_axis):
-            aphi = np.array(aphi, dtype=float)
-            aphi[on_axis] = _Rforces(pot, R_nat[on_axis], z_nat[on_axis], phi[on_axis] + np.pi / 2,
-                                     t_nat, scalar) * vo_int**2 / ro
+            aphi[on_axis] = evaluate((potential.evaluateRforces,), R_nat[on_axis], z_nat[on_axis],
+                                     phi[on_axis] + np.pi / 2, t_nat)[0] * vo_int**2 / ro
 
         ax, ay, az = cyl_to_rect_vec(aR, aphi, az, phi)
         return np.array([ax, ay, az]).T
-    return acc_fn
+
+    return acc_fn, pot_fn
+
+
+def _galpy_pot_to_pot_fn(pot):
+    '''A function that returns ``pot``'s potentials in tambora internal units; see
+    :func:`_galpy_pot_to_fns`.'''
+    return _galpy_pot_to_fns(pot)[1]
+
+
+def _galpy_pot_to_acc_fn(pot):
+    '''A function that returns ``pot``'s accelerations in tambora internal units; see
+    :func:`_galpy_pot_to_fns`.'''
+    return _galpy_pot_to_fns(pot)[0]
