@@ -1,8 +1,6 @@
-import inspect
 import pytest
 import warnings
 from galpy import potential
-from galpy.orbit import Orbit
 from galpy.potential.WrapperPotential import WrapperPotential
 from galpy.util.coords import rect_to_cyl, cyl_to_rect_vec
 import numpy as np
@@ -11,6 +9,8 @@ from itertools import product
 from functools import partial
 import astropy.units as u
 from tambora.dynamics import ExternalPotential
+
+from .galpy_classes import EVERY_GALPY_POTENTIAL, build, satellite_orbit
 
 _has_composite = hasattr(potential, 'CompositePotential')
 
@@ -568,37 +568,9 @@ def _galpys_acc(pot, pos):
     return np.column_stack(cyl_to_rect_vec(aR, pt / R, az, phi))
 
 
-# What galpy's defaults don't build, with arguments that do.
-_BUILT_WITH = {
-    'MovingObjectPotential': lambda: potential.MovingObjectPotential(
-        _satellite_orbit(), pot=potential.PlummerPotential(amp=0.1, b=0.1)),
-    'interpRZPotential': lambda: potential.interpRZPotential(
-        RZPot=potential.MWPotential2014, rgrid=(0.01, 2., 51), zgrid=(0., 1., 51),
-        interpPot=True, interpRforce=True, interpzforce=True),
-    'interpSphericalPotential': lambda: potential.interpSphericalPotential(
-        rforce=potential.NFWPotential(), rgrid=np.geomspace(0.01, 20., 101)),
-    'AdiabaticContractionWrapperPotential': lambda: potential.AdiabaticContractionWrapperPotential(
-        pot=potential.NFWPotential(amp=2.), baryonpot=potential.HernquistPotential(amp=0.3, a=0.2)),
-    'KuzminLikeWrapperPotential': lambda: potential.KuzminLikeWrapperPotential(
-        pot=potential.PlummerPotential(), a=0.5, b=0.1),
-    'RotateAndTiltWrapperPotential': lambda: potential.RotateAndTiltWrapperPotential(
-        pot=potential.MiyamotoNagaiPotential(), zvec=[0., 0.3, 1.]),
-}
-# The snapshot potentials need a pynbody snapshot; a CompositePotential is tested as a sum.
-_NOT_BUILT = {'SnapshotRZPotential', 'InterpSnapshotRZPotential', 'CompositePotential'}
-
-_EVERY_GALPY_POTENTIAL = sorted(name for name, c in inspect.getmembers(potential, inspect.isclass)
-                                if issubclass(c, potential.Potential) and c is not potential.Potential
-                                and name not in _NOT_BUILT)
-
-
-@pytest.mark.parametrize("name", _EVERY_GALPY_POTENTIAL)
+@pytest.mark.parametrize("name", EVERY_GALPY_POTENTIAL)
 def test_every_potential_galpy_has_is_accepted_with_galpys_forces(name):
-    try:
-        pot = _BUILT_WITH.get(name, getattr(potential, name))()
-    except Exception as e:
-        pytest.fail(f"galpy's {name} doesn't build with its defaults ({type(e).__name__}: {e}); "
-                    f"add arguments that do to _BUILT_WITH")
+    pot = build(name)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")     # physical units not set; some go one point at a time
         force = ExternalPotential(pot)
@@ -961,19 +933,13 @@ _NAN_ON_AXIS = (
      if hasattr(potential, 'RotateAndTiltWrapperPotential') else ())
 
 
-def _satellite_orbit():
-    o = Orbit([1., 0.1, 1.1, 0.1, 0., 0.3])
-    o.integrate(np.linspace(-1., 1., 101), potential.MWPotential2014)
-    return o
-
-
 # Masses off to one side pull sideways on the axis, so these exercise the phi-term there.
 # Every potential in the lists above has no sideways pull on the axis.
 OFF_CENTRE_GALPY_POTENTIALS = (
     [potential.RotateAndTiltWrapperPotential(pot=potential.NFWPotential(), offset=[0.3 / 8., 0.4 / 8., 0.])]
     if hasattr(potential, 'RotateAndTiltWrapperPotential') else []
 ) + [
-    potential.MovingObjectPotential(_satellite_orbit(), pot=potential.PlummerPotential(amp=0.1, b=0.1)),
+    potential.MovingObjectPotential(satellite_orbit(), pot=potential.PlummerPotential(amp=0.1, b=0.1)),
 ]
 
 _ON_AXIS_CASES = (
