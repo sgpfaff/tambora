@@ -22,6 +22,8 @@ from tambora.interop._galpy import sampling                            # noqa: E
 from tambora.interop._galpy.sampling import GalpySampler               # noqa: E402
 from tambora.units import G_KPC_KMS                                    # noqa: E402
 
+from .galpy_classes import EVERY_GALPY_POTENTIAL, build                # noqa: E402
+
 RO, VO = 9., 230.       # not galpy's defaults, so a unit taken from the wrong place shows
 
 
@@ -867,6 +869,92 @@ def test_a_list_of_profiles_is_drawn_in_another_potential_as_one_model():
 def test_a_galpy_potential_without_physical_units_warns_in_the_potential_too():
     with pytest.warns(UserWarning, match="does not have physical units explicitly set"):
         GalpySampler(STARS, potential=[STARS, potential.HernquistPotential()])
+
+
+def _the_same_in_every_direction(pot, rmax):
+    '''Whether ``pot``'s potential is the same in every direction at radii up to ``rmax``
+    [natural units]: what spherical means, checked directly.'''
+    directions = np.random.default_rng(0).normal(size=(12, 3))
+    directions /= np.linalg.norm(directions, axis=1)[:, None]
+    values = []
+    for r in np.logspace(-5.9, -0.1, 7) * rmax:      # off round radii, where grids like galpy's multipoles end
+        x, y, z = (r * directions).T
+        values.append([potential.evaluatePotentials(pot, R, zi, phi=phi, t=0., use_physical=False)
+                       for R, zi, phi in zip(np.hypot(x, y), z, np.arctan2(y, x))])
+    values = np.array(values)       # one row per radius; a scale from all of them, as some pass 0
+    return bool(np.all(np.isfinite(values)) and np.all(np.ptp(values, axis=1) <= 1e-6 * np.max(np.abs(values))))
+
+
+@pytest.mark.parametrize("name", EVERY_GALPY_POTENTIAL)
+def test_a_potential_is_taken_for_spherical_when_it_is_the_same_in_every_direction(name):
+    pot = build(name)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        assert sampling._is_spherical(pot, rmax=100.) == _the_same_in_every_direction(pot, rmax=100.)
+
+
+@pytest.mark.usefixtures('tracers_allowed')
+@pytest.mark.parametrize("make, spherical", [
+    pytest.param(lambda: potential.LogarithmicHaloPotential(q=1., ro=RO, vo=VO), True, id='round_logarithmic_halo'),
+    pytest.param(lambda: potential.LogarithmicHaloPotential(q=0.9, ro=RO, vo=VO), False,
+                 id='flattened_logarithmic_halo'),
+    pytest.param(lambda: potential.TriaxialNFWPotential(b=1., c=1., ro=RO, vo=VO), True, id='round_triaxial_nfw'),
+    pytest.param(lambda: potential.TriaxialNFWPotential(b=1., c=0.8, ro=RO, vo=VO), False,
+                 id='flattened_triaxial_nfw'),
+    pytest.param(lambda: potential.TriaxialNFWPotential(b=0.8, c=0.6, ro=RO, vo=VO), False, id='triaxial_nfw'),
+    pytest.param(lambda: potential.DehnenSmoothWrapperPotential(pot=_hernquist_pot(), ro=RO, vo=VO), True,
+                 id='grown_hernquist'),        # fully grown by t = 0
+])
+def test_a_density_is_drawn_in_any_potential_that_is_spherical(make, spherical):
+    halo = make()
+    if spherical:
+        GalpySampler(STARS, potential=[STARS, halo])
+    else:
+        with pytest.raises(TypeError, match=f"Can't sample in a {type(halo).__name__}: galpy's samplers need "
+                                            f"a spherical potential"):
+            GalpySampler(STARS, potential=[STARS, halo])
+
+
+class _NaNForcesFar(potential.PlummerPotential):
+    '''A Plummer whose forces are NaN beyond R = 1.'''
+    def _Rforce(self, R, z, phi=0., t=0.):
+        return np.where(np.asarray(R) > 1., np.nan, super()._Rforce(R, z, phi=phi, t=t))
+
+    def _zforce(self, R, z, phi=0., t=0.):
+        return np.where(np.asarray(R) > 1., np.nan, super()._zforce(R, z, phi=phi, t=t))
+
+
+class _SphericalNaNForcesFar(_CustomPlummer):
+    def _rforce(self, r, t=0.):
+        return np.where(np.asarray(r) > 1., np.nan, super()._rforce(r, t=t))
+
+
+@pytest.mark.parametrize("make, spherical", [
+    pytest.param(lambda: potential.TriaxialNFWPotential(b=0.8, c=1.), False, id='round_in_the_xz_plane'),
+    pytest.param(lambda: potential.LogarithmicHaloPotential(q=0.999), False, id='flattened_by_0.001'),
+    pytest.param(lambda: [potential.HernquistPotential(), potential.RingPotential(amp=0.01, a=5.)], False,
+                 id='a_ring_far_out'),
+    pytest.param(lambda: potential.interpRZPotential(RZPot=potential.HernquistPotential(), rgrid=(0.01, 20., 201),
+                                                     zgrid=(0., 20., 201), interpPot=True, interpRforce=True,
+                                                     interpzforce=True),
+                 True, id='interpolated_hernquist'),        # 3e-6 off, from the interpolation
+    # galpy's DF can't draw in this one, as it evaluates the potential without phi.
+    pytest.param(lambda: potential.SolidBodyRotationWrapperPotential(pot=potential.HernquistPotential(), omega=1.),
+                 True, id='rotating_hernquist'),
+    pytest.param(lambda: _SphericalNaNForcesFar(1e5 * u.Msun, 0.01 * u.kpc, ro=RO, vo=VO), True,
+                 id='a_SphericalPotential_with_NaN_forces'),
+    pytest.param(_NaNForcesFar, False, id='NaN_forces'),
+])
+def test_what_is_taken_for_spherical(make, spherical):
+    assert sampling._is_spherical(make(), rmax=10.) is spherical
+
+
+@pytest.mark.usefixtures('tracers_allowed')
+def test_every_component_that_isnt_spherical_is_named():
+    disk = potential.MiyamotoNagaiPotential(amp=1e10 * u.Msun, a=3 * u.kpc, b=0.3 * u.kpc, ro=RO, vo=VO)
+    halo = potential.LogarithmicHaloPotential(q=0.9, ro=RO, vo=VO)
+    with pytest.raises(TypeError, match="Can't sample in a MiyamotoNagaiPotential\+LogarithmicHaloPotential:"):
+        GalpySampler(STARS, potential=[STARS, disk, _hernquist_pot(), halo])
 
 
 def test_a_galpy_df_cant_take_another_potential():

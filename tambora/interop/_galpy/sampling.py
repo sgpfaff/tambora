@@ -28,14 +28,6 @@ _EXACT_DFS = {
     _gp.HernquistPotential: _df.isotropicHernquistdf,
 }
 
-# Spherical potentials that aren't SphericalPotential subclasses in galpy: these, and any
-# SphericalPotential, can be the potential a density is drawn in.
-_ALSO_SPHERICAL = (
-    _gp.PlummerPotential, _gp.TwoPowerSphericalPotential, _gp.PowerSphericalPotential,
-    _gp.PowerSphericalPotentialwCutoff, _gp.IsochronePotential, _gp.HomogeneousSpherePotential,
-    _gp.PseudoIsothermalPotential,
-)
-
 # Up to 1.12.0, galpy's sampler draws a density in a much deeper potential than its own far too
 # fast (virial ratios up to 1.6). galpy's main branch has part of the fix (#1568) and the rest is
 # to follow; this is the first galpy release with all of it, None until there is one.
@@ -170,6 +162,26 @@ def _rmax(dens):
         return _RADII[0]
     return optimize.brentq(lambda r: 1 - _mass(dens, r, use_physical=False) / m_far - _LEFT_OUT,
                            _RADII[i - 1], _RADII[i], rtol=1e-6)
+
+
+def _is_spherical(pot, rmax):
+    """Whether the galpy potential ``pot`` is spherical out to ``rmax`` [natural units], at t = 0.
+
+    galpy says, if any component isn't axisymmetric, or all are SphericalPotentials. Otherwise,
+    in a spherical potential z F_R = R F_z: compared at radii up to ``rmax``, 15 to 75 degrees
+    off the plane, to 1e-4.
+    """
+    parts = list(_iter_components(pot))
+    if any(p.isNonAxi for p in parts):
+        return False
+    if all(isinstance(p, _SphericalPotential) for p in parts):
+        return True
+    r, off_plane = np.logspace(-6, 0, 13) * rmax, np.radians([15., 45., 75.])
+    R, z = np.outer(r, np.cos(off_plane)).ravel(), np.outer(r, np.sin(off_plane)).ravel()
+    kw = dict(phi=0., t=0., use_physical=False)
+    zFR = z * np.array([_gp.evaluateRforces(pot, Ri, zi, **kw) for Ri, zi in zip(R, z)])
+    RFz = R * np.array([_gp.evaluatezforces(pot, Ri, zi, **kw) for Ri, zi in zip(R, z)])
+    return bool(np.all(np.abs(zFR - RFz) <= 1e-4 * (np.abs(zFR) + np.abs(RFz))))
 
 
 def _check_density(p):
@@ -331,11 +343,12 @@ def _tracer_df(model, potential):
             _check_profile(p)
     for p in _iter_components(dens):
         _check_density(p)
-    for p in _iter_components(total):
-        if not isinstance(p, (_SphericalPotential,) + _ALSO_SPHERICAL):
-            raise TypeError(f"Can't sample in a {type(p).__name__}: galpy's samplers need a "
-                            f"spherical potential.")
     rmax = _rmax(dens)
+    if not _is_spherical(total, rmax):
+        parts = list(_iter_components(total))
+        culprits = [p for p in parts if not _is_spherical(p, rmax)] or parts
+        raise TypeError(f"Can't sample in a {'+'.join(type(p).__name__ for p in culprits)}: galpy's "
+                        f"samplers need a spherical potential.")
     if not _tracers_fixed():    # last, so that a mistake isn't taken for a need for newer galpy
         raise _tracers_unfixed()
     _warn_if_unchecked()
