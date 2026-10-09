@@ -6,7 +6,7 @@ import weakref
 from galpy import potential as _gp
 
 from .bridge import (
-    _check_physical, _ensure_pot, _galpy_pot_to_fns, _iter_components,
+    _check_physical, _combined, _galpy_pot_to_fns, _iter_components,
 )
 from .._backend import PotentialBackend
 
@@ -68,7 +68,7 @@ class GalpyPotential(PotentialBackend):
             if not isinstance(p, _gp.Potential):
                 where = f" (element {i} of the {'flattened ' if nested else ''}list)" if is_list else ""
                 raise TypeError(f"Expected a galpy Potential{where}, got {type(p).__name__}.")
-        pot = _ensure_pot(items) if is_list else obj
+        pot = _combined(items) if is_list else obj
         for p in _iter_components(pot):
             _check_physical(p)
         self.obj = pot

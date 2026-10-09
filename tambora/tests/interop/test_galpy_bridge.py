@@ -492,12 +492,13 @@ class _Broken(potential.PlummerPotential):
 _SOME_POINTS = np.array([[8., 0., 1.], [5., 3., -2.], [-4., 6., 0.5], [1., -1., 0.]])
 
 
-def _point_by_point(pot, pos):
-    '''galpy's potential at each of ``pos`` [kpc], one point at a time, in tambora's units.'''
+def _point_by_point(pot, pos, t=0.):
+    '''galpy's potential at each of ``pos`` [kpc] at ``t`` [Gyr], one point at a time, in tambora's units.'''
     ro, vo = _galpy_bridge._get_ro_vo(pot)
+    vo *= _galpy_bridge.KMS_TO_KPCGYR
     R, phi, z = rect_to_cyl(*pos.T)
-    return np.array([potential.evaluatePotentials(pot, Ri / ro, zi / ro, phi=pi, t=0., use_physical=False)
-                     for Ri, zi, pi in zip(R, z, phi)]) * (vo * _galpy_bridge.KMS_TO_KPCGYR)**2
+    return np.array([potential.evaluatePotentials(pot, Ri / ro, zi / ro, phi=pi, t=t * vo / ro, use_physical=False)
+                     for Ri, zi, pi in zip(R, z, phi)]) * vo**2
 
 
 @pytest.mark.parametrize("make", [
@@ -556,16 +557,59 @@ def test_an_error_from_the_potential_itself_is_raised():
 
 # --- Every galpy potential ----------------------------------------------------------------------- #
 
-def _galpys_acc(pot, pos):
-    '''galpy's own acceleration [kpc/Gyr^2] at ``pos`` [kpc], one point at a time, in physical units.'''
+def _galpys_acc(pot, pos, t=0.):
+    '''galpy's own acceleration [kpc/Gyr^2] at ``pos`` [kpc] at ``t`` [Gyr], one point at a time, in
+    physical units.'''
     ro, vo = _galpy_bridge._get_ro_vo(_galpy_bridge._ensure_pot(pot))
-    kw = dict(t=0 * u.Gyr, ro=ro * u.kpc, vo=vo * u.km / u.s, quantity=True)
+    kw = dict(t=t * u.Gyr, ro=ro * u.kpc, vo=vo * u.km / u.s, quantity=True)
     R, phi, z = rect_to_cyl(*pos.T)
     acc, torque = u.kpc / u.Gyr**2, u.kpc**2 / u.Gyr**2
     aR, az, pt = (np.array([f(pot, Ri * u.kpc, zi * u.kpc, phi=pi, **kw).to(unit).value for Ri, zi, pi in zip(R, z, phi)])
                   for f, unit in ((potential.evaluateRforces, acc), (potential.evaluatezforces, acc),
                                   (potential.evaluatephitorques, torque)))
     return np.column_stack(cyl_to_rect_vec(aR, pt / R, az, phi))
+
+
+# --- Potentials in different units ----------------------------------------------------------------- #
+
+_DISK = dict(amp=5e10 * u.Msun, a=3 * u.kpc, b=0.3 * u.kpc)
+_HALO = dict(amp=1e12 * u.Msun, a=20 * u.kpc)
+
+
+def test_potentials_in_different_units_are_each_evaluated_in_their_own():
+    disk = potential.MiyamotoNagaiPotential(**_DISK, ro=8., vo=220.)
+    halo = potential.NFWPotential(**_HALO, ro=8.2, vo=232.)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        force = ExternalPotential([disk, halo])
+        acc, pot = force.acc(_SOME_POINTS, t=0.), force.potential(_SOME_POINTS, t=0.)
+    assert not [w for w in caught if 'differs' in str(w.message) or 'list of potentials' in str(w.message)]
+    np.testing.assert_allclose(acc, _galpys_acc(disk, _SOME_POINTS) + _galpys_acc(halo, _SOME_POINTS), rtol=1e-12)
+    np.testing.assert_allclose(pot, _point_by_point(disk, _SOME_POINTS) + _point_by_point(halo, _SOME_POINTS),
+                               rtol=1e-12)
+
+
+def test_time_is_in_each_potentials_own_units_too():
+    growing = potential.GaussianAmplitudeWrapperPotential(pot=potential.HernquistPotential(ro=8.2, vo=232.),
+                                                           to=1. * u.Gyr, sigma=0.5 * u.Gyr, ro=8.2, vo=232.)
+    halo = potential.NFWPotential(**_HALO, ro=8., vo=220.)
+    acc = ExternalPotential([halo, growing]).acc(_SOME_POINTS, t=0.7)
+    np.testing.assert_allclose(acc, _galpys_acc(growing, _SOME_POINTS, t=0.7) + _galpys_acc(halo, _SOME_POINTS, t=0.7),
+                               rtol=1e-12)
+
+
+@pytest.mark.parametrize("combine", [
+    pytest.param(lambda disk, halo: disk + halo, id='combined'),
+    pytest.param(lambda disk, halo: [disk + halo, potential.NullPotential(ro=8., vo=220.)], id='nested'),
+])
+def test_a_combination_whose_units_differ_is_evaluated_in_each_ones_units(combine):
+    # galpy only combines potentials that share their units, with an assert: this is one whose
+    # units changed after.
+    disk, halo = potential.MiyamotoNagaiPotential(**_DISK, ro=8., vo=220.), potential.NFWPotential(**_HALO, ro=8., vo=220.)
+    pot = combine(disk, halo)
+    halo.turn_physical_on(ro=8.2, vo=232.)
+    np.testing.assert_allclose(ExternalPotential(pot).acc(_SOME_POINTS, t=0.),
+                               _galpys_acc(disk, _SOME_POINTS) + _galpys_acc(halo, _SOME_POINTS), rtol=1e-12)
 
 
 @pytest.mark.parametrize("name", EVERY_GALPY_POTENTIAL)
