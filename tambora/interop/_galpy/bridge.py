@@ -40,6 +40,10 @@ _PROBE_PHI = np.array([0.3, 1.9, 4.0, 5.5])
 
 _FORCES = (potential.evaluateRforces, potential.evaluatezforces, potential.evaluatephitorques)
 
+# The power of ro each of galpy's natural-unit values is divided by, with vo^2, to be physical.
+_PER_RO = {potential.evaluatePotentials: 0, potential.evaluateRforces: 1, potential.evaluatezforces: 1,
+           potential.evaluatephitorques: 0}
+
 def _ensure_pot(pot):
     '''Ensure ``pot`` is in the form accepted by galpy's ``evaluate*`` functions.
 
@@ -62,7 +66,8 @@ def _iter_components(pot):
     For a list (old galpy), yields each element.
     '''
     if isinstance(pot, list):
-        yield from pot
+        for p in pot:
+            yield from _iter_components(p)
     elif _has_composite and isinstance(pot, potential.CompositePotential):
         yield from pot
     else:
@@ -115,6 +120,18 @@ def _takes_arrays(p):
     return True
 
 
+def _units(p):
+    '''The galpy units [kpc, km/s] of the potential ``p``.'''
+    phys = get_physical(p)
+    return phys['ro'], phys['vo']
+
+
+def _combined(items):
+    '''The galpy potentials ``items`` as one, if they share their units; galpy can't add
+    potentials whose units differ, so those stay a list.'''
+    return _ensure_pot(items) if len({_units(p) for p in _iter_components(items)}) == 1 else items
+
+
 def _galpy_pot_to_fns(pot):
     '''
     Convert a galpy potential to functions that return its accelerations and potentials in
@@ -123,50 +140,51 @@ def _galpy_pot_to_fns(pot):
 
     Each component that galpy evaluates on arrays of points is evaluated that way, together
     with the others that are; the rest are evaluated one point at a time, with a warning.
+    Components with different units are evaluated each in their own.
     '''
-    pot = _ensure_pot(pot)
-    ro, vo = _get_ro_vo(pot)
-    vo_int = vo * KMS_TO_KPCGYR  # kpc/Gyr
-    arrays, points = [], []
+    by_units = {}
     for p in _iter_components(pot):
-        if _takes_arrays(p):
-            arrays.append(p)
-        else:
-            warnings.warn(f"galpy can't evaluate {type(p).__name__} on arrays of points, so tambora "
-                          f"evaluates it one point at a time, which can be slow.")
-            points.append(p)
-    together = _ensure_pot(arrays) if arrays else None
+        by_units.setdefault(_units(p), []).append(p)
+    groups = []                             # (ro [kpc], vo [kpc/Gyr], array-capable together, the rest)
+    for (ro, vo), parts in by_units.items():
+        arrays, points = [], []
+        for p in parts:
+            if _takes_arrays(p):
+                arrays.append(p)
+            else:
+                warnings.warn(f"galpy can't evaluate {type(p).__name__} on arrays of points, so tambora "
+                              f"evaluates it one point at a time, which can be slow.")
+                points.append(p)
+        groups.append((ro, vo * KMS_TO_KPCGYR, _ensure_pot(arrays) if arrays else None, points))
 
     def evaluate(fs, R, z, phi, t):
-        '''galpy's functions ``fs`` summed over the components, one row each [natural units].'''
+        '''galpy's functions ``fs`` summed over the components, one row each, in tambora's
+        units, at cylindrical ``R``, ``z`` [kpc], ``phi`` and time ``t`` [Gyr].'''
         total = np.zeros((len(fs),) + np.shape(R))
-        if together is not None:
-            for row, f in zip(total, fs):
-                row += np.asarray(f(together, R, z, phi=phi, t=t, use_physical=False))
-        for p in points:
-            total += np.array([[f(p, Ri, zi, phi=pi, t=t, use_physical=False) for f in fs]
-                               for Ri, zi, pi in zip(R, z, phi)]).reshape(-1, len(fs)).T
+        for ro, vo, together, points in groups:
+            R_nat, z_nat, t_nat = R / ro, z / ro, t * vo / ro
+            natural = np.zeros_like(total)
+            if together is not None:
+                for row, f in zip(natural, fs):
+                    row += np.asarray(f(together, R_nat, z_nat, phi=phi, t=t_nat, use_physical=False))
+            for p in points:
+                natural += np.array([[f(p, Ri, zi, phi=pi, t=t_nat, use_physical=False) for f in fs]
+                                     for Ri, zi, pi in zip(R_nat, z_nat, phi)]).reshape(-1, len(fs)).T
+            total += natural * (vo**2 / ro**np.array([_PER_RO[f] for f in fs]))[:, None]
         return total
 
-    def natural(pos, t):
-        R, phi, z = rect_to_cyl(*np.array(pos).T)
-        return R, R / ro, z / ro, phi, t * vo_int / ro
-
     def pot_fn(pos, t):
-        _, R_nat, z_nat, phi, t_nat = natural(pos, t)
-        return evaluate((potential.evaluatePotentials,), R_nat, z_nat, phi, t_nat)[0] * vo_int**2
+        R, phi, z = rect_to_cyl(*np.array(pos).T)
+        return evaluate((potential.evaluatePotentials,), R, z, phi, t)[0]
 
     def acc_fn(pos, t):
-        R, R_nat, z_nat, phi, t_nat = natural(pos, t)
-        Rf, zf, pt = evaluate(_FORCES, R_nat, z_nat, phi, t_nat)
-
-        aR = Rf * vo_int**2 / ro          # kpc/Gyr^2
-        az = zf * vo_int**2 / ro
+        R, phi, z = rect_to_cyl(*np.array(pos).T)
+        aR, az, torque = evaluate(_FORCES, R, z, phi, t)       # kpc/Gyr^2; the torque per kpc
         on_axis = R == 0
-        aphi = pt * vo_int**2 / np.where(on_axis, 1.0, R)
+        aphi = torque / np.where(on_axis, 1.0, R)
         if np.any(on_axis):
-            aphi[on_axis] = evaluate((potential.evaluateRforces,), R_nat[on_axis], z_nat[on_axis],
-                                     phi[on_axis] + np.pi / 2, t_nat)[0] * vo_int**2 / ro
+            aphi[on_axis] = evaluate((potential.evaluateRforces,), R[on_axis], z[on_axis],
+                                     phi[on_axis] + np.pi / 2, t)[0]
 
         ax, ay, az = cyl_to_rect_vec(aR, aphi, az, phi)
         return np.array([ax, ay, az]).T
