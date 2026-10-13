@@ -49,11 +49,8 @@ def sample(model, n: int, *, potential=None, seed: Optional[int] = None) -> Part
 
     Notes
     -----
-    Drawing in another ``potential``, e.g. a star cluster in the potential of itself and
-    its dark halo, needs a fix to galpy made after galpy 1.12.0. To use a development
-    version of galpy that has it, before a release does, set the environment variable
-    ``TAMBORA_GALPY_DEV_TRACERS=1``. A galpy distribution function already has its
-    potential, and a :class:`King` is defined by its own, so neither can take one.
+    A galpy distribution function already has its potential, and a :class:`King` is defined
+    by its own, so neither can take one.
     """
     n = operator.index(n)
     if n < 1:
@@ -88,7 +85,8 @@ def sample_components(components, n, *, seed: Optional[int] = None) -> tuple:
 
     Notes
     -----
-    Needs the same galpy as :func:`sample` with a ``potential``.
+    Drawn in the potential of them all, the components have the limits of :func:`sample`
+    with a ``potential``: see its Notes.
 
     Examples
     --------

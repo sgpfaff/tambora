@@ -11,8 +11,7 @@ env:
   PYTHONHASHSEED: "0"
   # The galpy release that core and galpy-astropy-units test. It's pinned, like galpy-compat's,
   # so that a new galpy release can't change what passes. When galpy releases the fix for
-  # drawing a density in another potential, set this, and _TRACERS_RELEASE in
-  # tambora/interop/_galpy/sampling.py, to that release, and add it to galpy-compat.
+  # drawing a density in another potential, set this to that release and add it to galpy-compat.
   GALPY_VERSION: "1.12.0"
 
 jobs:
@@ -282,12 +281,11 @@ jobs:
           python -m pytest --pyargs tambora.tests -o "addopts=" -q
 
   galpy-main:
-    # Up to 1.12.0, galpy draws a density deep in a much deeper potential far too fast, so
-    # tambora refuses to (ic.sample with potential=, ic.sample_components) and those tests skip
-    # on every pinned galpy above. This job runs them against galpy's development version, ahead
-    # of the release that is to fix it, vouching for it as a user would with
-    # TAMBORA_GALPY_DEV_TRACERS=1. Until the fix is on galpy's main branch they fail, so this job
-    # can't fail the build; once they pass, a fresh install of galpy main draws tracers right.
+    # Up to 1.12.0, galpy draws a density deep in a much deeper potential far too fast, so the
+    # tests of a star cluster at the centre of a dark halo skip on every pinned galpy above. This
+    # job runs them against galpy's development version, ahead of the release that is to fix it.
+    # Until the fix is on galpy's main branch they fail, so this job can't fail the build; once
+    # they pass, a fresh install of galpy main draws such tracers right.
     name: galpy main (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -325,6 +323,4 @@ jobs:
 
       - name: Run full suite
         working-directory: /tmp
-        env:
-          TAMBORA_GALPY_DEV_TRACERS: "1"
         run: python -m pytest --pyargs tambora.tests -o "addopts=" -q
