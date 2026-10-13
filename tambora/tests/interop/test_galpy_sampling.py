@@ -3,7 +3,6 @@ Tests for the galpy sampler backend.
 """
 
 import inspect
-import re
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 
@@ -14,6 +13,7 @@ from scipy import stats
 galpy = pytest.importorskip("galpy")
 import astropy.units as u                                             # noqa: E402
 from galpy import df, potential                                       # noqa: E402
+from packaging.version import parse as parse_version                  # noqa: E402
 from galpy.potential.SphericalPotential import SphericalPotential     # noqa: E402
 from galpy.util.conversion import mass_in_msol                        # noqa: E402
 
@@ -50,12 +50,8 @@ def _tracer():
     halo = potential.NFWPotential(amp=1e7 * u.Msun, a=0.5 * u.kpc, ro=RO, vo=VO)
     return df.eddingtondf(pot=stars + halo, denspot=stars, rmax=_TRACER_RMAX * u.kpc, ro=RO, vo=VO)
 
-
-# galpy's speeds can be too high for a tracer; the warning about it is tested on its own.
-_TRACER_WARNING = "ignore:This eddingtondf draws a tracer:UserWarning"
-
 DFS = [pytest.param(_king, id='kingdf'), pytest.param(_plummer, id='isotropicPlummerdf'),
-       pytest.param(_tracer, id='tracer_eddingtondf', marks=pytest.mark.filterwarnings(_TRACER_WARNING))]
+       pytest.param(_tracer, id='tracer_eddingtondf')]
 
 
 @pytest.mark.parametrize("make", DFS)
@@ -73,8 +69,7 @@ def test_draw_matches_galpys_own_physical_output(make):
     pytest.param(_king, 1e4, id='kingdf'),
     pytest.param(_plummer, 1e5, id='isotropicPlummerdf'),
     # The stars' mass inside rmax, which is what gets sampled; not the halo's.
-    pytest.param(_tracer, 1e5 * _TRACER_RMAX**3 / (_TRACER_RMAX**2 + 0.01**2)**1.5, id='tracer_eddingtondf',
-                 marks=pytest.mark.filterwarnings(_TRACER_WARNING)),
+    pytest.param(_tracer, 1e5 * _TRACER_RMAX**3 / (_TRACER_RMAX**2 + 0.01**2)**1.5, id='tracer_eddingtondf'),
 ])
 def test_the_total_mass_is_the_sampled_models(make, mass):
     assert GalpySampler(make()).total_mass == pytest.approx(mass, rel=1e-9)
@@ -135,9 +130,10 @@ def test_the_half_mass_radius_is_plummers():
 
 
 # galpy #1568 fixes #1343 on galpy's main branch after 1.12.0, so in its development versions
-# since and in the release that draws tracers right; this test then passes, so it's only xfailed
-# before.
-_GALPY_SPEEDS_FIXED = sampling._dev_galpy() or sampling._galpy_has(sampling._TRACERS_RELEASE)
+# since; this test then passes, so it's only xfailed for releases.
+_GALPY = parse_version(galpy.__version__)
+_GALPY_DEV = _GALPY.is_devrelease and _GALPY > parse_version("1.12.0")
+_GALPY_SPEEDS_FIXED = _GALPY_DEV
 
 
 @pytest.mark.xfail(not _GALPY_SPEEDS_FIXED, raises=AssertionError, strict=True,
@@ -176,25 +172,11 @@ def test_describe_names_the_df():
     assert GalpySampler(_king()).describe() == 'kingdf'
 
 
-# Up to 1.12.0, galpy draws a tracer deep in a much deeper potential far too fast. Until a
-# release with the fix, or a development version vouched for, tambora refuses to draw one
-# itself, and warns about a galpy DF that does.
-_GALPY_DRAWS_TRACERS = sampling._tracers_fixed()
-
-
-@pytest.mark.skipif(_GALPY_DRAWS_TRACERS, reason="this galpy draws tracers right")
-def test_a_tracer_df_warns_that_its_speeds_can_be_too_high():
-    with pytest.warns(UserWarning, match=r"draws a tracer \(PlummerPotential\) in a different "
-                                         r"potential \(PlummerPotential\+NFWPotential\)"):
-        GalpySampler(_tracer())
-
-
 @pytest.mark.parametrize("make", [
     pytest.param(_king, id='kingdf'),
     pytest.param(_plummer, id='isotropicPlummerdf'),
     pytest.param(lambda: df.eddingtondf(pot=_plummer_pot(), rmax=1. * u.kpc, ro=RO, vo=VO), id='eddingtondf'),
-    pytest.param(_tracer, id='tracer_eddingtondf', marks=pytest.mark.skipif(
-        not sampling._galpy_has(sampling._TRACERS_RELEASE), reason="until a galpy release draws tracers right")),
+    pytest.param(_tracer, id='tracer_eddingtondf'),
 ])
 def test_a_df_that_galpy_draws_right_doesnt_warn(make):
     d = make()
@@ -287,7 +269,6 @@ def test_a_sampled_potential_is_close_to_equilibrium(make, cdf):
     assert _virial_ratio(sampler, sampler.df._pot, n=_EQUILIBRIUM_N) == pytest.approx(1., rel=_EQUILIBRIUM_RTOL)
 
 
-@pytest.mark.filterwarnings(_TRACER_WARNING)
 def test_a_tracer_is_close_to_equilibrium_in_the_total_potential():
     # Sampled in the stars' own potential instead, the ratio here would be 0.90.
     d = _tracer()
@@ -525,7 +506,6 @@ def test_a_king_model_past_galpys_largest_w0_is_refused():
         GalpySampler(ic.King(M=1e4, W0=46., rt=0.03))
 
 
-@pytest.mark.usefixtures('tracers_allowed')
 @pytest.mark.parametrize("make", [
     pytest.param(lambda king: GalpySampler(king), id='sampled'),
     pytest.param(lambda king: GalpySampler(STARS, potential=[STARS, king]), id='in_the_potential'),
@@ -606,101 +586,10 @@ def test_galpys_own_truncation_far_inside_the_scale_radius_is_refused_too():
 
 STARS = ic.Plummer(M=1e5, rscale=0.005)         # a star cluster...
 HALO = ic.Hernquist(M=1e9, rscale=1.)           # ...at the centre of a dark halo
+# galpy releases up to 1.12.0 draw these far too fast, and its main branch about 6% too fast
+# until a planned follow-up: on development versions, these fail until it lands.
 _needs_galpy_drawing_tracers = pytest.mark.skipif(
-    not _GALPY_DRAWS_TRACERS, reason="this galpy may draw tracers too fast")
-
-
-@pytest.fixture
-def tracers_allowed(monkeypatch):
-    """Lifts the galpy-version guard, for what doesn't depend on the tracers' speeds."""
-    monkeypatch.setattr(sampling, '_TRACERS_RELEASE', galpy.__version__)
-
-
-@pytest.mark.skipif(_GALPY_DRAWS_TRACERS, reason="this galpy draws tracers right")
-@pytest.mark.parametrize("draw", [
-    pytest.param(lambda: ic.sample(STARS, 10, potential=[STARS, HALO]), id='sample'),
-    pytest.param(lambda: ic.sample_components([STARS, HALO], n=[10, 10]), id='sample_components'),
-])
-def test_older_galpy_refuses_to_draw_a_density_in_another_potential(draw):
-    with pytest.raises(ImportError, match=r"Drawing a density in another potential needs .*\(this is galpy "):
-        draw()
-
-
-@pytest.fixture
-def galpy_as(monkeypatch):
-    """Makes tambora take galpy for ``version``, with the fix in ``release``, and ``vouch`` as
-    the environment variable that vouches for a development version (None: unset)."""
-    def take(version, release=None, vouch=None):
-        monkeypatch.setattr(sampling, '_galpy_version', version)
-        monkeypatch.setattr(sampling, '_TRACERS_RELEASE', release)
-        if vouch is None:
-            monkeypatch.delenv('TAMBORA_GALPY_DEV_TRACERS', raising=False)
-        else:
-            monkeypatch.setenv('TAMBORA_GALPY_DEV_TRACERS', vouch)
-    return take
-
-
-@pytest.mark.parametrize("version, release, vouch, fixed", [
-    pytest.param('1.12.0', None, None, False, id='1.12.0'),
-    pytest.param('1.12.1', None, None, False, id='a_later_release_without_the_fix'),
-    pytest.param('1.12.1', None, '1', False, id='a_release_cant_be_vouched_for'),
-    pytest.param('1.12.1.dev0', None, None, False, id='a_development_version'),
-    pytest.param('1.12.1.dev0', None, '1', True, id='a_development_version_vouched_for'),
-    pytest.param('1.12.1.dev0', None, 'true', False, id='only_1_vouches'),
-    pytest.param('1.12.0.dev0', None, '1', False, id='a_development_version_of_1.12.0'),
-    pytest.param('1.13.0', '1.13.0', None, True, id='the_release_with_the_fix'),
-    pytest.param('1.13.2', '1.13.0', None, True, id='a_release_after_it'),
-    pytest.param('1.12.1', '1.13.0', None, False, id='a_release_before_it'),
-    pytest.param('1.13.0.dev0', '1.13.0', '1', True, id='its_development_version_vouched_for'),
-])
-def test_galpy_draws_a_density_in_another_potential_from_the_release_with_the_fix(galpy_as, version, release,
-                                                                                  vouch, fixed):
-    galpy_as(version, release, vouch)
-    assert sampling._tracers_fixed() is fixed
-
-
-@pytest.mark.parametrize("version, release, match", [
-    pytest.param('1.12.0', None, r"needs a fix to galpy that's in no release yet \(this is galpy 1\.12\.0\)\.$",
-                 id='no_release_yet'),
-    pytest.param('1.12.1', '1.13.0', r"needs galpy 1\.13\.0 or later \(this is galpy 1\.12\.1\)\.$", id='release'),
-    pytest.param('1.12.1.dev0', None, r"needs a fix to galpy that's in no release yet \(this is galpy "
-                                      r"1\.12\.1\.dev0\)\. This development version of galpy may have the fix: "
-                                      r"set TAMBORA_GALPY_DEV_TRACERS=1 to use it\.$",
-                 id='development_version'),
-])
-def test_galpy_without_the_fix_says_what_it_needs(galpy_as, version, release, match):
-    galpy_as(version, release)
-    with pytest.raises(ImportError, match=r"^Drawing a density in another potential " + match):
-        GalpySampler(STARS, potential=[STARS, HALO])
-
-
-_UNCHECKED = (r"with a development version of galpy \(1\.12\.1\.dev0\), as TAMBORA_GALPY_DEV_TRACERS=1 "
-              r"asks\. tambora can't tell whether this galpy has the fix")
-
-
-def test_a_development_galpy_vouched_for_draws_with_a_warning(galpy_as):
-    galpy_as('1.12.1.dev0', vouch='1')
-    with pytest.warns(UserWarning, match=_UNCHECKED):
-        ps = ic.sample(STARS, 10, potential=[STARS, HALO], seed=1)
-    assert ps.meta['model'].startswith('Plummer(M=100000, rscale=0.005) in ')
-
-
-def test_a_tracer_df_warns_that_a_development_galpy_vouched_for_is_unchecked(galpy_as):
-    galpy_as('1.12.1.dev0', vouch='1')
-    d = _tracer()
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter('always')
-        GalpySampler(d)
-    assert [str(w.message) for w in caught if 'too high' in str(w.message)] == []
-    assert any(re.search(_UNCHECKED, str(w.message)) for w in caught)
-
-
-def test_a_tracer_df_doesnt_warn_with_the_release_with_the_fix(galpy_as):
-    galpy_as('1.13.0', release='1.13.0')
-    d = _tracer()
-    with warnings.catch_warnings():
-        warnings.simplefilter('error')
-        GalpySampler(d)
+    not _GALPY_DEV, reason="galpy releases up to 1.12.0 draw a density deep in another potential too fast")
 
 
 @pytest.mark.parametrize("potential", [
@@ -735,7 +624,6 @@ def test_one_component_is_sampled_as_usual():
     np.testing.assert_array_equal(stars.pos, usual.pos)
 
 
-@pytest.mark.usefixtures('tracers_allowed')
 def test_a_density_in_another_potential_gets_an_eddington_df_of_the_total():
     sampler = GalpySampler(STARS, potential=[STARS, HALO])
     assert type(sampler.df) is df.eddingtondf
@@ -745,7 +633,6 @@ def test_a_density_in_another_potential_gets_an_eddington_df_of_the_total():
                                  'Hernquist(M=1e+09, rscale=1)'
 
 
-@pytest.mark.usefixtures('tracers_allowed')
 def test_ic_sample_draws_a_density_in_another_potential_with_its_own_mass():
     ps = ic.sample(STARS, 1000, potential=[STARS, HALO], seed=2)
     assert ps.mass.sum() == pytest.approx(1e5, rel=1e-6)    # what's beyond rmax is left out
@@ -753,7 +640,6 @@ def test_ic_sample_draws_a_density_in_another_potential_with_its_own_mass():
                        'seed': 2}
 
 
-@pytest.mark.usefixtures('tracers_allowed')
 def test_ic_sample_components_draws_each_with_its_own_mass():
     stars, dm = ic.sample_components([STARS, HALO], n=[1000, 2000], seed=4)
     assert stars.mass.sum() == pytest.approx(1e5, rel=1e-6)
@@ -762,7 +648,6 @@ def test_ic_sample_components_draws_each_with_its_own_mass():
     assert dm.meta['model'].startswith('Hernquist(M=1e+09, rscale=1) in Plummer(')
 
 
-@pytest.mark.usefixtures('tracers_allowed')
 @pytest.mark.parametrize("profile, native", [
     pytest.param(ic.Plummer(M=1e6, rscale=0.01), lambda: _plummer_pot(M=1e6, b=0.01), id='Plummer'),
     pytest.param(HALO, lambda: _hernquist_pot(M=1e9, a=1.), id='Hernquist'),
@@ -784,13 +669,11 @@ def test_a_profile_in_the_potential_is_the_galpy_potential_it_stands_for(profile
     np.testing.assert_allclose(got, want, rtol=1e-6)
 
 
-@pytest.mark.usefixtures('tracers_allowed')
 def test_a_tracers_radii_follow_its_own_density():
     pos, _ = GalpySampler(STARS, potential=[STARS, HALO]).draw(10_000, 3)
     assert stats.kstest(np.linalg.norm(pos, axis=1), lambda r: _plummer_cdf(r, b=0.005)).pvalue > 1e-3
 
 
-@pytest.mark.usefixtures('tracers_allowed')
 def test_a_profile_among_galpy_potentials_takes_their_units():
     halo = _hernquist_pot(M=1e9, a=1.)
     mixed = GalpySampler(STARS, potential=[STARS, halo])
@@ -806,7 +689,6 @@ def test_a_profile_among_galpy_potentials_takes_their_units():
                                np.percentile(np.linalg.norm(vel0, axis=1), quantiles), rtol=5e-3)
 
 
-@pytest.mark.parametrize("tracers", ['allowed', 'refused'])
 @pytest.mark.parametrize("model, potential, error, match", [
     pytest.param(lambda: ic.King(M=1e4, W0=6., rt=0.03), lambda: [HALO], TypeError,
                  "A King model is defined by its own potential", id='King'),
@@ -841,12 +723,7 @@ def test_a_profile_among_galpy_potentials_takes_their_units():
                  r"Can't use King\(M=1e\+06, W0=46, rt=0\.05\): galpy's King models fail for W0 above about 45",
                  id='King_W0'),
 ])
-def test_what_cant_be_drawn_in_another_potential_says_why(galpy_as, tracers, model, potential, error, match):
-    # Mistakes are found before galpy's version, so they're never taken for a need for newer galpy.
-    if tracers == 'allowed':
-        galpy_as(galpy.__version__, release=galpy.__version__)
-    else:
-        galpy_as('1.12.0')
+def test_what_cant_be_drawn_in_another_potential_says_why(model, potential, error, match):
     with pytest.raises(error, match=match):
         GalpySampler(model(), potential=potential())
 
@@ -857,7 +734,6 @@ def test_a_component_that_isnt_a_model_is_refused_on_any_galpy():
         ic.sample_components([STARS, 'halo'], n=[10, 10])
 
 
-@pytest.mark.usefixtures('tracers_allowed')
 def test_a_list_of_profiles_is_drawn_in_another_potential_as_one_model():
     ps = ic.sample([STARS, HALO], 1000, potential=[STARS, HALO, _hernquist_pot()], seed=1)
     assert ps.mass.sum() == pytest.approx(1e5 + 1e9, rel=1e-4)
@@ -865,7 +741,6 @@ def test_a_list_of_profiles_is_drawn_in_another_potential_as_one_model():
                                 'Plummer(M=100000, rscale=0.005) + Hernquist(M=1e+09, rscale=1) + HernquistPotential')
 
 
-@pytest.mark.usefixtures('tracers_allowed')
 def test_a_galpy_potential_without_physical_units_warns_in_the_potential_too():
     with pytest.warns(UserWarning, match="does not have physical units explicitly set"):
         GalpySampler(STARS, potential=[STARS, potential.HernquistPotential()])
@@ -893,7 +768,6 @@ def test_a_potential_is_taken_for_spherical_when_it_is_the_same_in_every_directi
         assert sampling._is_spherical(pot, rmax=100.) == _the_same_in_every_direction(pot, rmax=100.)
 
 
-@pytest.mark.usefixtures('tracers_allowed')
 @pytest.mark.parametrize("make, spherical", [
     pytest.param(lambda: potential.LogarithmicHaloPotential(q=1., ro=RO, vo=VO), True, id='round_logarithmic_halo'),
     pytest.param(lambda: potential.LogarithmicHaloPotential(q=0.9, ro=RO, vo=VO), False,
@@ -949,7 +823,6 @@ def test_what_is_taken_for_spherical(make, spherical):
     assert sampling._is_spherical(make(), rmax=10.) is spherical
 
 
-@pytest.mark.usefixtures('tracers_allowed')
 def test_every_component_that_isnt_spherical_is_named():
     disk = potential.MiyamotoNagaiPotential(amp=1e10 * u.Msun, a=3 * u.kpc, b=0.3 * u.kpc, ro=RO, vo=VO)
     halo = potential.LogarithmicHaloPotential(q=0.9, ro=RO, vo=VO)
