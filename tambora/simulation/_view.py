@@ -12,7 +12,106 @@ from ..units import unit_handler
 class _ParticleView:
     """Accessors shared by Sim and Component."""
 
+    def _snap(self, array, t):
+        """Slice a (nsnaps, N, ...) array to these particles at time t."""
+        ti = self._sim._ti(t)
+        if ti is ...:
+            return array[:, self._sl]
+        return array[ti, self._sl]
+
     # --- Position Accessors -------------------------------------------------------------------
+
+    @unit_handler('length')
+    def pos(self, t=...) -> np.ndarray:
+        '''
+        Particle positions (x, y, z) at *t*.
+
+        Units: `kpc`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        pos : (len(t), n_particles, 3) array or (n_particles, 3) array
+            Positions at *t*.
+            Units: `kpc`
+        '''
+        return self._snap(self._sim._positions, t)
+
+    @unit_handler('length')
+    def x(self, t=...) -> np.ndarray:
+        '''
+        x-positions of the particles at *t*.
+
+        Units: `kpc`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        x : (len(t), n_particles) array or (n_particles,) array
+            x-positions at *t*.
+            Units: `kpc`
+        '''
+        return self._snap(self._sim._positions, t)[..., 0]
+
+    @unit_handler('length')
+    def y(self, t=...) -> np.ndarray:
+        '''
+        y-positions of the particles at *t*.
+
+        Units: `kpc`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        y : (len(t), n_particles) array or (n_particles,) array
+            y-positions at *t*.
+            Units: `kpc`
+        '''
+        return self._snap(self._sim._positions, t)[..., 1]
+
+    @unit_handler('length')
+    def z(self, t=...) -> np.ndarray:
+        '''
+        z-positions of the particles at *t*.
+
+        Units: `kpc`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        z : (len(t), n_particles) array or (n_particles,) array
+            z-positions at *t*.
+            Units: `kpc`
+        '''
+        return self._snap(self._sim._positions, t)[..., 2]
 
     @unit_handler('length')
     def r(self, t=...):
@@ -114,6 +213,99 @@ class _ParticleView:
         return np.sqrt(self.x(t, return_internal=True)**2 + self.y(t, return_internal=True)**2)
 
     # --- Velocity Accessors -------------------------------------------------------------------
+
+    @unit_handler('velocity')
+    def vel(self, t=...) -> np.ndarray:
+        '''
+        Particle velocities (vx, vy, vz) at *t*.
+
+        Units: `km / s`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        vel : (len(t), n_particles, 3) array or (n_particles, 3) array
+            Velocities at *t*.
+            Units: `km / s`
+        '''
+        return self._snap(self._sim._velocities, t)
+
+    @unit_handler('velocity')
+    def vx(self, t=...) -> np.ndarray:
+        '''
+        x-component of particle velocities at *t*.
+
+        Units: `km / s`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        vx : (len(t), n_particles) array or (n_particles,) array
+            x-component of velocities at *t*.
+            Units: `km / s`
+        '''
+        return self._snap(self._sim._velocities, t)[..., 0]
+
+    @unit_handler('velocity')
+    def vy(self, t=...) -> np.ndarray:
+        '''
+        y-component of particle velocities at *t*.
+
+        Units: `km / s`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        vy : (len(t), n_particles) array or (n_particles,) array
+            y-component of velocities at *t*.
+            Units: `km / s`
+        '''
+        return self._snap(self._sim._velocities, t)[..., 1]
+
+    @unit_handler('velocity')
+    def vz(self, t=...) -> np.ndarray:
+        '''
+        z-component of particle velocities at *t*.
+
+        Units: `km / s`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        vz : (len(t), n_particles) array or (n_particles,) array
+            z-component of velocities at *t*.
+
+            Units: `km / s`
+        '''
+        return self._snap(self._sim._velocities, t)[..., 2]
 
     @unit_handler('velocity')
     def vr(self, t=...):
