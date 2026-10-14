@@ -3,7 +3,7 @@ Simulation class for tambora.
 """
 
 import numpy as np
-from .component import Component, _com
+from .component import Component, _com, _virial_ratio
 from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, NullSelfGravity, Conservative, ExternalPotential,
                         SELF_GRAVITY_METHODS, INTEGRATORS)
 
@@ -1613,6 +1613,50 @@ class Sim:
                 Es = self.system_energy(t=t, use_cached=False, method=method, return_internal=True, **kwargs)
                 E0 = self.system_energy(t=0, use_cached=False, method=method, return_internal=True, **kwargs)
         return np.abs((Es - E0) / E0)
+
+    # --- Virial Ratio --- #
+
+    @_resolve_use_cached
+    @_resolve_t
+    def virial_ratio(self, t=..., use_cached=True, method=None, **kwargs):
+        r'''
+        Virial ratio :math:`2K/|W|` of the particles at *t*: 1 in equilibrium.
+
+        .. math::
+
+            K = \frac{1}{2} \sum_i m_i |v_i - v_{\rm cm}|^2, \qquad
+            W = \sum_i m_i (x_i - x_{\rm cm}) \cdot a_i,
+
+        about the particles' center of mass, where :math:`a_i` is the acceleration from
+        self-gravity and the external forces.
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+        use_cached : bool, optional
+            Whether to use cached self-gravity if available. Default is True.
+        method : str, optional
+            Method to use for computing self-gravity. Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
+            - 'direct_C': direct summation in C.
+            - 'direct': direct summation.
+        **kwargs
+            Additional keyword arguments to pass to the gravity method,
+            e.g. eps, the gravitational softening length (kpc).
+
+        Returns
+        -------
+        virial_ratio : float or (n_snaps,) array
+            Virial ratio at each snapshot.
+        '''
+        acc = (self.external_acc(t, return_internal=True)
+               + self.self_gravity(t=t, use_cached=use_cached, method=method, return_internal=True, **kwargs))
+        return _virial_ratio(self.pos(t, return_internal=True), self.vel(t, return_internal=True),
+                             self._mass, acc)
 
     # --- Acceleration Accessors -----------------------------------------------------------------
 
