@@ -10,6 +10,17 @@ def _com(values, mass):
     return np.sum(mass[:, None] * values, axis=-2) / mass.sum()
 
 
+def _virial_ratio(pos, vel, mass, acc):
+    """2K/|W| about the center of mass, with W = sum(m (x - x_cm) . a). The arrays may have a
+    leading snapshot axis."""
+    m = mass[:, None]
+    x = pos - _com(pos, mass)[..., None, :]
+    v = vel - _com(vel, mass)[..., None, :]
+    K = 0.5 * np.sum(m * v**2, axis=(-2, -1))
+    W = np.sum(m * x * acc, axis=(-2, -1))
+    return 2 * K / np.abs(W)
+
+
 class Component:
     """Slice view into one component's snapshot data."""
 
@@ -905,6 +916,57 @@ class Component:
         return self.KE(t=t, return_internal=True) + self.PE(t=t, use_cached=use_cached, include_all_components=include_all_components, method=method, 
                                                             return_internal=True, **kwargs)
     
+
+    # --- Virial Ratio --- #
+
+    @_resolve_use_cached
+    @_resolve_t
+    def virial_ratio(self, t=..., use_cached=True, include_all_components=True,
+                     method=None, **kwargs):
+        r'''
+        Virial ratio :math:`2K/|W|` of the particles in the component at *t*: 1 in equilibrium.
+
+        .. math::
+
+            K = \frac{1}{2} \sum_i m_i |v_i - v_{\rm cm}|^2, \qquad
+            W = \sum_i m_i (x_i - x_{\rm cm}) \cdot a_i,
+
+        about the component's center of mass, where :math:`a_i` is the acceleration from
+        self-gravity and the external forces.
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+        use_cached : bool, optional
+            Whether to use cached self-gravity if available. Default is True.
+            Note that all components are included if cached results are used.
+        include_all_components : bool, optional
+            Whether to include all components in the simulation when computing
+            the self-gravity acceleration. If False, only the particles in this
+            component will be used. Default is True.
+        method : str, optional
+            Method to use for computing self-gravity. Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
+            - 'direct_C': direct summation in C.
+            - 'direct': direct summation.
+        **kwargs
+            Additional keyword arguments to pass to the gravity method,
+            e.g. eps, the gravitational softening length (kpc).
+
+        Returns
+        -------
+        virial_ratio : float or (n_snaps,) array
+            Virial ratio at each snapshot.
+        '''
+        acc = (self.external_acc(t, return_internal=True)
+               + self.self_gravity(t=t, use_cached=use_cached, include_all_components=include_all_components,
+                                   method=method, return_internal=True, **kwargs))
+        return _virial_ratio(self.pos(t, return_internal=True), self.vel(t, return_internal=True),
+                             self.mass, acc)
 
     # --- Acceleration Accessors -----------------------------------------------------------------
 
