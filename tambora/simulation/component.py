@@ -5,6 +5,11 @@ from ..units import unit_handler
 import warnings
 
 
+def _com(values, mass):
+    """Mass-weighted mean of ``values`` over the particles (their second-to-last axis)."""
+    return np.sum(mass[:, None] * values, axis=-2) / mass.sum()
+
+
 class Component:
     """Slice view into one component's snapshot data."""
 
@@ -619,6 +624,56 @@ class Component:
         '''
         return self.L(t, center_pos=center_pos, center_vel=center_vel, return_internal=True)[..., 2]
     
+
+    # --- Center of Mass ---------------------------------------------------------------------
+
+    @unit_handler('length')
+    def com_pos(self, t=...):
+        '''
+        Center of mass (x, y, z) of the particles in the component at *t*: their mass-weighted
+        mean position.
+
+        Units: `kpc`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        com_pos : (len(t), 3) array or (3,) array
+            Center of mass at *t*.
+            Units: `kpc`
+        '''
+        return _com(self.pos(t=t, return_internal=True), self.mass)
+
+    @unit_handler('velocity')
+    def com_vel(self, t=...):
+        '''
+        Velocity (vx, vy, vz) of the center of mass of the particles in the component at *t*:
+        their mass-weighted mean velocity.
+
+        Units: `km/s`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        com_vel : (len(t), 3) array or (3,) array
+            Velocity of the center of mass at *t*.
+            Units: `km/s`
+        '''
+        return _com(self.vel(t=t, return_internal=True), self.mass)
 
     # --- Energy Accessors -----------------------------------------------------------------
 

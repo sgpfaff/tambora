@@ -3,7 +3,7 @@ Simulation class for tambora.
 """
 
 import numpy as np
-from .component import Component
+from .component import Component, _com
 from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, NullSelfGravity, Conservative, ExternalPotential,
                         SELF_GRAVITY_METHODS, INTEGRATORS)
 
@@ -1272,6 +1272,56 @@ class Sim:
         return self.L(t, center_pos=center_pos, center_vel=center_vel, 
                       return_internal=True)[..., 2]
     
+    # --- Center of Mass ---------------------------------------------------------------------
+
+    @unit_handler('length')
+    def com_pos(self, t=...):
+        '''
+        Center of mass (x, y, z) of the particles at *t*: their mass-weighted
+        mean position.
+
+        Units: `kpc`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        com_pos : (len(t), 3) array or (3,) array
+            Center of mass at *t*.
+            Units: `kpc`
+        '''
+        return _com(self.pos(t=t, return_internal=True), self._mass)
+
+    @unit_handler('velocity')
+    def com_vel(self, t=...):
+        '''
+        Velocity (vx, vy, vz) of the center of mass of the particles at *t*:
+        their mass-weighted mean velocity.
+
+        Units: `km/s`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        com_vel : (len(t), 3) array or (3,) array
+            Velocity of the center of mass at *t*.
+            Units: `km/s`
+        '''
+        return _com(self.vel(t=t, return_internal=True), self._mass)
+
     # --- Energy Accessors -----------------------------------------------------------------
 
     # --- Potential Energy --- #
