@@ -1,24 +1,9 @@
 import numpy as np
 from ..dynamics.forces.self_gravity import self_gravity
+from ..dynamics import diagnostics
 from ._decorators import _resolve_use_cached, _resolve_t
 from ..units import unit_handler
 import warnings
-
-
-def _com(values, mass):
-    """Mass-weighted mean of ``values`` over the particles (their second-to-last axis)."""
-    return np.sum(mass[:, None] * values, axis=-2) / mass.sum()
-
-
-def _virial_ratio(pos, vel, mass, acc):
-    """2K/|W| about the center of mass, with W = sum(m (x - x_cm) . a). The arrays may have a
-    leading snapshot axis."""
-    m = mass[:, None]
-    x = pos - _com(pos, mass)[..., None, :]
-    v = vel - _com(vel, mass)[..., None, :]
-    K = 0.5 * np.sum(m * v**2, axis=(-2, -1))
-    W = np.sum(m * x * acc, axis=(-2, -1))
-    return 2 * K / np.abs(W)
 
 
 class Component:
@@ -660,7 +645,7 @@ class Component:
             Center of mass at *t*.
             Units: `kpc`
         '''
-        return _com(self.pos(t=t, return_internal=True), self.mass)
+        return diagnostics.center_of_mass(self.pos(t=t, return_internal=True), self.mass)
 
     @unit_handler('velocity')
     def com_vel(self, t=...):
@@ -684,7 +669,7 @@ class Component:
             Velocity of the center of mass at *t*.
             Units: `km/s`
         '''
-        return _com(self.vel(t=t, return_internal=True), self.mass)
+        return diagnostics.center_of_mass(self.vel(t=t, return_internal=True), self.mass)
 
     # --- Energy Accessors -----------------------------------------------------------------
 
@@ -975,8 +960,8 @@ class Component:
         acc = (self.external_acc(t, return_internal=True)
                + self.self_gravity(t=t, use_cached=use_cached, include_all_components=include_all_components,
                                    method=method, return_internal=True, **kwargs))
-        return _virial_ratio(self.pos(t, return_internal=True), self.vel(t, return_internal=True),
-                             self.mass, acc)
+        return diagnostics.virial_ratio(self.pos(t, return_internal=True), self.vel(t, return_internal=True),
+                                    self.mass, acc)
 
     # --- Acceleration Accessors -----------------------------------------------------------------
 

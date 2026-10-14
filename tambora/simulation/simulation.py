@@ -3,12 +3,13 @@ Simulation class for tambora.
 """
 
 import numpy as np
-from .component import Component, _com, _virial_ratio
+from .component import Component
 from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, NullSelfGravity, Conservative, ExternalPotential,
                         SELF_GRAVITY_METHODS, INTEGRATORS)
 
 from ..dynamics.forces.CompositeForce import _CompositeConservative, _CompositePlain
 from ..units import unit_handler, KMS_TO_KPCGYR
+from ..dynamics import diagnostics
 from ..ic import ParticleSet
 import warnings
 import inspect
@@ -1297,7 +1298,7 @@ class Sim:
             Center of mass at *t*.
             Units: `kpc`
         '''
-        return _com(self.pos(t=t, return_internal=True), self._mass)
+        return diagnostics.center_of_mass(self.pos(t=t, return_internal=True), self._mass)
 
     @unit_handler('velocity')
     def com_vel(self, t=...):
@@ -1321,7 +1322,7 @@ class Sim:
             Velocity of the center of mass at *t*.
             Units: `km/s`
         '''
-        return _com(self.vel(t=t, return_internal=True), self._mass)
+        return diagnostics.center_of_mass(self.vel(t=t, return_internal=True), self._mass)
 
     # --- Energy Accessors -----------------------------------------------------------------
 
@@ -1667,8 +1668,8 @@ class Sim:
         '''
         acc = (self.external_acc(t, return_internal=True)
                + self.self_gravity(t=t, use_cached=use_cached, method=method, return_internal=True, **kwargs))
-        return _virial_ratio(self.pos(t, return_internal=True), self.vel(t, return_internal=True),
-                             self._mass, acc)
+        return diagnostics.virial_ratio(self.pos(t, return_internal=True), self.vel(t, return_internal=True),
+                                    self._mass, acc)
 
     # --- Acceleration Accessors -----------------------------------------------------------------
 

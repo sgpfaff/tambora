@@ -11,6 +11,53 @@ _SEED_FRAC = 0.01
 _SEED_MIN, _SEED_MAX = 8, 128
 
 
+def center_of_mass(values, mass):
+    """Mass-weighted mean of ``values`` over the particles.
+
+    Parameters
+    ----------
+    values : (..., N, 3) array
+        Positions or velocities of N particles, at one snapshot or several.
+    mass : (N,) array
+        Masses of the particles.
+
+    Returns
+    -------
+    (..., 3) array
+        The center of mass, or its velocity, at each snapshot.
+    """
+    return np.sum(mass[:, None] * values, axis=-2) / mass.sum()
+
+
+def virial_ratio(pos, vel, mass, acc):
+    r"""Virial ratio :math:`2K/|W|` about the center of mass: 1 in equilibrium.
+
+    .. math::
+
+        K = \frac{1}{2} \sum_i m_i |v_i - v_{\rm cm}|^2, \qquad
+        W = \sum_i m_i (x_i - x_{\rm cm}) \cdot a_i.
+
+    Parameters
+    ----------
+    pos, vel, acc : (..., N, 3) array
+        Positions, velocities and accelerations of N particles, at one snapshot or
+        several, in consistent units (e.g. kpc, kpc/Gyr and kpc/Gyr^2).
+    mass : (N,) array
+        Masses of the particles.
+
+    Returns
+    -------
+    float or (...,) array
+        The virial ratio at each snapshot.
+    """
+    m = mass[:, None]
+    x = pos - center_of_mass(pos, mass)[..., None, :]
+    v = vel - center_of_mass(vel, mass)[..., None, :]
+    K = 0.5 * np.sum(m * v**2, axis=(-2, -1))
+    W = np.sum(m * x * acc, axis=(-2, -1))
+    return 2 * K / np.abs(W)
+
+
 def bound_mask(pos, vel, mass, eps, method='falcON', theta=0.6, max_iter=50):
     """Boolean mask of self-bound particles via iterative unbinding.
 
