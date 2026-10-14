@@ -267,9 +267,11 @@ API
 
 .. autoclass:: tambora.simulation.Sim
    :members:
+   :inherited-members:
    :undoc-members:
    :exclude-members: add_particles, run, add_external_pot, add_external_acc
 
 .. autoclass:: tambora.simulation.Component
    :members:
+   :inherited-members:
    :undoc-members:
