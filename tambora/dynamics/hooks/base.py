@@ -31,6 +31,14 @@ class Hook(ABC):
         """
         ...
 
+    def reset(self):
+        """
+        Clear what the hook has recorded, so that a run starts afresh.
+
+        ``Sim.run`` calls it at the start of every run, so running a simulation
+        again doesn't mix the two runs' records. The default does nothing.
+        """
+
     def _dedup_key(self):
         """
         Identity used by ``Sim.add_hook`` to reject duplicate registrations.

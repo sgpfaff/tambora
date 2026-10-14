@@ -402,6 +402,9 @@ class Sim(_ParticleView):
         """
         Run the simulation to *t_end* [Gyr].
 
+        Running again starts from the initial conditions, replaces the previous
+        run's outputs, and resets every hook's records (see ``Hook.reset``).
+
         Parameters
         ----------
         t_end : float
@@ -473,6 +476,10 @@ class Sim(_ParticleView):
             if check is not None:
                 check()
         self._add_default_monitors(monitors)
+        from ..dynamics.hooks import Hook
+        for hook, _ in self._hooks:
+            if isinstance(hook, Hook):
+                hook.reset()
         integrator = INTEGRATORS[integration_method]()
 
         (self._positions, self._velocities, 

@@ -85,9 +85,12 @@ class ConservationMonitor(Hook):
                     f"Unknown conserved quantity {name!r}. "
                     f"Available: {sorted(_CONSERVED)}")
         self.track = track
+        self.reset()
+
+    def reset(self):
         self.t = []
-        self.values = {name: [] for name in track}
-        self.drift = {name: [] for name in track}
+        self.values = {name: [] for name in self.track}
+        self.drift = {name: [] for name in self.track}
         self._ref = {}          # name -> (value0, scale), captured on first fire
 
     def _dedup_key(self):

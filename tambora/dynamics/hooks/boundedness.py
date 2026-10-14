@@ -104,7 +104,9 @@ class BoundednessHook(Hook):
         self.method = method
         self.theta = theta
         self.max_iter = max_iter
+        self.reset()
 
+    def reset(self):
         self.t = []
         self.initial_mask = None
         self.events = []

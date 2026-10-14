@@ -2285,6 +2285,30 @@ class TestHooksFireAtTheirCadence:
         assert hook.steps == [0, 3, 6]
 
 
+class _ResetCountingHook(Hook):
+    def __init__(self):
+        self.times, self.resets = [], 0
+
+    def reset(self):
+        self.times, self.resets = [], self.resets + 1
+
+    def __call__(self, state):
+        self.times.append(state.t)
+
+
+def test_running_again_starts_every_hook_afresh():
+    sim = Sim()
+    sim.add_particles('c', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS)
+    hook = _ResetCountingHook()
+    sim.add_hook(hook)
+    for eps in (0.1, 0.5):
+        sim.run(t_end=0.2, dt=0.1, dt_out=0.1, method='direct', eps=eps, progress=False)
+    assert hook.resets == 2
+    np.testing.assert_allclose(hook.times, sim.times)
+    np.testing.assert_allclose(sim.monitor.t, sim.times)
+    assert sim.monitor.drift['energy'][0] == 0.     # measured from the second run's energy
+
+
 class TestAddHook:
     """``Sim.add_hook``: cadence resolution, ordering, and the after-run guard.
 

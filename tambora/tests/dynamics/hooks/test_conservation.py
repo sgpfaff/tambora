@@ -116,3 +116,12 @@ def test_reports_labelled_drift_to_progress_bar():
     mon, state = _drive([-100.0, -90.0])
     assert '|dE/E0|' in state.reported
     assert state.reported['|dE/E0|'] == f"{0.1:.2e}"
+
+
+def test_reset_clears_the_records_and_the_reference():
+    mon, _ = _drive([10., 11., 12.])
+    mon.reset()
+    mon(_FakeState(0., 20.))
+    assert mon.t == [0.]
+    assert mon.values['energy'] == [20.]
+    assert mon.drift['energy'] == [0.]          # measured from the new first fire, not from 10
