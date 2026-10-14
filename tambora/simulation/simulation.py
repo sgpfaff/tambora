@@ -12,7 +12,6 @@ from ..dynamics.forces.CompositeForce import _CompositeConservative, _CompositeP
 from ..units import unit_handler, KMS_TO_KPCGYR
 from ..dynamics import diagnostics
 from ..ic import ParticleSet
-import warnings
 import inspect
 from typing import Optional
 from ._decorators import _USE_CACHED_DEFAULT, _resolve_use_cached, _resolve_t
@@ -660,42 +659,6 @@ class Sim(_ParticleView):
 
     # --- Potential Energy --- #
 
-    @unit_handler('energy')
-    def compute_external_pot(self, t=...) -> np.ndarray:
-        '''
-        External potential of particles at *t*.
-
-        Units: `Msun km^2 / s^2`
-
-        Parameters
-        ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
-
-        Returns
-        -------
-        ext_pot : (len(t), n_particles) array
-            External potential at each snapshot.
-            Units: `Msun km^2 / s^2`
-        '''
-        ti = self._ti(t, vectorized=True)
-        
-        if isinstance(ti, (int, np.integer)):
-            t_phys = self._times[ti]
-            ext_pot = self._conserv_ext_force.potential(pos=self.pos(t=ti, return_internal=True), 
-                                                        mass=self.mass, t=t_phys) if self._conserv_ext_force is not None else 0.0
-        else:
-            warnings.warn("Computing external potential on-the-fly for multiple snapshots may be slow.")
-            times = self._times
-            ext_pot = np.zeros((len(times), self._mass.shape[0]))
-            for i, t_i in enumerate(times):
-                ext_pot[i] += self._conserv_ext_force.potential(pos=self.pos(t=t_i, return_internal=True), 
-                                                                mass=self.mass, t=t_i,) if self._conserv_ext_force is not None else 0.0
-        return self._mass * ext_pot
-    
     @_resolve_use_cached
     @_resolve_t
     @unit_handler('energy')

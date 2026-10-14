@@ -3,6 +3,8 @@ Accessors shared by Sim and Component, in terms of ``self._sim``, the Sim holdin
 ``self._sl``, which of its particles.
 """
 
+import warnings
+
 import numpy as np
 
 from ..dynamics import diagnostics
@@ -689,6 +691,43 @@ class _ParticleView:
             Units: `km/s`
         '''
         return diagnostics.center_of_mass(self.vel(t=t, return_internal=True), self.mass)
+
+    # --- External Potential -------------------------------------------------------------------
+
+    @unit_handler('energy')
+    def compute_external_pot(self, t=...):
+        '''
+        External potential of particles at *t*.
+
+        Units: `Msun km^2 / s^2`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        ext_pot : (len(t), n_particles) array or (n_particles,) array
+            External potential at each snapshot.
+            Units: `Msun km^2 / s^2`
+        '''
+        ti = self._ti(t)
+        if isinstance(ti, (int, np.integer)):
+            t_phys = self._sim._times[ti]
+            ext_pot = self._sim._conserv_ext_force.potential(
+                pos=self.pos(t=ti, return_internal=True), mass=self.mass, t=t_phys)
+        else:
+            warnings.warn("Computing external potential on-the-fly for multiple snapshots may be slow.")
+            times = self._sim._times
+            ext_pot = np.zeros((len(times), self.mass.shape[0]))
+            for i, t_i in enumerate(times):
+                ext_pot[i] += self._sim._conserv_ext_force.potential(
+                    pos=self.pos(t=i, return_internal=True), mass=self.mass, t=t_i)
+        return self.mass * ext_pot
 
     # --- Kinetic Energy -----------------------------------------------------------------------
 
