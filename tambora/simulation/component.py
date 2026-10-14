@@ -730,7 +730,7 @@ class Component:
     @_resolve_t
     @unit_handler('energy')
     def self_potential(self, t=..., use_cached=True, include_all_components=True, 
-                       method='falcON', **kwargs):
+                       method=None, **kwargs):
         '''
         Self-gravitational potential energy of the 
         particles in the component at *t*. 
@@ -747,15 +747,18 @@ class Component:
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
         use_cached : bool, optional
-            Whether to use cached potential energy values if available. Default is True.
-            Note that all components are included if cached results are used.
+            Whether to use the self-potential cached during the run, which includes all
+            components. Default is True, unless ``method`` is given or
+            ``include_all_components`` is False.
         include_all_components : bool, optional
             Whether to include all components in the simulation when computing the self-potential.
             If False, will only include the particles in this component when computing the self-potential.
             Default is True.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON' (default): fast multipole method implemented in falcON.
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
+            - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
             Additional keyword arguments to pass to the gravity method. 
@@ -794,7 +797,7 @@ class Component:
     @_resolve_t
     @unit_handler('energy')
     def PE(self, t=..., use_cached=True, include_all_components=True, 
-           method='falcON', **kwargs):
+           method=None, **kwargs):
         '''
         Total potential energy of particles 
         in the component at *t*.
@@ -809,15 +812,18 @@ class Component:
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
         use_cached : bool, optional
-            Whether to use cached self-potential if available. Default is True.
-            Note that all components are included if cached results are used.
+            Whether to use the self-potential cached during the run, which includes all
+            components. Default is True, unless ``method`` is given or
+            ``include_all_components`` is False.
         include_all_components : bool, optional
             Whether to include all components in the simulation when computing 
             the self-gravity acceleration. If False, only the particles in this
             component will be used. Default is True.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON' (default): fast multipole method implemented in falcON.
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
+            - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
             Additional keyword arguments to pass to the gravity method.
@@ -871,7 +877,7 @@ class Component:
     @_resolve_t
     @unit_handler('energy')
     def energy(self, t=..., use_cached=True, include_all_components=True, 
-               method='falcON', **kwargs):
+               method=None, **kwargs):
         """
         Energy of the particles in the component at time t.
         
@@ -885,15 +891,17 @@ class Component:
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
         use_cached : bool, optional
-            Whether to use cached self-potential and self-gravity if available. Default is True.
-            Note that all components are included if cached results are used.
+            Whether to use the self-potential cached during the run, which includes all
+            components. Default is True, unless ``method`` is given or
+            ``include_all_components`` is False.
         include_all_components : bool, optional
             Whether to include all components in the simulation when computing 
             the self-gravity acceleration. If False, only the particles in this
             component will be used. Default is True.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON' (default): fast multipole method implemented in falcON.
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
@@ -942,14 +950,16 @@ class Component:
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
         use_cached : bool, optional
-            Whether to use cached self-gravity if available. Default is True.
-            Note that all components are included if cached results are used.
+            Whether to use the self-gravity cached during the run, which includes all
+            components. Default is True, unless ``method`` is given or
+            ``include_all_components`` is False.
         include_all_components : bool, optional
             Whether to include all components in the simulation when computing
             the self-gravity acceleration. If False, only the particles in this
             component will be used. Default is True.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
             - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
             - 'direct': direct summation.
@@ -988,17 +998,19 @@ class Component:
             Time of snapshot to access.
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.
+            Default is ... (ellipsis), which returns the value at all times.
         use_cached : bool, optional
-            Whether to use cached self-gravity if available. Default is True.
-            Note that all components are included if cached results are used.
+            Whether to use the self-gravity cached during the run, which includes all
+            components. Default is True, unless ``method`` is given or
+            ``include_all_components`` is False.
         include_all_components : bool, optional
             Whether to include all components in the simulation when computing 
             the self-gravity acceleration. If False, only the particles in this
             component will be used. Default is True.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON' (default): fast multipole method implemented in falcON.
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         
@@ -1042,16 +1054,19 @@ class Component:
             Time of snapshot to access.
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.
+            Default is ... (ellipsis), which returns the value at all times.
         use_cached : bool, optional
-            Whether to use cached self-gravity if available. Default is True.
+            Whether to use the self-gravity cached during the run, which includes all
+            components. Default is True, unless ``method`` is given or
+            ``include_all_components`` is False.
         include_all_components : bool, optional
             Whether to include all components in the simulation when computing 
             the self-gravity acceleration. If False, only the particles in this
             component will be used. Default is True.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON' (default): fast multipole method implemented in falcON.
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
@@ -1097,17 +1112,19 @@ class Component:
             Time of snapshot to access.
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.
+            Default is ... (ellipsis), which returns the value at all times.
         use_cached : bool, optional
-            Whether to use cached self-gravity from integration
-            if available. Default is True.
+            Whether to use the self-gravity cached during the run, which includes all
+            components. Default is True, unless ``method`` is given or
+            ``include_all_components`` is False.
         include_all_components : bool, optional
             Whether to include all components in the simulation when computing 
             the self-gravity acceleration. If False, only the particles in this
             component will be used. Default is True.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON' (default): fast multipole method implemented in falcON.
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
@@ -1148,19 +1165,21 @@ class Component:
             Time of snapshot to access.
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.        
+            Default is ... (ellipsis), which returns the value at all times.
         use_cached : bool, optional
-            Whether to use cached self-gravity from integration
-            if available. Default is True.
+            Whether to use the self-gravity cached during the run, which includes all
+            components. Default is True, unless ``method`` is given or
+            ``include_all_components`` is False.
         include_all_components : bool, optional
             Whether to include all components in the simulation when computing 
             the self-gravity acceleration. If False, only the particles in this
             component will be used. Default is True.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON': Use the fast multipole method implemented in falcON.
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
-            - 'direct': Use direct summation.
+            - 'direct': direct summation.
         **kwargs
             Additional keyword arguments to pass to the gravity method.
 

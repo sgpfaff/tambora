@@ -406,10 +406,11 @@ class Sim:
         dt_out : float
             Output interval. Must be a multiple of dt.
             Units: `Gyr`
-        sg_method : str, optional
+        method : str or None, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
             - 'direct': direct summation.
+            - None: no self-gravity.
         integration_method: str, optional
             Method to use for integration. Currently only leapfrog is available.
         cache_self_gravity_acc : bool, optional
@@ -731,7 +732,7 @@ class Sim:
             Time of snapshot to access.
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.
+            Default is ... (ellipsis), which returns the value at all times.
 
         Returns
         -------
@@ -1377,12 +1378,14 @@ class Sim:
             Time of snapshot to access.
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.
+            Default is ... (ellipsis), which returns the value at all times.
         use_cached : bool, optional
-            Whether to use cached self-potential if available. Default is True.
+            Whether to use the self-potential cached during the run. Default is True, unless
+            ``method`` is given.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON' (default): fast multipole method implemented in falcON.
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
@@ -1426,12 +1429,14 @@ class Sim:
             Time of snapshot to access.
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.
+            Default is ... (ellipsis), which returns the value at all times.
         use_cached : bool, optional
-            Whether to use cached self-potential if available. Default is True.
+            Whether to use the self-potential cached during the run. Default is True, unless
+            ``method`` is given.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON' (default): fast multipole method implemented in falcON.
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
@@ -1495,12 +1500,14 @@ class Sim:
             Time of snapshot to access.
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.
+            Default is ... (ellipsis), which returns the value at all times.
         use_cached : bool, optional
-            Whether to use cached self-gravity from integration if available. Default is True.
+            Whether to use the self-potential cached during the run. Default is True, unless
+            ``method`` is given.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON' (default): fast multipole method implemented in falcON.
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
@@ -1542,13 +1549,14 @@ class Sim:
             Time of snapshot to access.
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.
+            Default is ... (ellipsis), which returns the value at all times.
         use_cached : bool, optional
-            Whether to use cached self-potential from integration 
-            if available. Default is True.
+            Whether to use the self-potential cached during the run. Default is True, unless
+            ``method`` is given.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON' (default): fast multipole method implemented in falcON.
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
@@ -1580,8 +1588,9 @@ class Sim:
 
         Parameters
         ----------
-        method : str
-            Method to use for computing self-gravity. Included options are:
+        method : str, optional
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
             - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
             - 'direct': direct summation.
@@ -1595,7 +1604,8 @@ class Sim:
             For 'direct' and 'direct_C', these include:
             - eps: Gravitational softening length (kpc)
         use_cached : bool, optional
-            Whether to use cached self-potential from integration if available. Default is True.
+            Whether to use the self-potential cached during the run. Default is True, unless
+            ``method`` is given.
 
         Returns
         -------
@@ -1638,9 +1648,11 @@ class Sim:
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
         use_cached : bool, optional
-            Whether to use cached self-gravity if available. Default is True.
+            Whether to use the self-gravity cached during the run. Default is True, unless
+            ``method`` is given.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
             - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
             - 'direct': direct summation.
@@ -1678,12 +1690,14 @@ class Sim:
             Time of snapshot to access.
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.
+            Default is ... (ellipsis), which returns the value at all times.
         use_cached : bool, optional
-            Whether to use cached self-gravity if available. Default is True.
+            Whether to use the self-gravity cached during the run. Default is True, unless
+            ``method`` is given.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON' (default): fast multipole method implemented in falcON.
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         
@@ -1720,12 +1734,14 @@ class Sim:
             Time of snapshot to access.
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.
+            Default is ... (ellipsis), which returns the value at all times.
         use_cached : bool, optional
-            Whether to use cached self-gravity if available. Default is True.
+            Whether to use the self-gravity cached during the run. Default is True, unless
+            ``method`` is given.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON' (default): fast multipole method implemented in falcON.
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
@@ -1769,13 +1785,14 @@ class Sim:
             Time of snapshot to access.
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.
+            Default is ... (ellipsis), which returns the value at all times.
         use_cached : bool, optional
-            Whether to use cached self-gravity from integration
-            if available. Default is True.
+            Whether to use the self-gravity cached during the run. Default is True, unless
+            ``method`` is given.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON' (default): fast multipole method implemented in falcON.
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
@@ -1814,15 +1831,16 @@ class Sim:
             Time of snapshot to access.
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.
+            Default is ... (ellipsis), which returns the value at all times.
         method : str, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON': Use the fast multipole method implemented in falcON.
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
-            - 'direct': Use direct summation.
+            - 'direct': direct summation.
         use_cached : bool, optional
-            Whether to use cached self-gravity from integration
-            if available. Default is True.
+            Whether to use the self-gravity cached during the run. Default is True, unless
+            ``method`` is given.
         **kwargs
             Additional keyword arguments to pass to the gravity method.
 
@@ -1955,12 +1973,15 @@ class Sim:
         
         Parameters
         ----------
-        method : str
-            Method to use for computing self-gravity. Included options are:
+        method : str, optional
+            Method to compute self-gravity with, instead of using the cache.
+            Included options are:
             - 'falcON': fast multipole method implemented in falcON.
+            - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         use_cached : bool, optional
-            Whether to use cached self-gravity from integration if available. Default is True.
+            Whether to use the self-potential cached during the run. Default is True, unless
+            ``method`` is given.
         nsnap : int, optional
             Number of snapshots to use. If None (default), will use all snapshots.
         filename : str, optional
