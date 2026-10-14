@@ -1,8 +1,10 @@
 """
-Tests for ``tambora.ic.sample`` and ``tambora.ic.sample_components``, through a stand-in
-backend so they don't need a package.
+Tests for ``tambora.ic.sample``, ``tambora.ic.sample_components`` and the shortcuts
+(``ic.mkPlummer``, ...), through a stand-in backend so they don't need a package.
 """
 
+import dataclasses
+import inspect
 import sys
 
 import numpy as np
@@ -222,3 +224,40 @@ def test_bad_components_or_numbers_are_rejected(components, n, error, match):
 def test_a_bad_parent_seed_is_rejected():
     with pytest.raises(ValueError, match=r"seed must be in \[0, 2\*\*32\)"):
         _components(seed=-1)
+
+
+# --- shortcuts ------------------------------------------------------------------------------
+
+class _AnyProfileStandIn(_StandIn):
+    name = 'any_profile_stand_in'
+
+    @classmethod
+    def accepts(cls, obj):
+        return isinstance(obj, (ic.Plummer, ic.Hernquist, ic.King, ic.TruncatedNFW))
+
+    @property
+    def total_mass(self):
+        return self.obj.M
+
+
+HALO = ic.Hernquist(M=1e12, rscale=20.)
+
+
+@pytest.mark.parametrize("shortcut, profile, params, potential", [
+    pytest.param(ic.mkPlummer, ic.Plummer, (1e5, 0.01), HALO, id='Plummer'),
+    pytest.param(ic.mkHernquist, ic.Hernquist, (1e10, 2.), HALO, id='Hernquist'),
+    pytest.param(ic.mkKing, ic.King, (1e5, 5., 0.03), None, id='King'),
+    pytest.param(ic.mkTruncNFW, ic.TruncatedNFW, (1e12, 20., 200.), HALO, id='TruncatedNFW'),
+])
+def test_a_shortcut_is_sample_of_its_profile(monkeypatch, shortcut, profile, params, potential):
+    entry = _registry._Entry('any_profile_stand_in', 'numpy', __name__, '_AnyProfileStandIn')
+    monkeypatch.setattr(_registry, "_SAMPLER_BACKENDS", (entry,))
+    kw = {} if potential is None else {'potential': potential}
+    fields = [f.name for f in dataclasses.fields(profile)]
+    assert list(inspect.signature(shortcut).parameters) == [*fields, 'n', *kw, 'seed']
+    got = shortcut(*params, 5, **kw, seed=3)
+    expected = ic.sample(profile(*params), 5, **kw, seed=3)
+    np.testing.assert_array_equal(got.pos, expected.pos)
+    np.testing.assert_array_equal(got.vel, expected.vel)
+    np.testing.assert_array_equal(got.mass, expected.mass)
+    assert got.meta == expected.meta
