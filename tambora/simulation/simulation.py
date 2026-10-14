@@ -1803,46 +1803,10 @@ class Sim:
     # --- External Acceleration --- #
 
     @unit_handler('acceleration')
-    def external_acc(self, t=-1):
+    def external_acc(self, t=...):
         '''
         Total external acceleration on each particle at *t*.
-        Units: `km / s^2`
 
-        Parameters
-        ----------
-        t : float or int or None, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.
-        
-        Returns
-        -------
-        ext_acc : (n_snaps, N, 3) array
-            External acceleration of 
-            each particle at each snapshot.
-            Units: `km / s^2`
-        '''
-        ti = self._ti(t)
-        t_phys = self._times[ti]
-        # ext_acc = np.zeros_like(self._velocities[ti])
-        ext_acc = (self._conserv_ext_force.acc(pos=self.pos(ti, return_internal=True), mass=self.mass, t=t_phys) + self._base_ext_force.acc(pos=self.pos(ti, return_internal=True), 
-                                  vel=self.vel(ti, return_internal=True), 
-                                  mass=self.mass, 
-                                  t=t_phys))# if self._base_ext_force is not None else 0.0)
-        # ((self._conserv_ext_force.acc(pos=self.pos(ti, return_internal=True), mass=self.mass, t=t_phys) 
-        #              if self._conserv_ext_force is not None else 0.0) +
-        # (self._base_ext_force.acc(pos=self.pos(ti, return_internal=True), 
-        #                           vel=self.vel(ti, return_internal=True), 
-        #                           mass=self.mass, 
-        #                           t=t_phys) if self._base_ext_force is not None else 0.0)
-        return ext_acc
-    
-    @unit_handler('acceleration')
-    def external_ax(self, t=-1):
-        '''
-        x-component of external acceleration on each particle at *t*.
-        
         Units: `km / s^2`
 
         Parameters
@@ -1851,65 +1815,91 @@ class Sim:
             Time of snapshot to access.
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.
-        
+            Default is ... (ellipsis), which returns the value at all times.
+
         Returns
         -------
-        external_ax : (n_snaps, N) array
-            x-component of external acceleration of 
-            each particle at each snapshot.
+        ext_acc : (len(t), n_particles, 3) array or (n_particles, 3) array
+            External acceleration of each particle at *t*.
             Units: `km / s^2`
         '''
-        return self.external_acc(t=t, return_internal=True)[:, 0]
+        ti = self._ti(t)
+        if ti is ...:
+            return np.stack([self.external_acc(i, return_internal=True) for i in range(len(self._times))])
+        t_phys = self._times[ti]
+        pos, vel = self.pos(ti, return_internal=True), self.vel(ti, return_internal=True)
+        return (self._conserv_ext_force.acc(pos=pos, mass=self.mass, t=t_phys)
+                + self._base_ext_force.acc(pos=pos, vel=vel, mass=self.mass, t=t_phys))
 
     @unit_handler('acceleration')
-    def external_ay(self, t=-1):
+    def external_ax(self, t=...):
         '''
-        y-component of external acceleration on each particle at *t*.
-        
+        x-component of external acceleration on each particle at *t*.
+
         Units: `km / s^2`
 
         Parameters
         ----------
-        t : float or int or None, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.
-        
-        Returns
-        -------
-        external_ay : (n_snaps, N) array
-            y-component of external acceleration of 
-            each particle at each snapshot.
-            Units: `km / s^2`
-        '''
-        return self.external_acc(t=t, return_internal=True)[:, 1]
-    
-    @unit_handler('acceleration')
-    def external_az(self, t=-1):
-        '''
-        z-component of external acceleration on each particle at *t*.
-        
-        Units: `km / s^2`
-
-        Parameters
-        ----------
-        t : float or int or None, optional
+        t : float or int, optional
             Time of snapshot to access.
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
-            Default is -1, which returns the value at the last snapshot.
-        
+            Default is ... (ellipsis), which returns the value at all times.
+
         Returns
         -------
-        external_az : (n_snaps, N) array
-            z-component of external acceleration of 
-            each particle at each snapshot.
+        external_ax : (len(t), n_particles) array or (n_particles,) array
+            x-component of external acceleration of each particle at *t*.
             Units: `km / s^2`
-        '''        
-        return self.external_acc(t=t, return_internal=True)[:, 2]
-    
+        '''
+        return self.external_acc(t=t, return_internal=True)[..., 0]
+
+    @unit_handler('acceleration')
+    def external_ay(self, t=...):
+        '''
+        y-component of external acceleration on each particle at *t*.
+
+        Units: `km / s^2`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        external_ay : (len(t), n_particles) array or (n_particles,) array
+            y-component of external acceleration of each particle at *t*.
+            Units: `km / s^2`
+        '''
+        return self.external_acc(t=t, return_internal=True)[..., 1]
+
+    @unit_handler('acceleration')
+    def external_az(self, t=...):
+        '''
+        z-component of external acceleration on each particle at *t*.
+
+        Units: `km / s^2`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        external_az : (len(t), n_particles) array or (n_particles,) array
+            z-component of external acceleration of each particle at *t*.
+            Units: `km / s^2`
+        '''
+        return self.external_acc(t=t, return_internal=True)[..., 2]
+
     # --- Diagnostics -----------------------------------------------------------------
 
     @_resolve_use_cached

@@ -25,6 +25,7 @@ from tambora.simulation import Sim
 galpy = pytest.importorskip("galpy")
 from galpy.potential import MWPotential2014                     # noqa: E402
 from tambora.dynamics.forces import ExternalPotential      # noqa: E402
+from tambora.dynamics import ExternalConservativeForce     # noqa: E402
 
 
 N_C, N_D = 4, 2
@@ -66,6 +67,16 @@ def test_sim_acceleration_accessors_have_a_shape_independent_of_configuration(si
 def test_component_acceleration_accessors_have_a_shape_independent_of_configuration(sim, name, width):
     out = getattr(sim.c, name)(t=0)
     assert out.shape == ((N_C, 3) if width else (N_C,))
+
+
+@pytest.mark.parametrize("name, width", [
+    ('external_acc', 3), ('external_ax', None),
+    ('external_ay', None), ('external_az', None),
+])
+def test_acceleration_accessors_give_every_snapshot_by_default(sim, name, width):
+    n_snap = len(sim.times)
+    for obj, n in ((sim, N), (sim.c, N_C)):
+        assert getattr(obj, name)().shape == ((n_snap, n, 3) if width else (n_snap, n))
 
 
 def test_external_pot_shape_is_independent_of_configuration(sim):
@@ -114,15 +125,41 @@ def test_component_slices_reassemble_the_sim(sim):
 
 
 def test_all_snapshot_path_matches_the_single_snapshot_path(sim):
-    # The two branches of compute_external_pot must not disagree.
-    stacked = np.vstack([sim.c.compute_external_pot(t=i) for i in range(len(sim.times))])
+    # The two branches of compute_external_pot and external_acc must not disagree.
+    n_snap = len(sim.times)
+    stacked = np.vstack([sim.c.compute_external_pot(t=i) for i in range(n_snap)])
     np.testing.assert_allclose(sim.c.compute_external_pot(), stacked)
+    for obj in (sim, sim.c):
+        stacked = np.stack([obj.external_acc(t=i) for i in range(n_snap)])
+        np.testing.assert_allclose(obj.external_acc(t=...), stacked)
 
 
-def test_axis_accessors_are_columns_of_external_acc(sim):
-    acc = sim.c.external_acc(t=0)
-    for i, name in enumerate(('external_ax', 'external_ay', 'external_az')):
-        np.testing.assert_allclose(getattr(sim.c, name)(t=0), acc[..., i])
+class _GrowingField(ExternalConservativeForce):
+    """A uniform field that grows with time: a = t (1, 2, 3)."""
+    def acc(self, pos, t):
+        return np.broadcast_to(t * np.array([1., 2., 3.]), pos.shape).copy()
+
+    def potential(self, pos, t):
+        return -t * pos @ np.array([1., 2., 3.])
+
+
+def test_the_field_is_evaluated_at_each_snapshots_time():
+    s = Sim()
+    s.add_external_force(_GrowingField())
+    s.add_particles('c', np.ones((N_C, 3)), np.zeros((N_C, 3)), np.ones(N_C))
+    s.run(t_end=0.2, dt=0.1, dt_out=0.1, method=None, progress=False, monitors=False)
+    expected = s.times[:, None, None] * np.array([1., 2., 3.])
+    for obj in (s, s.c):
+        np.testing.assert_allclose(obj.external_acc(return_internal=True),
+                                   np.broadcast_to(expected, (len(s.times), N_C, 3)))
+
+
+@pytest.mark.parametrize("t", [0, ...], ids=['one_snapshot', 'every_snapshot'])
+def test_axis_accessors_are_columns_of_external_acc(sim, t):
+    for obj in (sim, sim.c):
+        acc = obj.external_acc(t=t)
+        for i, name in enumerate(('external_ax', 'external_ay', 'external_az')):
+            np.testing.assert_allclose(getattr(obj, name)(t=t), acc[..., i])
 
 
 @pytest.mark.parametrize("external", [False, True], ids=['no_external_force', 'with_galpy_host'])
