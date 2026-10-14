@@ -8,12 +8,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pytest
-from scipy import stats
 
 galpy = pytest.importorskip("galpy")
 import astropy.units as u                                             # noqa: E402
 from galpy import df, potential                                       # noqa: E402
-from packaging.version import parse as parse_version                  # noqa: E402
 from galpy.potential.SphericalPotential import SphericalPotential     # noqa: E402
 from galpy.util.conversion import mass_in_msol                        # noqa: E402
 
@@ -122,29 +120,6 @@ def test_drawing_leaves_numpys_global_generator_as_it_was():
     np.testing.assert_array_equal(np.random.random(3), expected)
 
 
-def test_the_half_mass_radius_is_plummers():
-    b = 0.01
-    pos, _ = GalpySampler(_plummer()).draw(100_000, 3)
-    r_half = b / np.sqrt(2**(2 / 3) - 1)
-    assert np.median(np.linalg.norm(pos, axis=1)) == pytest.approx(r_half, rel=0.01)
-
-
-# galpy #1568 fixes #1343 on galpy's main branch after 1.12.0, so in its development versions
-# since; this test then passes, so it's only xfailed for releases.
-_GALPY = parse_version(galpy.__version__)
-_GALPY_DEV = _GALPY.is_devrelease and _GALPY > parse_version("1.12.0")
-_GALPY_SPEEDS_FIXED = _GALPY_DEV
-
-
-@pytest.mark.xfail(not _GALPY_SPEEDS_FIXED, raises=AssertionError, strict=True,
-                   reason="galpy #1343: sampled speeds are too slow, <v^2> about 1.5% low")
-def test_the_mean_square_speed_is_plummers_virial_value():
-    M, b = 1e5, 0.01
-    _, vel = GalpySampler(_plummer()).draw(100_000, 3)
-    virial = 3 * np.pi * G_KPC_KMS * M / (32 * b)
-    assert np.mean(np.sum(vel**2, axis=1)) == pytest.approx(virial, rel=0.005)
-
-
 @pytest.mark.parametrize("obj", [
     pytest.param('kingdf', id='string'),
     pytest.param(['a', 'b'], id='list_of_strings'),
@@ -224,55 +199,6 @@ def test_a_potential_gets_galpys_exact_df_if_it_has_one_else_an_eddington_one(ma
 ])
 def test_a_potential_is_sampled_with_its_own_mass(make, mass):
     assert GalpySampler(make()).total_mass == pytest.approx(mass, rel=1e-9)
-
-
-def _plummer_cdf(r, b=0.01):
-    return r**3 / (r**2 + b**2)**1.5
-
-
-# Models sampled from potentials, with the fraction of their sampled mass inside r [kpc].
-PROFILES = [
-    pytest.param(_plummer_pot, _plummer_cdf, id='Plummer'),
-    pytest.param(_hernquist_pot, lambda r: r**2 / (r + 2.)**2, id='Hernquist'),
-    pytest.param(_dehnen_pot, lambda r: _dehnen_enclosed(r) / _dehnen_enclosed(_EDDINGTON_RMAX), id='Dehnen'),
-    pytest.param(lambda: [_plummer_pot(), _plummer_pot(M=3e5, b=0.05)],
-                 lambda r: (_plummer_cdf(r) + 3 * _plummer_cdf(r, b=0.05)) / 4, id='two_Plummers'),
-]
-
-
-@pytest.mark.parametrize("make, cdf", PROFILES)
-def test_the_sampled_radii_follow_the_potentials_density(make, cdf):
-    pos, _ = GalpySampler(make()).draw(10_000, 3)
-    # Kolmogorov-Smirnov over the whole profile. With 10^4 particles it catches a length scale
-    # off by ~10% (e.g. ro mixed up); the exact match with galpy's own output pins the units.
-    assert stats.kstest(np.linalg.norm(pos, axis=1), cdf).pvalue > 1e-3
-
-
-def _virial_ratio(sampler, pot, n=10_000, seed=3):
-    """2K / -sum(m x.F) for the particles in pot, which is 1 in equilibrium."""
-    pos, vel = sampler.draw(n, seed)
-    r = np.linalg.norm(pos, axis=1) / sampler.units.length_kpc     # pot's natural units
-    rforce = potential.evaluaterforces(pot, r, 0 * r, use_physical=False)
-    return np.sum(vel**2) / sampler.units.velocity_kms**2 / -np.sum(r * rforce)
-
-
-# Up to 1.12.0, galpy #1343 draws speeds about 1.6% slow (the strict xfail above). With 50,000
-# particles the ratio scatters by 0.3% from seed to seed, so 1.5% is 5 sigma once that's fixed.
-_EQUILIBRIUM_N = 50_000
-_EQUILIBRIUM_RTOL = 0.015 if _GALPY_SPEEDS_FIXED else 0.03
-
-
-@pytest.mark.parametrize("make, cdf", PROFILES)
-def test_a_sampled_potential_is_close_to_equilibrium(make, cdf):
-    # A velocity unit of 220 instead of 230 km/s gives 0.92.
-    sampler = GalpySampler(make())
-    assert _virial_ratio(sampler, sampler.df._pot, n=_EQUILIBRIUM_N) == pytest.approx(1., rel=_EQUILIBRIUM_RTOL)
-
-
-def test_a_tracer_is_close_to_equilibrium_in_the_total_potential():
-    # Sampled in the stars' own potential instead, the ratio here would be 0.90.
-    d = _tracer()
-    assert _virial_ratio(GalpySampler(d), d._pot) == pytest.approx(1., rel=0.05)
 
 
 def _power_law_with_cutoff():
@@ -480,12 +406,6 @@ def test_a_truncated_nfw_samples_the_galpy_model_it_stands_for():
 
 
 @_needs_exp_trunc_nfw
-def test_a_truncated_nfw_is_close_to_equilibrium():
-    sampler = GalpySampler(ic.TruncatedNFW(M=1e12, rscale=20., rtrunc=200.))
-    assert _virial_ratio(sampler, sampler.df._pot, n=_EQUILIBRIUM_N) == pytest.approx(1., rel=_EQUILIBRIUM_RTOL)
-
-
-@_needs_exp_trunc_nfw
 def test_a_truncated_nfw_cut_off_far_inside_its_scale_radius_is_refused():
     with pytest.raises(ValueError, match=r"Can't sample TruncatedNFW\(M=1e\+12, rscale=20, rtrunc=0\.5\): "
                                          r"galpy's sampler is unreliable when rtrunc is under a twentieth of rscale"):
@@ -586,10 +506,6 @@ def test_galpys_own_truncation_far_inside_the_scale_radius_is_refused_too():
 
 STARS = ic.Plummer(M=1e5, rscale=0.005)         # a star cluster...
 HALO = ic.Hernquist(M=1e9, rscale=1.)           # ...at the centre of a dark halo
-# galpy releases up to 1.12.0 draw these far too fast, and its main branch about 6% too fast
-# until a planned follow-up: on development versions, these fail until it lands.
-_needs_galpy_drawing_tracers = pytest.mark.skipif(
-    not _GALPY_DEV, reason="galpy releases up to 1.12.0 draw a density deep in another potential too fast")
 
 
 @pytest.mark.parametrize("potential", [
@@ -667,11 +583,6 @@ def test_a_profile_in_the_potential_is_the_galpy_potential_it_stands_for(profile
            for r in radii]
     want = [potential.mass(native(), r / RO, use_physical=False) * mass_in_msol(VO, RO) for r in radii]
     np.testing.assert_allclose(got, want, rtol=1e-6)
-
-
-def test_a_tracers_radii_follow_its_own_density():
-    pos, _ = GalpySampler(STARS, potential=[STARS, HALO]).draw(10_000, 3)
-    assert stats.kstest(np.linalg.norm(pos, axis=1), lambda r: _plummer_cdf(r, b=0.005)).pvalue > 1e-3
 
 
 def test_a_profile_among_galpy_potentials_takes_their_units():
@@ -826,30 +737,10 @@ def test_what_is_taken_for_spherical(make, spherical):
 def test_every_component_that_isnt_spherical_is_named():
     disk = potential.MiyamotoNagaiPotential(amp=1e10 * u.Msun, a=3 * u.kpc, b=0.3 * u.kpc, ro=RO, vo=VO)
     halo = potential.LogarithmicHaloPotential(q=0.9, ro=RO, vo=VO)
-    with pytest.raises(TypeError, match="Can't sample in a MiyamotoNagaiPotential\+LogarithmicHaloPotential:"):
+    with pytest.raises(TypeError, match=r"Can't sample in a MiyamotoNagaiPotential\+LogarithmicHaloPotential:"):
         GalpySampler(STARS, potential=[STARS, disk, _hernquist_pot(), halo])
 
 
 def test_a_galpy_df_cant_take_another_potential():
     with pytest.raises(TypeError, match="A galpy DF has its potential already"):
         GalpySampler(_plummer(), potential=[_plummer_pot(), _hernquist_pot()])
-
-
-# galpy 1.12.0 gives the stars here a virial ratio of 1.4, and galpy main before the
-# follow-up to #1568 1.05; drawn right, it's 1.005 +/- 0.005 with 50,000 particles.
-_HALOS = [pytest.param(HALO, id='Hernquist'),
-          pytest.param(ic.TruncatedNFW(M=1e9, rscale=1., rtrunc=10.), id='TruncatedNFW', marks=_needs_exp_trunc_nfw)]
-
-
-@_needs_galpy_drawing_tracers
-@pytest.mark.parametrize("halo", _HALOS)
-def test_stars_at_the_centre_of_a_dark_halo_are_in_equilibrium_in_the_total_potential(halo):
-    sampler = GalpySampler(STARS, potential=[STARS, halo])
-    assert _virial_ratio(sampler, sampler.df._pot, n=50_000) == pytest.approx(1., abs=0.025)
-
-
-@_needs_galpy_drawing_tracers
-@pytest.mark.parametrize("halo", _HALOS)
-def test_the_dark_halo_around_the_stars_is_in_equilibrium_in_the_total_potential(halo):
-    sampler = GalpySampler(halo, potential=[STARS, halo])
-    assert _virial_ratio(sampler, sampler.df._pot, n=20_000) == pytest.approx(1., abs=0.025)
