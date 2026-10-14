@@ -281,11 +281,8 @@ jobs:
           python -m pytest --pyargs tambora.tests -o "addopts=" -q
 
   galpy-main:
-    # Up to 1.12.0, galpy draws a density deep in a much deeper potential far too fast, so the
-    # tests of a star cluster at the centre of a dark halo skip on every pinned galpy above. This
-    # job runs them against galpy's development version, ahead of the release that is to fix it.
-    # Until the fix is on galpy's main branch they fail, so this job can't fail the build; once
-    # they pass, a fresh install of galpy main draws such tracers right.
+    # Runs the suite against galpy's development version, to see early what its next release
+    # changes. galpy's main branch can break at any time, so this job can't fail the build.
     name: galpy main (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     continue-on-error: true
