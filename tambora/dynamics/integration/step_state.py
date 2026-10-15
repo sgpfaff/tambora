@@ -9,6 +9,7 @@ class StepContext:
     conserv_ext_force: object
     base_ext_force: object
     progress: object = None # _Progress wrapping the run's progress bar, or None
+    eps: object = None      # the particles' softening: a number, or (N,) [kpc]
 
 
 class _Progress:
@@ -64,6 +65,26 @@ class StepState:
     def mass(self):
         """Live particle masses. A property (time-independent), mirroring ``Sim.mass``."""
         return self._result.mass[self._sl]
+
+    @property
+    def eps(self):
+        """Live particle softening [kpc], mirroring ``Sim.eps``; None if the run has none."""
+        eps = self._ctx.eps
+        if eps is None:
+            return None
+        return np.broadcast_to(eps, self.mass.shape) if np.ndim(eps) == 0 else eps[self._sl]
+
+    def _softening(self, everyone=False):
+        """The softening for a solve over this view (or everyone): one number if shared."""
+        eps = self._ctx.eps
+        if eps is None or np.ndim(eps) == 0:
+            return eps
+        eps = eps if everyone else eps[self._sl]
+        if np.isnan(eps).any():
+            raise ValueError("Softening isn't set for every particle here: give it with "
+                             "add_particles(..., eps=...) or sim.<component>.eps, or give this "
+                             "calculation one (eps=..., or a solver with its own).")
+        return eps
 
     # -- reporting: push display fields to the run's progress bar --
     def report(self, **fields):
@@ -131,6 +152,7 @@ class StepState:
         '''
         run_solver = self._ctx.self_gravity_force
         solver = solver if solver is not None else run_solver
+        own_eps = getattr(solver, 'eps', None) is not None     # replaces the particles'
         sl = self._sl
         if include_all_components:
             if solver is run_solver:
@@ -138,12 +160,13 @@ class StepState:
             key = ("sg_all", id(solver))
             if key not in self._cache:
                 self._cache[key] = solver.acc_and_potential(
-                    self._result.pos, self._result.mass)
+                    self._result.pos, self._result.mass, None if own_eps else self._softening(everyone=True))
             acc, pot = self._cache[key]
             return acc, pot, sl
         key = ("sg_iso", id(solver), (sl.start, sl.stop, sl.step))
         if key not in self._cache:
-            self._cache[key] = solver.acc_and_potential(self.pos(), self.mass)
+            self._cache[key] = solver.acc_and_potential(self.pos(), self.mass,
+                                                        None if own_eps else self._softening())
         acc, pot = self._cache[key]
         return acc, pot, slice(None)
 
@@ -255,7 +278,7 @@ class StepState:
                 + np.sum(self.external_pot()))
 
     # -- boundedness (iterative unbinding), cached per step --
-    def bound_mask(self, component=None, *, eps, method='falcON', theta=0.6, max_iter=50):
+    def bound_mask(self, component=None, *, eps=None, method='falcON', theta=0.6, max_iter=50):
         '''
         Boolean mask of self-bound particles, via iterative unbinding.
 
@@ -270,8 +293,8 @@ class StepState:
         component : str, optional
             Component to test. None (default) uses this view's particles (the
             whole system for a top-level state).
-        eps : float
-            Softening length [kpc]. Required.
+        eps : float, optional
+            Softening length [kpc] to use instead of the particles' own.
         method, theta, max_iter
             Passed through to the iterative unbinding solver.
         '''
@@ -283,6 +306,6 @@ class StepState:
         key = ("bound_mask", (sl.start, sl.stop, sl.step), eps, method, theta, max_iter)
         if key not in self._cache:
             self._cache[key] = _bound_mask(c.pos(), c.vel(), c.mass,
-                                           eps=eps, method=method, theta=theta,
-                                           max_iter=max_iter)
+                                           eps=c._softening() if eps is None else eps,
+                                           method=method, theta=theta, max_iter=max_iter)
         return self._cache[key]

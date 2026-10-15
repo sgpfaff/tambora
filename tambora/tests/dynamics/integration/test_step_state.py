@@ -42,7 +42,7 @@ class SpySolver:
         self.phi = phi
         self.calls = 0
 
-    def acc_and_potential(self, pos, mass):
+    def acc_and_potential(self, pos, mass, eps=None):
         self.calls += 1
         return np.zeros_like(pos), np.full(len(mass), self.phi)
 
@@ -147,6 +147,11 @@ def test_mass_is_a_property():
     assert isinstance(st.mass, np.ndarray)
     with pytest.raises(TypeError):
         st.mass()                              # calling the array raises
+
+
+def test_a_run_without_softening_gives_none():
+    st = make_state()
+    assert st.eps is None and st.a.eps is None
 
 
 # --- component views & attribute access ---------------------------------------

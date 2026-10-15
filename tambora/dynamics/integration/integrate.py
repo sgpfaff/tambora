@@ -17,7 +17,8 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
             return_self_gravity_acc: bool = True,
             slices: Optional[dict] = None,
             hooks: tuple = (),
-            progress: bool = True):
+            progress: bool = True,
+            eps=None):
     '''
     Integrate particle trajectories optionally under 
     influence of self-gravity and external forces.
@@ -91,7 +92,8 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
     positions, velocities = _make_pos_vel_arrays(pos, vel, mass, nsnaps)
     (self_gravity_pot, self_gravity_acc,
      self_acc0, self_pot0) = _make_self_gravity_arrays(pos, mass, self_gravity_force,
-                                                       return_self_gravity_pot, return_self_gravity_acc, nsnaps)
+                                                       return_self_gravity_pot, return_self_gravity_acc, nsnaps,
+                                                       eps)
     i_out = 1
     current_pos, current_vel = pos, vel
     current_t = t0
@@ -102,7 +104,7 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
     # state.report) from the t0 fire onwards.
     pbar = tqdm(ts_integrate[1:], disable=not progress)
     ctx = StepContext(slices or {}, self_gravity_force, conserv_ext_force,
-                      base_ext_force, progress=_Progress(pbar))
+                      base_ext_force, progress=_Progress(pbar), eps=eps)
     state = StepState(None, ctx)
 
     # Fire once on the initial state (t0) so hooks capture the starting point.
@@ -117,7 +119,7 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
 
     for step, t in enumerate(pbar, start=1):
         step_result = integrator.step(current_pos, current_vel, mass, current_t, dt,
-                                      self_gravity_force, conserv_ext_force, base_ext_force)
+                                      self_gravity_force, conserv_ext_force, base_ext_force, eps)
         step_result.step = step
         current_pos, current_vel, current_t = step_result.pos, step_result.vel, step_result.t
         if hooks:
@@ -198,10 +200,10 @@ def _make_pos_vel_arrays(pos, vel, mass, nsnaps):
 
 
 def _make_self_gravity_arrays(pos, mass, self_gravity_force, return_self_gravity_pot,
-                            return_self_gravity_acc, nsnaps):
+                            return_self_gravity_acc, nsnaps, eps=None):
     self_gravity_pot = None
     self_gravity_acc = None
-    self_acc, self_pot = self_gravity_force.acc_and_potential(pos, mass)
+    self_acc, self_pot = self_gravity_force.acc_and_potential(pos, mass, eps)
     n = mass.shape[0]
     if return_self_gravity_pot:
         self_gravity_pot = np.zeros((nsnaps, n), dtype=np.float64)

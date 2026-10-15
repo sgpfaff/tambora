@@ -24,11 +24,11 @@ class _CountingSolver(SelfGravityForce):
         self.acc_calls = 0
         self.pot_calls = 0
 
-    def acc(self, pos, mass):
+    def acc(self, pos, mass, eps=None):
         self.acc_calls += 1
         return pos * mass[:, None]
 
-    def potential(self, pos, mass):
+    def potential(self, pos, mass, eps=None):
         self.pot_calls += 1
         return np.sum(pos, axis=-1) * mass
 

@@ -36,8 +36,8 @@ def _sim(external=False):
     """Two components at ~8 kpc, run for 3 snapshots, with or without a host."""
     rng = np.random.default_rng(0)
     s = Sim()
-    s.add_particles('c', rng.random((N_C, 3)) + 8.0, np.zeros((N_C, 3)), np.ones(N_C))
-    s.add_particles('d', rng.random((N_D, 3)) + 8.0, np.zeros((N_D, 3)), np.ones(N_D))
+    s.add_particles(rng.random((N_C, 3)) + 8.0, np.zeros((N_C, 3)), np.ones(N_C), name='c')
+    s.add_particles(rng.random((N_D, 3)) + 8.0, np.zeros((N_D, 3)), np.ones(N_D), name='d')
     if external:
         s.add_external_force(ExternalPotential(MWPotential2014))
     s.run(t_end=0.2, dt=0.1, dt_out=0.1, method=None, progress=False)
@@ -146,7 +146,7 @@ class _GrowingField(ExternalConservativeForce):
 def test_the_field_is_evaluated_at_each_snapshots_time():
     s = Sim()
     s.add_external_force(_GrowingField())
-    s.add_particles('c', np.ones((N_C, 3)), np.zeros((N_C, 3)), np.ones(N_C))
+    s.add_particles(np.ones((N_C, 3)), np.zeros((N_C, 3)), np.ones(N_C), name='c')
     s.run(t_end=0.2, dt=0.1, dt_out=0.1, method=None, progress=False, monitors=False)
     expected = s.times[:, None, None] * np.array([1., 2., 3.])
     for obj in (s, s.c):
@@ -169,8 +169,8 @@ def test_step_state_agrees_with_sim_at_the_same_time(external):
     # than reusing the already-run fixture.
     rng = np.random.default_rng(0)
     s = Sim()
-    s.add_particles('c', rng.random((N_C, 3)) + 8.0, np.zeros((N_C, 3)), np.ones(N_C))
-    s.add_particles('d', rng.random((N_D, 3)) + 8.0, np.zeros((N_D, 3)), np.ones(N_D))
+    s.add_particles(rng.random((N_C, 3)) + 8.0, np.zeros((N_C, 3)), np.ones(N_C), name='c')
+    s.add_particles(rng.random((N_D, 3)) + 8.0, np.zeros((N_D, 3)), np.ones(N_D), name='d')
     if external:
         s.add_external_force(ExternalPotential(MWPotential2014))
     seen = {}
@@ -188,7 +188,7 @@ def test_step_state_agrees_with_sim_at_the_same_time(external):
 def _run_capturing_external_acc(t_end=0.2, external=True):
     rng = np.random.default_rng(0)
     s = Sim()
-    s.add_particles('c', rng.random((N_C, 3)) + 8.0, np.zeros((N_C, 3)), np.ones(N_C))
+    s.add_particles(rng.random((N_C, 3)) + 8.0, np.zeros((N_C, 3)), np.ones(N_C), name='c')
     if external:
         s.add_external_force(ExternalPotential(MWPotential2014))
     seen = {}

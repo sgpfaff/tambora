@@ -20,7 +20,8 @@ class LeapfrogIntegrator(BaseIntegrator):
         dt: float,
         self_gravity_force: SelfGravityForce,
         conserv_ext_force: Conservative,
-        base_ext_force: Force
+        base_ext_force: Force,
+        eps=None,
     ) -> StepResult:
         
         # --- base force half-kick -------------------------------------------------------
@@ -28,7 +29,7 @@ class LeapfrogIntegrator(BaseIntegrator):
         vel = vel + a_base_0 * dt / 2
 
         # --- conservative force half-kick -----------------------------------------------
-        a_cons_0 = self._initial_conservative_acc(pos, mass, t, self_gravity_force, conserv_ext_force)
+        a_cons_0 = self._initial_conservative_acc(pos, mass, t, self_gravity_force, conserv_ext_force, eps)
         vel_half = vel + a_cons_0 * dt / 2
 
         # --- full step drift ------------------------------------------------------------
@@ -37,7 +38,7 @@ class LeapfrogIntegrator(BaseIntegrator):
 
         # --- conservative force half-kick -----------------------------------------------
         sg_acc, sg_pot, conserv_ext_acc = self._eval_conservative(pos_new, mass, t_new,
-            self_gravity_force, conserv_ext_force
+            self_gravity_force, conserv_ext_force, eps
         )
         a_cons_1 = sg_acc + conserv_ext_acc
         self._last_conserv_acc = a_cons_1
@@ -51,10 +52,10 @@ class LeapfrogIntegrator(BaseIntegrator):
         return StepResult(pos_new, vel_new, mass, t_new, 
                           sg_acc, sg_pot, conserv_ext_acc, base_acc_new)
 
-    def _initial_conservative_acc(self, pos, mass, t, sg_force, ext_force):
+    def _initial_conservative_acc(self, pos, mass, t, sg_force, ext_force, eps=None):
         """Acc for the first half-kick of a step. Lazily computed and cached."""
         if self._last_conserv_acc is None:
-            sg_acc, _, ext_acc = self._eval_conservative(pos, mass, t, sg_force, ext_force)
+            sg_acc, _, ext_acc = self._eval_conservative(pos, mass, t, sg_force, ext_force, eps)
             self._last_conserv_acc = sg_acc + ext_acc
         return self._last_conserv_acc
 

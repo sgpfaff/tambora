@@ -58,8 +58,8 @@ class BoundednessHook(Hook):
     ----------
     component : str
         Component to test for boundedness.
-    eps : float
-        Softening length [kpc].
+    eps : float, optional
+        Softening length [kpc] for the unbinding, instead of the component's own.
     track : sequence of str, optional
         Coordinate reductions to store each fire. Available: ``'com'``,
         ``'com_vel'``, ``'dispersion'``. Each becomes a list attribute of the
@@ -86,7 +86,7 @@ class BoundednessHook(Hook):
 
     default_cadence = EveryOutput()
 
-    def __init__(self, component, eps, track=(), capture_transitions=(),
+    def __init__(self, component, eps=None, track=(), capture_transitions=(),
                  method='falcON', theta=0.6, max_iter=50):
         for name in track:
             if name not in _REDUCTIONS:
@@ -104,7 +104,9 @@ class BoundednessHook(Hook):
         self.method = method
         self.theta = theta
         self.max_iter = max_iter
+        self.reset()
 
+    def reset(self):
         self.t = []
         self.initial_mask = None
         self.events = []

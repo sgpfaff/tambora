@@ -223,6 +223,16 @@ def test_initial_mask_is_not_a_live_view_of_the_solver_output():
     np.testing.assert_array_equal(bh.initial_mask, [True, True, True])
 
 
+def test_reset_clears_the_records():
+    bh, state = _drive([[True, True], [False, True]], track=('com',))
+    bh.reset()
+    bh(_FakeState(0., np.array([True, False]), state._comp))
+    assert bh.t == [0.]
+    np.testing.assert_array_equal(bh.initial_mask, [True, False])
+    assert bh.events == []
+    assert len(bh.com) == 1
+
+
 # --- tracked reductions and captured payloads -------------------------------
 
 def test_track_records_one_reduction_per_fire():

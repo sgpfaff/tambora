@@ -40,7 +40,8 @@ class BaseIntegrator(ABC):
         dt: float,
         self_gravity_force: SelfGravityForce,
         conserv_ext_force: Conservative,
-        base_external_force: Force
+        base_external_force: Force,
+        eps=None,
     ) -> StepResult:
         ...
     
@@ -51,13 +52,14 @@ class BaseIntegrator(ABC):
         t,
         self_gravity_force: SelfGravityForce,
         cons_ext_force: Conservative,
+        eps=None,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Evaluate self-gravity and conservative external forces.
 
         Returns ``(sg_acc, sg_pot, ext_acc)``. Self-gravity uses the one-pass
         acc+potential entry point so falcON / direct summation don't sweep twice.
         """
-        sg_acc, sg_pot = self_gravity_force.acc_and_potential(pos, mass)
+        sg_acc, sg_pot = self_gravity_force.acc_and_potential(pos, mass, eps)
         ext_acc = cons_ext_force.acc(pos, mass, t)
         return sg_acc, sg_pot, ext_acc
     
