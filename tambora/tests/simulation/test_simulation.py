@@ -32,16 +32,16 @@ COMP2_MASS = np.random.rand(COMP2_NPTS)
 
 
 singlecomp = Sim()
-singlecomp.add_particles('comp1',
+singlecomp.add_particles(name='comp1',
                     pos=COMP1_POS, 
                     vel=COMP1_VEL, 
                     mass=COMP1_MASS)
 multicomp = Sim()
-multicomp.add_particles('comp1',
+multicomp.add_particles(name='comp1',
                     pos=COMP1_POS, 
                     vel=COMP1_VEL, 
                     mass=COMP1_MASS)
-multicomp.add_particles('comp2',
+multicomp.add_particles(name='comp2',
                     pos=COMP2_POS, 
                     vel=COMP2_VEL, 
                     mass=COMP2_MASS)
@@ -50,7 +50,7 @@ multicomp.add_particles('comp2',
 
 def test_add_particles_stores_correct_shape():
     sim = Sim()
-    sim.add_particles('test', 
+    sim.add_particles(name='test', 
                       pos=COMP1_POS, 
                       vel=COMP1_VEL, 
                       mass=COMP1_MASS)
@@ -64,11 +64,11 @@ def test_add_particles_multiple_components():
     correct shapes.
     '''
     sim = Sim()
-    sim.add_particles('comp1',
+    sim.add_particles(name='comp1',
                       pos=COMP1_POS, 
                       vel=COMP1_VEL, 
                       mass=COMP1_MASS)
-    sim.add_particles('comp2',
+    sim.add_particles(name='comp2',
                       pos=COMP2_POS, 
                       vel=COMP2_VEL, 
                       mass=COMP2_MASS)
@@ -82,12 +82,12 @@ def test_add_component_with_same_name():
     name raises an error.
     '''
     sim = Sim()
-    sim.add_particles('comp1',
+    sim.add_particles(name='comp1',
                       pos=COMP1_POS, 
                       vel=COMP1_VEL, 
                       mass=COMP1_MASS)
     with pytest.raises(ValueError, match="Component 'comp1' already exists."):
-        sim.add_particles('comp1',
+        sim.add_particles(name='comp1',
                         pos=COMP2_POS, 
                         vel=COMP2_VEL, 
                         mass=COMP2_MASS)
@@ -99,24 +99,60 @@ def test_add_component_with_non_string_name():
     '''
     sim = Sim()
     with pytest.raises(TypeError, match="name must be a string."):
-        sim.add_particles(123,
-                        pos=COMP1_POS, 
-                        vel=COMP1_VEL, 
+        sim.add_particles(name=123,
+                        pos=COMP1_POS,
+                        vel=COMP1_VEL,
                         mass=COMP1_MASS)
+
+def test_a_component_needs_no_name():
+    sim = Sim()
+    sim.add_particles(ParticleSet(COMP1_POS, COMP1_VEL, COMP1_MASS))
+    np.testing.assert_array_equal(sim.pos(t=0), COMP1_POS)
+    assert [c.name for c in sim.components] == ['component0']
+    np.testing.assert_array_equal(sim.component0.pos(t=0), COMP1_POS)
+
+def test_unnamed_components_are_named_by_their_position():
+    sim = Sim()
+    sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='host')
+    sim.add_particles(COMP2_POS, COMP2_VEL, COMP2_MASS)
+    sim.add_particles(COMP2_POS, COMP2_VEL, COMP2_MASS)
+    assert [c.name for c in sim.components] == ['host', 'component1', 'component2']
+    np.testing.assert_array_equal(sim.component1.pos(t=0), COMP2_POS)
+
+def test_an_automatic_name_skips_one_already_taken():
+    sim = Sim()
+    sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='component1')
+    sim.add_particles(COMP2_POS, COMP2_VEL, COMP2_MASS)
+    assert [c.name for c in sim.components] == ['component1', 'component2']
+
+def test_the_name_must_be_given_by_keyword():
+    with pytest.raises(TypeError):
+        Sim().add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, 'comp1')
+
+# Sim's own (mass, run, p, ...) and the hooks' state's (t, step, ...)
+@pytest.mark.parametrize("name", ['mass', 'eps', 'run', 'components', 'p', 't', 'step', 'report', 'component'])
+def test_a_name_already_meaning_something_else_is_refused(name):
+    with pytest.raises(ValueError, match="already means something else"):
+        Sim().add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name=name)
+
+@pytest.mark.parametrize("name", ['my sat', '1st', '', '_hidden', 'lambda'])
+def test_a_name_that_cant_follow_sim_dot_is_refused(name):
+    with pytest.raises(ValueError, match="Python identifier"):
+        Sim().add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name=name)
 
 def test_add_component_after_run():
     '''
     Test that adding a component after run() raises an error.
     '''
     sim = Sim()
-    sim.add_particles('comp1',
+    sim.add_particles(name='comp1',
                       pos=COMP1_POS, 
                       vel=COMP1_VEL, 
                       mass=COMP1_MASS)
     sim.eps = 0.0
     sim.run(t_end=1., dt=0.5, dt_out=0.5, method='direct')
     with pytest.raises(RuntimeError, match="Cannot add components after run()"):
-        sim.add_particles('comp2',
+        sim.add_particles(name='comp2',
                         pos=COMP2_POS, 
                         vel=COMP2_VEL, 
                         mass=COMP2_MASS)
@@ -128,12 +164,12 @@ def test_add_particles_invalid_pos_shapes():
     '''
     sim = Sim()
     with pytest.raises(ValueError, match=r"pos must be shape \(N, 3\), received \(50, 2\)"):
-        sim.add_particles('comp1',
+        sim.add_particles(name='comp1',
                           pos=np.random.rand(COMP1_NPTS, 2),
                           vel=COMP1_VEL,
                           mass=COMP1_MASS)
     with pytest.raises(ValueError, match=r"pos must be shape \(N, 3\), received \(50, 4\)"):
-        sim.add_particles('comp1',
+        sim.add_particles(name='comp1',
                           pos=np.random.rand(COMP1_NPTS, 4),
                           vel=COMP1_VEL,
                           mass=COMP1_MASS)
@@ -145,12 +181,12 @@ def test_add_particles_invalid_vel_shapes():
     '''
     sim = Sim()
     with pytest.raises(ValueError, match=r"vel must be shape \(N, 3\), received \(50, 2\)"):
-        sim.add_particles('comp1',
+        sim.add_particles(name='comp1',
                           pos=COMP1_POS,
                           vel=np.random.rand(COMP1_NPTS, 2),
                           mass=COMP1_MASS)
     with pytest.raises(ValueError, match=r"vel must be shape \(N, 3\), received \(50, 4\)"):
-        sim.add_particles('comp1',
+        sim.add_particles(name='comp1',
                           pos=COMP1_POS,
                           vel=np.random.rand(COMP1_NPTS, 4),
                           mass=COMP1_MASS)
@@ -162,12 +198,12 @@ def test_add_particles_invalid_mass_shapes():
     '''
     sim = Sim()
     with pytest.raises(ValueError, match=r"mass must be shape \(N,\), received \(50, 2\)"):
-        sim.add_particles('comp1',
+        sim.add_particles(name='comp1',
                           pos=COMP1_POS,
                           vel=COMP1_VEL,
                           mass=np.random.rand(COMP1_NPTS, 2))
     with pytest.raises(ValueError, match=r"mass must be shape \(N,\), received \(50, 4\)"):
-        sim.add_particles('comp1',
+        sim.add_particles(name='comp1',
                           pos=COMP1_POS,
                           vel=COMP1_VEL,
                           mass=np.random.rand(COMP1_NPTS, 4))
@@ -179,15 +215,15 @@ def test_add_particles_different_number_of_particles():
     '''
     sim = Sim()
     with pytest.raises(ValueError, match="pos, vel, mass must have same number of particles, received 50, 30, 50."):
-        sim.add_particles('comp1',
+        sim.add_particles(name='comp1',
                           pos=COMP1_POS,
                           vel=COMP2_VEL,
                           mass=COMP1_MASS)
 
 def test_add_particles_takes_a_particle_set():
     by_arrays, by_set = Sim(), Sim()
-    by_arrays.add_particles('comp1', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS)
-    by_set.add_particles('comp1', ParticleSet(COMP1_POS, COMP1_VEL, COMP1_MASS))
+    by_arrays.add_particles(name='comp1', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS)
+    by_set.add_particles(ParticleSet(COMP1_POS, COMP1_VEL, COMP1_MASS), name='comp1')
     np.testing.assert_array_equal(by_set._init_pos, by_arrays._init_pos)
     np.testing.assert_array_equal(by_set._init_vel, by_arrays._init_vel)   # km/s converted once
     np.testing.assert_array_equal(by_set._mass, by_arrays._mass)
@@ -195,13 +231,13 @@ def test_add_particles_takes_a_particle_set():
 def test_add_particles_rejects_a_particle_set_with_arrays():
     ps = ParticleSet(COMP1_POS, COMP1_VEL, COMP1_MASS)
     with pytest.raises(TypeError, match="either a ParticleSet or pos, vel and mass, not both"):
-        Sim().add_particles('comp1', ps, vel=COMP1_VEL)
+        Sim().add_particles(ps, name='comp1', vel=COMP1_VEL)
 
 @pytest.mark.parametrize("as_set", [False, True], ids=['arrays', 'particle_set'])
 def test_add_particles_copies_the_arrays(as_set):
     pos, vel, mass = COMP1_POS.copy(), COMP1_VEL.copy(), COMP1_MASS.copy()
     sim = Sim()
-    sim.add_particles('comp1', ParticleSet(pos, vel, mass)) if as_set else sim.add_particles('comp1', pos, vel, mass)
+    sim.add_particles(ParticleSet(pos, vel, mass), name='comp1') if as_set else sim.add_particles(pos, vel, mass, name='comp1')
     pos[0, 0] = vel[0, 0] = mass[0] = 99.
     np.testing.assert_array_equal(sim._init_pos, COMP1_POS)
     np.testing.assert_array_equal(sim._init_vel, COMP1_VEL * KMS_TO_KPCGYR)
@@ -211,7 +247,7 @@ def test_add_particles_copies_the_arrays(as_set):
 
 def test_add_particles_without_vel_and_mass_needs_a_particle_set():
     with pytest.raises(TypeError, match="vel and mass are required unless pos is a ParticleSet"):
-        Sim().add_particles('comp1', COMP1_POS)
+        Sim().add_particles(COMP1_POS, name='comp1')
 
 # --- Multi-component slicing ------------------------------------------------------------------------ #
 #
@@ -357,7 +393,7 @@ def test_multicomponent_run_output_shapes():
 def test_self_gravity_none_gives_zero_acc():
     # method=None disables self-gravity; cached acc is zero.
     sim = Sim()
-    sim.add_particles('a', np.random.normal(size=(30, 3)) * 0.5, np.zeros((30, 3)), np.ones(30) * 1e4)
+    sim.add_particles(np.random.normal(size=(30, 3)) * 0.5, np.zeros((30, 3)), np.ones(30) * 1e4, name='a')
     sim.run(t_end=2, dt=1, dt_out=2, method=None)
     acc = sim.self_gravity()
     np.testing.assert_array_equal(acc, 0)
@@ -365,7 +401,7 @@ def test_self_gravity_none_gives_zero_acc():
 def test_self_gravity_method_gives_nonzero_acc():
     # A named method turns self-gravity on (no toggle needed).
     sim = Sim()
-    sim.add_particles('a', np.random.normal(size=(30, 3)) * 0.5, np.zeros((30, 3)), np.ones(30) * 1e4)
+    sim.add_particles(np.random.normal(size=(30, 3)) * 0.5, np.zeros((30, 3)), np.ones(30) * 1e4, name='a')
     sim.eps = 0.0
     sim.run(t_end=2, dt=1, dt_out=2, method='direct')
     acc = sim.self_gravity()
@@ -375,8 +411,8 @@ def test_self_gravity_method_gives_nonzero_acc():
 
 def _two_components(eps_a=None, eps_b=None):
     sim = Sim()
-    sim.add_particles('a', COMP1_POS, COMP1_VEL, COMP1_MASS * 1e6, eps=eps_a)
-    sim.add_particles('b', COMP2_POS, COMP2_VEL, COMP2_MASS * 1e6, eps=eps_b)
+    sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS * 1e6, name='a', eps=eps_a)
+    sim.add_particles(COMP2_POS, COMP2_VEL, COMP2_MASS * 1e6, name='b', eps=eps_b)
     return sim
 
 
@@ -724,7 +760,7 @@ def test_acc_matches_direct():
     vel = np.array(np.random.normal(size=(10, 3)))
     mass = np.array(np.random.normal(loc=1e9, scale=1e8, size=(10,)))
     sim = Sim()
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     acc = sim.self_gravity(t=0, method='direct', eps=0.0, return_internal=True)
     acc_direct= DirectSummationGravity(eps=0.0).acc(pos, mass)
     np.testing.assert_allclose(acc, acc_direct, rtol=1e-10)
@@ -733,7 +769,7 @@ def test_acc_matches_direct():
 
 def test_external_acc_zero_without_pot():
     sim = Sim()
-    sim.add_particles('a', np.random.normal(size=(30, 3)) * 0.5, np.zeros((30, 3)), np.ones(30) * 1e4)
+    sim.add_particles(np.random.normal(size=(30, 3)) * 0.5, np.zeros((30, 3)), np.ones(30) * 1e4, name='a')
     sim.eps = 0.0
     sim.run(t_end=2, dt=1, dt_out=2, method='direct')
     np.testing.assert_array_equal(sim.external_acc(-1), 0)
@@ -742,7 +778,7 @@ KEPLER_SIM = Sim()
 from galpy.potential import KeplerPotential
 kepler_pot = KeplerPotential(amp=1e9*u.Msun)
 KEPLER_SIM.add_external_pot(kepler_pot)
-KEPLER_SIM.add_particles('a', pos=np.array([[0.1, 0.2, 0.3]]), vel=np.array([[0, 0.0, 0]]), mass=np.array([1e8]))
+KEPLER_SIM.add_particles(name='a', pos=np.array([[0.1, 0.2, 0.3]]), vel=np.array([[0, 0.0, 0]]), mass=np.array([1e8]))
 KEPLER_ACC = -G_INTERNAL * 1e9 * np.array([[0.1, 0.2, 0.3]]) / (0.1**2 + 0.2**2 + 0.3**2)**(3/2)
 KEPLER_POT = -G_INTERNAL * 1e8 * 1e9 / np.sqrt(0.1**2 + 0.2**2 + 0.3**2)
 
@@ -790,7 +826,7 @@ def test_self_potential_against_direct():
     vel = np.zeros_like(pos)
     mass = np.array([1e8, 1e10])
     sim = Sim()
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     pot_direct = DirectSummationGravity(eps=0.0).potential(pos, mass)
     pot_sim = sim.self_potential(t=0, method='direct', eps=0.0, return_internal=True)
     np.testing.assert_allclose(pot_sim[0], mass[0] * pot_direct[0], rtol=1e-15)
@@ -810,7 +846,7 @@ def test_PE_against_direct():
     vel = np.zeros_like(pos)
     mass = np.array([1e8, 1e10])
     sim = Sim()
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.add_external_pot(kepler_pot)
     self_pot_direct = DirectSummationGravity(eps=0.0).potential(pos, mass)
     ext_pot_direct = ([-G_INTERNAL * mass[0] * 1e9 / np.linalg.norm(pos[0]), 
@@ -834,7 +870,7 @@ def test_PE_is_sum_of_self_and_external():
     vel = np.zeros_like(pos)
     mass = np.array([1e8, 1e10])
     sim = Sim()
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.add_external_pot(kepler_pot)
     self_pot = sim.self_potential(t=0, method='direct', eps=0.0, return_internal=True)
     ext_pot = sim.compute_external_pot(t=0, return_internal=True)
@@ -857,7 +893,7 @@ def test_energy_is_sum_of_KE_and_PE():
     vel = np.zeros_like(pos)
     mass = np.array([1e8, 1e10])
     sim = Sim()
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.add_external_pot(kepler_pot)
     KE = sim.KE(t=0, return_internal=True)
     PE = sim.PE(t=0, method='direct', eps=0.0, return_internal=True)
@@ -879,7 +915,7 @@ def test_energy_is_sum_of_KE_and_PE_after_run():
     vel = np.zeros_like(pos)
     mass = np.array([1e8, 1e10])
     sim = Sim()
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.add_external_pot(kepler_pot)
     sim.eps = 0.0
     sim.run(t_end=0.5, dt=0.25, dt_out=0.25, method='direct')
@@ -906,7 +942,7 @@ def test_system_energy_is_sum_of_energies():
     vel = np.zeros_like(pos)
     mass = np.array([1e8, 1e10])
     sim = Sim()
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.add_external_pot(kepler_pot)
     KE = np.sum(sim.KE(t=0, return_internal=True))
     PE = 0.5 * np.sum(sim.self_potential(t=0, method='direct', eps=0.0, return_internal=True)) + np.sum(sim.compute_external_pot(t=0, return_internal=True))
@@ -918,7 +954,7 @@ def test_system_energy_is_sum_of_energies_after_run():
     vel = np.zeros_like(pos)
     mass = np.array([1e8, 1e10])
     sim = Sim()
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.add_external_pot(kepler_pot)
     sim.eps = 0.0
     sim.run(t_end=0.5, dt=0.25, dt_out=0.25, method='direct')
@@ -973,7 +1009,7 @@ E_KEPLER_MASS = 1e10   # Msun, for external Kepler potential
 def _energy_sim(with_ext_pot=False):
     """Two massive particles, optionally in an external Kepler potential."""
     sim = Sim()
-    sim.add_particles('pair', pos=E_POS.copy(), vel=E_VEL.copy(), mass=E_MASS.copy())
+    sim.add_particles(name='pair', pos=E_POS.copy(), vel=E_VEL.copy(), mass=E_MASS.copy())
     if with_ext_pot:
         kep = KeplerPotential(amp=E_KEPLER_MASS * u.Msun)
         sim.add_external_pot(kep)
@@ -1159,7 +1195,7 @@ def test_system_energy_mass_on_external_matters():
 
 def _caching_test_sim():
     sim = Sim()
-    sim.add_particles('test', pos=np.random.normal(size=(10, 3)), vel=np.random.normal(size=(10, 3)), mass=np.random.normal(loc=1e9, scale=1e8, size=(10,)))
+    sim.add_particles(name='test', pos=np.random.normal(size=(10, 3)), vel=np.random.normal(size=(10, 3)), mass=np.random.normal(loc=1e9, scale=1e8, size=(10,)))
     return sim
 def _run_caching_test_sim(sim, cache_self_gravity, cache_self_potential):
     sim.eps = 0.0
@@ -1416,7 +1452,7 @@ def test_vectorized_t_fails_if_method_provided():
 def _shape_test_sim():
     '''Create and run a sim for shape testing.'''
     sim = Sim()
-    sim.add_particles('a',
+    sim.add_particles(name='a',
                       pos=np.random.normal(size=(20, 3)),
                       vel=np.random.normal(size=(20, 3)),
                       mass=np.abs(np.random.normal(loc=1e9, scale=1e8, size=(20,))))
@@ -1521,7 +1557,7 @@ def test_momentum_analytic():
     pos = np.random.normal(size=(10, 3))
     vel = np.random.normal(size=(10, 3))
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.eps = 0.0
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct')
     momentum = sim.p(t=0, return_internal=True)
@@ -1536,7 +1572,7 @@ def test_px_analytic():
     pos = np.random.normal(size=(10, 3))
     vel = np.random.normal(size=(10, 3))
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.eps = 0.0
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct')
     px = sim.px(t=0, return_internal=True)
@@ -1551,7 +1587,7 @@ def test_py_analytic():
     pos = np.random.normal(size=(10, 3))
     vel = np.random.normal(size=(10, 3))
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.eps = 0.0
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct')
     py = sim.py(t=0, return_internal=True)
@@ -1566,7 +1602,7 @@ def test_pz_analytic():
     pos = np.random.normal(size=(10, 3))
     vel = np.random.normal(size=(10, 3))
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.eps = 0.0
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct')
     pz = sim.pz(t=0, return_internal=True)
@@ -1581,7 +1617,7 @@ def test_L_analytic():
     pos = np.random.normal(size=(10, 3))
     vel = np.random.normal(size=(10, 3))
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.eps = 0.0
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct')
     L = sim.L(t=0, return_internal=True)
@@ -1598,7 +1634,7 @@ def test_Lx_analytic():
     pos = np.random.normal(size=(10, 3))
     vel = np.random.normal(size=(10, 3))
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.eps = 0.0
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct')
     Lx = sim.Lx(t=0, return_internal=True)
@@ -1614,7 +1650,7 @@ def test_Ly_analytic():
     pos = np.random.normal(size=(10, 3))
     vel = np.random.normal(size=(10, 3))
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.eps = 0.0
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct')
     Ly = sim.Ly(t=0, return_internal=True)
@@ -1630,7 +1666,7 @@ def test_Lz_analytic():
     pos = np.random.normal(size=(10, 3))
     vel = np.random.normal(size=(10, 3))
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.eps = 0.0
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct')
     Lz = sim.Lz(t=0, return_internal=True)
@@ -1749,7 +1785,7 @@ def test_L_w_center_pos():
     pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
     vel = np.array([[0, 0.1, 0], [0.1, 0.0, 0]])
     mass = np.array([1e8, 1e9])
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     L = sim.L(center_pos=np.array([0.5, 0.5, 0]), return_internal=True)
     expected = mass[:, None] * np.cross(pos - np.array([0.5, 0.5, 0]), vel * KMS_TO_KPCGYR)
     np.testing.assert_allclose(L[0], expected, rtol=1e-15)
@@ -1762,7 +1798,7 @@ def test_L_w_center_vel():
     pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
     vel = np.array([[0, 0.1, 0], [0.1, 0.0, 0]])
     mass = np.array([1e8, 1e9])
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     L = sim.L(center_vel=np.array([0.05, 0.05, 0]), return_internal=True)
     expected = mass[:, None] * np.cross(pos, vel * KMS_TO_KPCGYR - np.array([0.05, 0.05, 0]))
     np.testing.assert_allclose(L[0], expected, rtol=1e-15)
@@ -1775,7 +1811,7 @@ def test_L_w_center_pos_and_vel():
     pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
     vel = np.array([[0, 0.1, 0], [0.1, 0.0, 0]])
     mass = np.array([1e8, 1e9])
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     L = sim.L(center_pos=np.array([0.5, 0.5, 0]), center_vel=np.array([0.05, 0.05, 0]), return_internal=True)
     expected = mass[:, None] * np.cross(pos - np.array([0.5, 0.5, 0]), vel * KMS_TO_KPCGYR - np.array([0.05, 0.05, 0]))
     np.testing.assert_allclose(L[0], expected, rtol=1e-15)
@@ -1790,7 +1826,7 @@ def _coord_test_sim():
     pos = rng.normal(loc=3.0, scale=1.0, size=(20, 3))
     vel = rng.normal(size=(20, 3))
     mass = np.abs(rng.normal(loc=1e9, scale=1e8, size=(20,)))
-    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     return sim
 
 _COORD_SIM = _coord_test_sim()
@@ -1935,7 +1971,7 @@ def test_vtheta_explicit_formula():
 
 def _axis_sim(pos, vel):
     sim = Sim()
-    sim.add_particles('test', pos=np.atleast_2d(pos).astype(np.float64),
+    sim.add_particles(name='test', pos=np.atleast_2d(pos).astype(np.float64),
                       vel=np.atleast_2d(vel).astype(np.float64),
                       mass=np.array([1e9]))
     return sim
@@ -2037,10 +2073,10 @@ def test_xy_diagonal_tangential_motion():
 @pytest.fixture
 def two_component_sim():
     sim = Sim()
-    sim.add_particles('stars', pos=np.random.normal(size=(10, 3)),
+    sim.add_particles(name='stars', pos=np.random.normal(size=(10, 3)),
                       vel=np.random.normal(size=(10, 3)),
                       mass=np.abs(np.random.normal(loc=1e9, scale=1e8, size=10)))
-    sim.add_particles('gas', pos=np.random.normal(size=(5, 3)),
+    sim.add_particles(name='gas', pos=np.random.normal(size=(5, 3)),
                       vel=np.random.normal(size=(5, 3)),
                       mass=np.abs(np.random.normal(loc=1e8, scale=1e7, size=5)))
     sim.eps = 0.05
@@ -2086,10 +2122,10 @@ def test_component_has_run(two_component_sim):
 @pytest.fixture
 def ext_pot_component_sim():
     sim = Sim()
-    sim.add_particles('stars', pos=np.array([[1.0, 0.0, 0.0]]),
+    sim.add_particles(name='stars', pos=np.array([[1.0, 0.0, 0.0]]),
                       vel=np.zeros((1, 3)),
                       mass=np.array([1e8]))
-    sim.add_particles('gas', pos=np.array([[0.0, 1.0, 0.0]]),
+    sim.add_particles(name='gas', pos=np.array([[0.0, 1.0, 0.0]]),
                       vel=np.zeros((1, 3)),
                       mass=np.array([1e7]))
     kepler = KeplerPotential(amp=1e9*u.Msun)
@@ -2124,7 +2160,7 @@ def test_component_external_az(ext_pot_component_sim):
 
 def test_dE_uncached():
     sim = Sim()
-    sim.add_particles('a', pos=np.random.normal(size=(10, 3)),
+    sim.add_particles(name='a', pos=np.random.normal(size=(10, 3)),
                       vel=np.random.normal(size=(10, 3)) * 0.01,
                       mass=np.abs(np.random.normal(loc=1e9, scale=1e8, size=10)))
     sim.eps = 0.05
@@ -2135,7 +2171,7 @@ def test_dE_uncached():
 
 def test_dE_uncached_single_t():
     sim = Sim()
-    sim.add_particles('a', pos=np.random.normal(size=(10, 3)),
+    sim.add_particles(name='a', pos=np.random.normal(size=(10, 3)),
                       vel=np.random.normal(size=(10, 3)) * 0.01,
                       mass=np.abs(np.random.normal(loc=1e9, scale=1e8, size=10)))
     sim.eps = 0.05
@@ -2163,7 +2199,7 @@ import warnings as _warnings
 def _simple_sim():
     """One-particle sim for fast validation checks (no self-gravity needed)."""
     sim = Sim()
-    sim.add_particles('pt', pos=np.array([[1.0, 0, 0]]),
+    sim.add_particles(name='pt', pos=np.array([[1.0, 0, 0]]),
                       vel=np.array([[0.0, 0, 0]]),
                       mass=np.array([1.0]))
     return sim
@@ -2242,7 +2278,7 @@ def test_compute_external_pot_uses_physical_time():
     pos = np.array([[8.0, 0.0, 0.0]])
     vel = np.array([[0.0, 220.0 * KMS_TO_KPCGYR, 0.0]])
     mass = np.array([1e5])
-    sim.add_particles('star', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='star', pos=pos, vel=vel, mass=mass)
 
     # Run so we get multiple snapshots at different physical times
     sim.eps = 0.0
@@ -2277,7 +2313,7 @@ def test_external_acc_uses_physical_time():
     pos = np.array([[8.0, 0.0, 0.0]])
     vel = np.array([[0.0, 220.0 * KMS_TO_KPCGYR, 0.0]])
     mass = np.array([1e5])
-    sim.add_particles('star', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='star', pos=pos, vel=vel, mass=mass)
 
     sim.eps = 0.0
     sim.run(t_end=1.0, dt=0.1, dt_out=0.5, method='direct')
@@ -2348,7 +2384,7 @@ class TestHooksFireAtTheirCadence:
 
     def _sim(self):
         sim = Sim()
-        sim.add_particles('a', COMP1_POS, COMP1_VEL, COMP1_MASS)
+        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='a')
         return sim
 
     def _run(self, sim, t_end=6.0):
@@ -2435,7 +2471,7 @@ class _ResetCountingHook(Hook):
 
 def test_running_again_starts_every_hook_afresh():
     sim = Sim()
-    sim.add_particles('c', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS)
+    sim.add_particles(name='c', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS)
     hook = _ResetCountingHook()
     sim.add_hook(hook)
     for eps in (0.1, 0.5):
@@ -2603,8 +2639,8 @@ class TestComponents:
 
     def _two_comp_sim(self):
         sim = Sim()
-        sim.add_particles('comp1', COMP1_POS, COMP1_VEL, COMP1_MASS)
-        sim.add_particles('comp2', COMP2_POS, COMP2_VEL, COMP2_MASS)
+        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='comp1')
+        sim.add_particles(COMP2_POS, COMP2_VEL, COMP2_MASS, name='comp2')
         return sim
 
     def test_components_empty_is_empty_tuple(self):
@@ -2634,7 +2670,7 @@ class TestComponentRepr:
 
     def test_repr_reports_name_count_and_mass(self):
         sim = Sim()
-        sim.add_particles('sat', COMP1_POS, COMP1_VEL, np.full(COMP1_NPTS, 1e4))
+        sim.add_particles(COMP1_POS, COMP1_VEL, np.full(COMP1_NPTS, 1e4), name='sat')
         r = repr(sim.sat)
         assert r == f"Component('sat', {COMP1_NPTS} particles, {1e4 * COMP1_NPTS:.2e} Msun)"
 
@@ -2648,8 +2684,8 @@ class TestSimRepr:
 
     def test_multicomponent_repr_lists_components(self):
         sim = Sim()
-        sim.add_particles('sat', COMP1_POS, COMP1_VEL, np.full(COMP1_NPTS, 1e4))
-        sim.add_particles('host', COMP2_POS, COMP2_VEL, np.full(COMP2_NPTS, 1e5))
+        sim.add_particles(COMP1_POS, COMP1_VEL, np.full(COMP1_NPTS, 1e4), name='sat')
+        sim.add_particles(COMP2_POS, COMP2_VEL, np.full(COMP2_NPTS, 1e5), name='host')
         r = repr(sim)
         assert "2 components" in r
         assert f"{COMP1_NPTS + COMP2_NPTS} particles" in r
@@ -2659,7 +2695,7 @@ class TestSimRepr:
     def test_repr_lists_forces_and_hooks_by_name(self):
         # The forces/hooks tables name what's attached (not just counts).
         sim = Sim()
-        sim.add_particles('a', COMP1_POS, COMP1_VEL, COMP1_MASS)
+        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='a')
         sim.add_external_force(CustomBaseForce())
         sim.add_hook(ConservationMonitor())
         r = repr(sim)
@@ -2668,14 +2704,14 @@ class TestSimRepr:
 
     def test_repr_empty_sections_show_none(self):
         sim = Sim()
-        sim.add_particles('a', COMP1_POS, COMP1_VEL, COMP1_MASS)
+        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='a')
         r = repr(sim)
         assert "External forces" in r and "Hooks" in r
         assert "(none)" in r
 
     def test_repr_after_run_shows_time_range(self):
         sim = Sim()
-        sim.add_particles('a', COMP1_POS, COMP1_VEL, COMP1_MASS)
+        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='a')
         sim.eps = 0.0
         sim.run(t_end=2.0, dt=1.0, dt_out=1.0, method='direct', progress=False)
         r = repr(sim)
@@ -2757,7 +2793,7 @@ class TestDefaultMonitors:
 
     def _sim(self):
         sim = Sim()
-        sim.add_particles('a', COMP1_POS, COMP1_VEL, COMP1_MASS)
+        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='a')
         return sim
 
     def _run(self, sim, **kw):

@@ -17,8 +17,8 @@ DM = dict(pos=_rng.normal(size=(30, 3)) + [5., 0., 0.], vel=_rng.normal(scale=30
 
 def _sim():
     sim = Sim()
-    sim.add_particles('stars', **STARS)
-    sim.add_particles('dm', **DM)
+    sim.add_particles(name='stars', **STARS)
+    sim.add_particles(name='dm', **DM)
     sim.eps = 0.1
     sim.run(t_end=0.03, dt=0.01, dt_out=0.01, method='direct', progress=False, monitors=False)
     return sim

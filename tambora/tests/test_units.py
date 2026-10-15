@@ -251,7 +251,7 @@ class TestUnitHandlerDecorator:
 def sim():
     s = Sim()
     s.add_particles(
-        'stars',
+        name='stars',
         pos=np.random.rand(20, 3),
         vel=np.random.rand(20, 3) * 100,  # 0-100 km/s
         mass=np.random.rand(20) * 1e6,
@@ -381,7 +381,7 @@ def sim_ext():
     from galpy import potential as gp
     s = Sim()
     s.add_particles(
-        'stars',
+        name='stars',
         pos=np.random.rand(10, 3) + 1.0,   # offset from origin to avoid R=0
         vel=np.random.rand(10, 3) * 100,
         mass=np.random.rand(10) * 1e6,
@@ -582,7 +582,7 @@ class TestAddParticlesVelocityConversion:
     def test_stored_velocity_is_internal(self):
         vel_kms = np.array([[100.0, 200.0, 300.0]])
         s = Sim()
-        s.add_particles('test', pos=np.zeros((1, 3)), vel=vel_kms,
+        s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms,
                         mass=np.ones(1))
         # Internal storage should be kpc/Gyr
         assert_allclose(s._init_vel, vel_kms * KMS_TO_KPCGYR, rtol=1e-15)
@@ -590,7 +590,7 @@ class TestAddParticlesVelocityConversion:
     def test_accessor_returns_user_units(self):
         vel_kms = np.array([[100.0, 200.0, 300.0]])
         s = Sim()
-        s.add_particles('test', pos=np.zeros((1, 3)), vel=vel_kms,
+        s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms,
                         mass=np.ones(1))
         # Default accessor should return km/s (round-trip)
         assert_allclose(s.vel(t=0), vel_kms, rtol=1e-14)
@@ -598,7 +598,7 @@ class TestAddParticlesVelocityConversion:
     def test_return_internal_gives_kpc_gyr(self):
         vel_kms = np.array([[100.0, 200.0, 300.0]])
         s = Sim()
-        s.add_particles('test', pos=np.zeros((1, 3)), vel=vel_kms,
+        s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms,
                         mass=np.ones(1))
         assert_allclose(s.vel(t=0, return_internal=True),
                         vel_kms * KMS_TO_KPCGYR, rtol=1e-15)
@@ -618,7 +618,7 @@ class TestAstropyPhysicalConsistency:
         # Input 1 kpc/Gyr expressed in km/s
         vel_kms_input = np.array([[(1.0 * u.kpc / u.Gyr).to(u.km / u.s).value,
                                     0.0, 0.0]])
-        s.add_particles('test', pos=np.zeros((1, 3)), vel=vel_kms_input,
+        s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms_input,
                         mass=np.ones(1))
         # Internal should be exactly 1 kpc/Gyr
         assert_allclose(s.vel(t=0, return_internal=True)[0, 0], 1.0, rtol=1e-10)
@@ -631,7 +631,7 @@ class TestAstropyPhysicalConsistency:
         mass_msun = 1e6
         vel_kms = np.array([[100.0, 0.0, 0.0]])
         s = Sim()
-        s.add_particles('test', pos=np.zeros((1, 3)), vel=vel_kms,
+        s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms,
                         mass=np.array([mass_msun]))
 
         KE_astropy = 0.5 * mass_msun * 100.0**2  # Msun (km/s)^2
@@ -642,7 +642,7 @@ class TestAstropyPhysicalConsistency:
         mass_msun = 1e6
         vel_kms = np.array([[100.0, 200.0, 300.0]])
         s = Sim()
-        s.add_particles('test', pos=np.zeros((1, 3)), vel=vel_kms,
+        s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms,
                         mass=np.array([mass_msun]))
 
         # Expected: Msun * km/s
@@ -656,7 +656,7 @@ class TestAstropyPhysicalConsistency:
         pos = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])  # 1 kpc apart
         vel = np.zeros((2, 3))  # stationary in km/s
         s = Sim()
-        s.add_particles('test', pos=pos, vel=vel, mass=np.array([m1, m2]))
+        s.add_particles(name='test', pos=pos, vel=vel, mass=np.array([m1, m2]))
 
         # Compute in internal units
         acc_internal = s.self_gravity(t=0, method='direct', eps=0.0,
@@ -677,7 +677,7 @@ class TestAstropyPhysicalConsistency:
         pos = np.array([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]])  # 2 kpc apart
         vel = np.zeros((2, 3))
         s = Sim()
-        s.add_particles('test', pos=pos, vel=vel, mass=np.array([m1, m2]))
+        s.add_particles(name='test', pos=pos, vel=vel, mass=np.array([m1, m2]))
 
         pot_internal = s.self_potential(t=0, method='direct', eps=0.0,
                                        return_internal=True)
@@ -696,7 +696,7 @@ class TestAstropyPhysicalConsistency:
         vel_kms = np.array([[0.0, 100.0, 0.0]])  # km/s
         mass = np.array([1e6])
         s = Sim()
-        s.add_particles('test', pos=pos, vel=vel_kms, mass=mass)
+        s.add_particles(name='test', pos=pos, vel=vel_kms, mass=mass)
 
         # Internal: L = r x (m * v_internal)
         # L_z = x * m * vy_internal = 1.0 * 1e6 * (100 * KMS_TO_KPCGYR)

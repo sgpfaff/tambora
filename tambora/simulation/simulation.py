@@ -12,7 +12,9 @@ from ..dynamics.forces.CompositeForce import _CompositeConservative, _CompositeP
 from ..units import unit_handler, KMS_TO_KPCGYR
 from ..dynamics import diagnostics
 from ..ic import ParticleSet
+from ..dynamics.integration import StepState
 import inspect
+import keyword
 from typing import Optional
 from ._decorators import _USE_CACHED_DEFAULT, _resolve_use_cached, _resolve_t
 
@@ -165,18 +167,16 @@ class Sim(_ParticleView):
     
     # --- Setup ---------------------------------------------------------------------------------                                                   
 
-    def add_particles(self, name, pos, vel=None, mass=None, eps=None):
+    def add_particles(self, pos, vel=None, mass=None, *, name=None, eps=None):
         """
-        Add a named particle component.
+        Add a component of particles.
         Provide a :class:`~tambora.ic.ParticleSet`, or (pos, vel, mass) directly [kpc, km/s, Msun]::
 
-            sim.add_particles('cluster', ps)
-            sim.add_particles('cluster', pos, vel, mass)
+            sim.add_particles(ps, name='cluster', eps=0.01)
+            sim.add_particles(pos, vel, mass, name='cluster', eps=0.01)
 
         Parameters
         ----------
-        name : str
-            Name of the component, e.g. 'sat' or 'host'.
         pos : (N, 3) array or ParticleSet
             Initial positions of particles, or a ParticleSet holding the positions,
             velocities and masses.
@@ -187,6 +187,11 @@ class Sim(_ParticleView):
         mass : (N,) array, optional
             Masses of particles. Required unless ``pos`` is a ParticleSet.
             Units: `Msun`
+        name : str, optional
+            Name of the component, e.g. 'sat' or 'host', to reach it as ``sim.<name>``.
+            It must be a Python identifier not starting with '_', and not already
+            an attribute of the Sim or of a hook's state. Default: ``component<i>``,
+            where i is the component's position (from 0).
         eps : float or (N,) array, optional
             Softening length of the particles, one for all or one each. Required
             to run with self-gravity; it can also be set later through ``eps``.
@@ -199,7 +204,8 @@ class Sim(_ParticleView):
         Raises
         ------
         ValueError
-            If the component already exists or if the input arrays have incompatible shapes.
+            If the component already exists, the name can't be used, or the input
+            arrays have incompatible shapes.
         TypeError
             If the input types are incorrect, or if a ParticleSet is given together with
             ``vel`` or ``mass``, or neither is given.
@@ -219,8 +225,19 @@ class Sim(_ParticleView):
         mass = np.array(mass, dtype=np.float64)
         if self._has_run:
             raise RuntimeError("Cannot add components after run()")
-        if not isinstance(name, str):
+        if name is None:
+            i = len(self._slices)
+            while f'component{i}' in self._slices:
+                i += 1
+            name = f'component{i}'
+        elif not isinstance(name, str):
             raise TypeError("name must be a string.")
+        elif not name.isidentifier() or keyword.iskeyword(name) or name.startswith('_'):
+            raise ValueError(f"{name!r} can't be a component name: it must be a Python identifier "
+                             "not starting with '_', to be reached as sim.<name>.")
+        elif hasattr(type(self), name) or hasattr(StepState, name):
+            raise ValueError(f"{name!r} can't be a component name: sim.{name} "
+                             f"(or a hook's state.{name}) already means something else.")
         if name in self._slices:
             raise ValueError(f"Component \'{name}\' already exists.")
         if pos.ndim != 2  or pos.shape[1] != 3:

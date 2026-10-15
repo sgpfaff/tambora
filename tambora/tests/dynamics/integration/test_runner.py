@@ -570,7 +570,7 @@ def test_bare_function_hook_fires_during_run_with_step_state():
         seen_is_state.append(isinstance(state, StepState))
 
     sim = Sim()
-    sim.add_particles('c', np.zeros((4, 3)), np.zeros((4, 3)), np.ones(4))
+    sim.add_particles(np.zeros((4, 3)), np.zeros((4, 3)), np.ones(4), name='c')
     sim.add_hook(record)                 # bare callable -> EveryOutput cadence
 
     sim.run(t_end=1.0, dt=0.5, dt_out=0.5, method=None, progress=False)

@@ -110,7 +110,7 @@ def test_the_sim_summary_labels_the_potential_by_its_components():
 
 def _one_particle_sim(force):
     sim = Sim()
-    sim.add_particles('p', pos=[[8., 0., 0.]], vel=[[0., 200., 0.]], mass=[1.])
+    sim.add_particles(pos=[[8., 0., 0.]], vel=[[0., 200., 0.]], mass=[1.])
     sim.add_external_force(force)
     return sim
 

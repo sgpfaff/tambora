@@ -18,11 +18,11 @@ COMP2_VEL = np.random.rand(COMP2_NPTS, 3)
 COMP2_MASS = np.random.rand(COMP2_NPTS)
 
 multicomp = Sim()
-multicomp.add_particles('comp1',
+multicomp.add_particles(name='comp1',
                     pos=COMP1_POS, 
                     vel=COMP1_VEL, 
                     mass=COMP1_MASS)
-multicomp.add_particles('comp2',
+multicomp.add_particles(name='comp2',
                     pos=COMP2_POS, 
                     vel=COMP2_VEL, 
                     mass=COMP2_MASS)
@@ -627,9 +627,9 @@ _IAC_COMP2_MASS = np.array([2e9])
 def _iac_sim():
     """Two-component sim for include_all_components testing."""
     sim = Sim()
-    sim.add_particles('disk', pos=_IAC_COMP1_POS.copy(),
+    sim.add_particles(name='disk', pos=_IAC_COMP1_POS.copy(),
                       vel=_IAC_COMP1_VEL.copy(), mass=_IAC_COMP1_MASS.copy())
-    sim.add_particles('sat', pos=_IAC_COMP2_POS.copy(),
+    sim.add_particles(name='sat', pos=_IAC_COMP2_POS.copy(),
                       vel=_IAC_COMP2_VEL.copy(), mass=_IAC_COMP2_MASS.copy())
     sim.eps = 0.0
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct',
