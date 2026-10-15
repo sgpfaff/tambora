@@ -20,13 +20,28 @@ from .directSummation import _direct_summation_C, _direct_summation_py
 from abc import abstractmethod
 
 class SelfGravityForce(Force, Conservative):
-    @abstractmethod
-    def acc(self, pos: np.ndarray, mass: np.ndarray) -> np.ndarray: ...
-    @abstractmethod
-    def potential(self, pos: np.ndarray, mass: np.ndarray) -> np.ndarray: ...
+    """Base class for self-gravity solvers.
 
-    def acc_and_potential(self, pos: np.ndarray, mass: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        return self.acc(pos, mass), self.potential(pos, mass)
+    ``eps``, the particles' softening, is passed to each call; a solver built with
+    its own ``eps`` uses that instead.
+    """
+    eps = None
+
+    @abstractmethod
+    def acc(self, pos: np.ndarray, mass: np.ndarray, eps=None) -> np.ndarray: ...
+    @abstractmethod
+    def potential(self, pos: np.ndarray, mass: np.ndarray, eps=None) -> np.ndarray: ...
+
+    def acc_and_potential(self, pos: np.ndarray, mass: np.ndarray, eps=None) -> Tuple[np.ndarray, np.ndarray]:
+        return self.acc(pos, mass, eps), self.potential(pos, mass, eps)
+
+    def _softening(self, eps):
+        """The solver's own softening if it has one, else ``eps``."""
+        eps = eps if self.eps is None else self.eps
+        if eps is None:
+            raise ValueError("No softening: pass eps, or give the solver its own.")
+        return eps
+
     def _eval_acc(self, pos, vel, mass, t):
         return self.acc(pos, mass)
 
@@ -42,39 +57,35 @@ class FalcONGravity(SelfGravityForce):
 
     Parameters
     ----------
-    eps : float or (N,) array
-        Gravitational softening length(s) [kpc].
     theta : float, optional
         Tree opening angle (default 0.6). Smaller = more accurate but slower.
     kernel : int, optional
         Softening kernel: 0=Plummer, 1=default (~r^-7), 2,3=faster decay.
+    eps : float or (N,) array, optional
+        Softening length(s) [kpc] to use instead of the ``eps`` passed to each call.
     """
 
-    def __init__(
-        self,
-        eps: Union[float, np.ndarray],
-        theta: float = 0.6,
-        kernel: int = 1,
-    ):
-        self.eps = eps
+    def __init__(self, *, theta: float = 0.6, kernel: int = 1,
+                 eps: Union[float, np.ndarray, None] = None):
         self.theta = theta
         self.kernel = kernel
+        self.eps = eps
 
     def acc_and_potential(
-        self, pos: np.ndarray, mass: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        self, pos: np.ndarray, mass: np.ndarray, eps=None) -> Tuple[np.ndarray, np.ndarray]:
         return _falcON_gravity(
-            pos, mass, self.eps, self.theta, self.kernel,
+            pos, mass, self._softening(eps), self.theta, self.kernel,
             return_potential=True,
         )
 
-    def acc(self, pos: np.ndarray, mass: np.ndarray) -> np.ndarray:
+    def acc(self, pos: np.ndarray, mass: np.ndarray, eps=None) -> np.ndarray:
         return _falcON_gravity(
-            pos, mass, self.eps, self.theta, self.kernel,
+            pos, mass, self._softening(eps), self.theta, self.kernel,
             return_potential=False,
         )
 
-    def potential(self, pos: np.ndarray, mass: np.ndarray) -> np.ndarray:
-        return self.acc_and_potential(pos, mass)[1]
+    def potential(self, pos: np.ndarray, mass: np.ndarray, eps=None) -> np.ndarray:
+        return self.acc_and_potential(pos, mass, eps)[1]
 
 
 class DirectSummationGravity(SelfGravityForce):
@@ -82,30 +93,31 @@ class DirectSummationGravity(SelfGravityForce):
 
     Parameters
     ----------
-    eps : float or (N,) array
-        Gravitational softening length(s) [kpc]. If an array, pairwise
-        softening uses the arithmetic mean ``(eps_i + eps_j) / 2``.
     use_C : bool, optional
         Use the C extension (default ``True``). Set to ``False`` for the
         pure-Python reference implementation.
+    eps : float or (N,) array, optional
+        Softening length(s) [kpc] to use instead of the ``eps`` passed to each call.
+        With an array, pairwise softening uses the arithmetic mean
+        ``(eps_i + eps_j) / 2``.
     """
 
-    def __init__(self, eps: Union[float, np.ndarray], use_C: bool = True):
-        self.eps = eps
+    def __init__(self, *, use_C: bool = True, eps: Union[float, np.ndarray, None] = None):
         self.use_C = use_C
+        self.eps = eps
 
     def acc_and_potential(
-        self, pos: np.ndarray, mass: np.ndarray
+        self, pos: np.ndarray, mass: np.ndarray, eps=None
     ) -> Tuple[np.ndarray, np.ndarray]:
         impl = _direct_summation_C if self.use_C else _direct_summation_py
-        return impl(pos, mass, self.eps, return_potential=True)
+        return impl(pos, mass, self._softening(eps), return_potential=True)
 
-    def acc(self, pos: np.ndarray, mass: np.ndarray) -> np.ndarray:
+    def acc(self, pos: np.ndarray, mass: np.ndarray, eps=None) -> np.ndarray:
         impl = _direct_summation_C if self.use_C else _direct_summation_py
-        return impl(pos, mass, self.eps, return_potential=False)
+        return impl(pos, mass, self._softening(eps), return_potential=False)
 
-    def potential(self, pos: np.ndarray, mass: np.ndarray) -> np.ndarray:
-        return self.acc_and_potential(pos, mass)[1]
+    def potential(self, pos: np.ndarray, mass: np.ndarray, eps=None) -> np.ndarray:
+        return self.acc_and_potential(pos, mass, eps)[1]
     
 class NullSelfGravity(SelfGravityForce):
     """No-op self-gravity. Used when self-gravity is disabled."""
@@ -113,13 +125,13 @@ class NullSelfGravity(SelfGravityForce):
         self._zeros_array_3d = None
         self._zeros_array_1d = None
 
-    def acc(self, pos, mass):
+    def acc(self, pos, mass, eps=None):
         if self._zeros_array_3d is None:
             self._zeros_array_3d = np.zeros_like(pos)
         return self._zeros_array_3d
-    def potential(self, pos, mass):
+    def potential(self, pos, mass, eps=None):
         if self._zeros_array_1d is None:
             self._zeros_array_1d = np.zeros(pos.shape[0])
         return self._zeros_array_1d
-    def acc_and_potential(self, pos, mass):
+    def acc_and_potential(self, pos, mass, eps=None):
         return self.acc(pos, mass), self.potential(pos, mass)
