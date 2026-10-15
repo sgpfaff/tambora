@@ -477,6 +477,12 @@ def test_a_run_with_self_gravity_needs_every_components_softening():
     assert sim._has_run
 
 
+def test_run_takes_no_softening():
+    sim = _two_components(eps_a=0.1, eps_b=0.1)
+    with pytest.raises(ValueError, match=r"\{'eps'\} is \(are\) invalid kwarg"):
+        sim.run(t_end=0.01, dt=0.01, dt_out=0.01, method='direct', eps=0.5)
+
+
 @pytest.mark.parametrize("eps, error", [
     pytest.param('0.1', TypeError, id='string'),
     pytest.param(True, TypeError, id='bool'),

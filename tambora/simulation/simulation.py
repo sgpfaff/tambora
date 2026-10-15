@@ -455,7 +455,7 @@ class Sim(_ParticleView):
                 f"Unknown method {method!r} for self-gravity. "
                 f"Supported methods: {supported} (or None to disable self-gravity).")
         solver_cls = SELF_GRAVITY_METHODS[method]
-        valid = set(inspect.signature(solver_cls.__init__).parameters) - {'self'}
+        valid = set(inspect.signature(solver_cls.__init__).parameters) - {'self', 'eps'}  # the particles' softening
         invalid = set(kwargs) - valid
         if invalid:
             raise ValueError(
