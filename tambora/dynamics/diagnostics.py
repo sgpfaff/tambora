@@ -80,8 +80,8 @@ def bound_mask(pos, vel, mass, eps, method='falcON', theta=0.6, max_iter=50):
         Velocities [kpc / Gyr] (internal units).
     mass : (N,) array
         Masses [Msun].
-    eps : float
-        Softening length [kpc].
+    eps : float or (N,) array
+        Softening length [kpc], one for all or one per particle.
     method : str, optional
         Self-gravity solver: ``'falcON'`` (default), ``'direct'``, ``'direct_C'``.
     theta : float, optional
@@ -109,6 +109,8 @@ def bound_mask(pos, vel, mass, eps, method='falcON', theta=0.6, max_iter=50):
     for i in range(max_iter):
         mb = mass[bound]
         vb = vel[bound]
+        if np.ndim(eps) > 0:
+            kw['eps'] = np.asarray(eps)[bound]
         _, phi = self_gravity(pos[bound], mb, method=method, **kw)   # specific potential
 
         if i == 0:

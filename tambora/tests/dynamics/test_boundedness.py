@@ -70,6 +70,18 @@ def test_fast_tracer_is_unbound():
     assert b[:-1].all()         # the core is untouched
 
 
+def test_a_softening_per_particle_follows_the_bound_set():
+    # It used to keep its full length after the first unbinding pass, and fail.
+    pos, vel, mass = _cold_blob(1e6, 0.3, N=200, n_far=0)
+    pos = np.vstack([pos, [R_GAL + 1.0, 0.0, 0.0]])
+    vel = np.vstack([vel, [10 * _escape_speed(1e6, 1.0), 0.0, 0.0]])
+    mass = np.append(mass, mass[0])
+    for method in ('direct', 'falcON'):
+        each = bound_mask(pos, vel, mass, eps=np.full(len(mass), 0.01), method=method)
+        np.testing.assert_array_equal(each, bound_mask(pos, vel, mass, eps=0.01, method=method))
+        assert not each[-1] and each[:-1].all()
+
+
 def test_mask_is_invariant_under_a_velocity_boost():
     """Binding is measured in the COM frame, so a bulk boost changes nothing."""
     pos, vel, mass = _cold_blob(1e6, 0.3, N=150, n_far=0)

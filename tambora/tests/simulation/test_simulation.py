@@ -10,6 +10,7 @@ import numpy as np
 from tambora.units import G_INTERNAL
 from tambora.units import KMS_TO_KPCGYR
 from tambora.dynamics import DirectSummationGravity, FalcONGravity
+from tambora.dynamics.diagnostics import bound_mask
 from tambora.dynamics.hooks import (Hook, ConservationMonitor, BoundednessHook,
                                     EveryOutput, EveryStep, EveryNSteps, EveryNOutputs)
 import astropy.units as u
@@ -413,6 +414,58 @@ def test_a_hook_gets_a_components_own_gravity_with_its_own_softening(method):
     solver = DirectSummationGravity() if method == 'direct' else FalcONGravity()
     expected = solver.acc(COMP2_POS, COMP2_MASS * 1e6, eps=sim.b.eps)
     np.testing.assert_array_equal(seen['acc'], expected)
+
+
+@pytest.mark.parametrize("accessor", ['self_gravity', 'self_potential'])
+def test_gravity_computed_again_uses_the_particles_softening_unless_given_one(accessor):
+    eps_b = np.linspace(0.02, 0.08, COMP2_NPTS)
+    sim = _two_components(eps_a=0.1, eps_b=eps_b)
+    _quick_run(sim)
+    pos, mass = sim.pos(t=0, return_internal=True), sim.mass
+    def expected(eps, sl=slice(None), everyone=True):
+        acc, phi = DirectSummationGravity(eps=eps).acc_and_potential(pos if everyone else pos[sl],
+                                                                    mass if everyone else mass[sl])
+        out = acc if accessor == 'self_gravity' else (mass if everyone else mass[sl]) * phi
+        return out[sl] if everyone else out
+    get = lambda obj, **kw: getattr(obj, accessor)(t=0, method='direct', return_internal=True, **kw)
+    np.testing.assert_allclose(get(sim), expected(sim.eps), rtol=1e-12)
+    np.testing.assert_allclose(get(sim, eps=0.3), expected(0.3), rtol=1e-12)
+    b = sim._slices['b']
+    np.testing.assert_allclose(get(sim.b), expected(sim.eps, b), rtol=1e-12)
+    np.testing.assert_allclose(get(sim.b, include_all_components=False), expected(eps_b, b, everyone=False), rtol=1e-12)
+    np.testing.assert_allclose(get(sim.b, include_all_components=False, eps=0.3),
+                               expected(0.3, b, everyone=False), rtol=1e-12)
+
+
+def test_gravity_computed_again_needs_a_softening():
+    sim = _two_components(eps_a=0.1)
+    _quick_run(sim, method=None)
+    with pytest.raises(ValueError, match="Softening isn't set"):
+        sim.self_gravity(t=0, method='direct')
+    sim.a.self_gravity(t=0, method='direct', include_all_components=False)
+    sim.self_gravity(t=0, method='direct', eps=0.1)
+
+
+def test_hooks_get_the_particles_softening_and_unbind_with_it(monkeypatch):
+    import tambora.dynamics.diagnostics as diagnostics
+    real, used = diagnostics.bound_mask, []
+    monkeypatch.setattr(diagnostics, 'bound_mask', lambda *a, **kw: used.append(kw['eps']) or real(*a, **kw))
+    eps_b = np.linspace(0.02, 0.08, COMP2_NPTS)
+    sim = _two_components(eps_a=0.1, eps_b=eps_b)
+    seen = {}
+    def hook(state):
+        seen.setdefault('eps', (state.eps.copy(), state.b.eps.copy()))
+        seen.setdefault('mask', state.bound_mask('b'))
+    sim.add_hook(hook)
+    bounded = BoundednessHook('b')
+    sim.add_hook(bounded)
+    _quick_run(sim)
+    np.testing.assert_array_equal(seen['eps'][0], sim.eps)
+    np.testing.assert_array_equal(seen['eps'][1], eps_b)
+    expected = bound_mask(COMP2_POS, COMP2_VEL * KMS_TO_KPCGYR, COMP2_MASS * 1e6, eps=eps_b, method='falcON')
+    np.testing.assert_array_equal(seen['mask'], expected)
+    np.testing.assert_array_equal(bounded.initial_mask, expected)
+    assert used and all(np.array_equal(eps, eps_b) for eps in used)
 
 
 def test_a_run_with_self_gravity_needs_every_components_softening():

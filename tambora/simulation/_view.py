@@ -40,6 +40,14 @@ class _ParticleView:
     def eps(self, eps):
         self._sim._set_eps(self._sl, eps)
 
+    def _softening(self, everyone=False):
+        """These particles' softening (the whole Sim's, if *everyone*), as one number if shared."""
+        eps = self._sim._eps if everyone else self._sim._eps[self._sl]
+        if np.isnan(eps).any():
+            raise ValueError("Softening isn't set for every particle here: set it with sim.eps or "
+                             "sim.<component>.eps, or pass eps=... to use one value for all.")
+        return float(eps[0]) if np.all(eps == eps[0]) else eps
+
     # --- Position Accessors -------------------------------------------------------------------
 
     @unit_handler('length')

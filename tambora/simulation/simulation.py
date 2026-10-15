@@ -273,11 +273,6 @@ class Sim(_ParticleView):
         self._cached_self_pot = None
         self._has_run = False
 
-    def _softening(self):
-        """The particles' softening for a solver: one number if all share it."""
-        eps = self._eps
-        return float(eps[0]) if np.all(eps == eps[0]) else eps
-
     def add_external_force(self, force: Force):
         '''
         Add an external force to the simulation.
@@ -504,7 +499,7 @@ class Sim(_ParticleView):
                     slices = self._slices,
                     hooks = self._hooks,
                     progress = progress,
-                    eps = self._softening() if method is not None else None,
+                    eps = self._eps if np.isnan(self._eps).any() else self._softening(everyone=True),
                 )
         self._has_run = True
 
@@ -701,11 +696,11 @@ class Sim(_ParticleView):
             Additional keyword arguments to pass to the gravity method. 
 
             For 'falcON', these include:
-            - eps: Gravitational softening length (kpc)
+            - eps: Softening length (kpc) to use instead of the particles' own
             - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
 
             For 'direct' and 'direct_C', these include:
-            - eps: Gravitational softening length (kpc)
+            - eps: Softening length (kpc) to use instead of the particles' own
 
         Returns
         -------
@@ -719,6 +714,8 @@ class Sim(_ParticleView):
         elif use_cached and self._cached_self_pot is None:
             raise ValueError("Cached self-potential is not available. Please set use_cached to False and provide a method for computing self-gravity.")
         else:
+            if 'eps' not in kwargs:
+                kwargs['eps'] = self._softening(everyone=True)
             _, self_pot = self_gravity(self.pos(t=self._ti(t, vectorized=False), return_internal=True),
                                        self._mass, method=method, **kwargs)
             return self._mass * self_pot
@@ -752,11 +749,11 @@ class Sim(_ParticleView):
             Additional keyword arguments to pass to the gravity method. 
 
             For 'falcON', these include:
-            - eps: Gravitational softening length (`kpc`)
+            - eps: Softening length (`kpc`) to use instead of the particles' own
             - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
 
             For 'direct' and 'direct_C', these include:
-            - eps: Gravitational softening length (`kpc`)
+            - eps: Softening length (`kpc`) to use instead of the particles' own
 
         Returns
         -------
@@ -799,11 +796,11 @@ class Sim(_ParticleView):
             Additional keyword arguments to pass to the gravity method. 
 
             For 'falcON', these include:
-            - eps: Gravitational softening length (kpc)
+            - eps: Softening length (kpc) to use instead of the particles' own
             - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
 
             For 'direct' and 'direct_C', these include:
-            - eps: Gravitational softening length (kpc)
+            - eps: Softening length (kpc) to use instead of the particles' own
         
         Returns
         -------
@@ -848,11 +845,11 @@ class Sim(_ParticleView):
             Additional keyword arguments to pass to the gravity method.
 
             For 'falcON', these include:
-            - eps: Gravitational softening length (kpc)
+            - eps: Softening length (kpc) to use instead of the particles' own
             - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
 
             For 'direct' and 'direct_C', these include:
-            - eps: Gravitational softening length (kpc)
+            - eps: Softening length (kpc) to use instead of the particles' own
 
         Returns
         -------
@@ -883,11 +880,11 @@ class Sim(_ParticleView):
             Additional keyword arguments to pass to the gravity method.
 
             For 'falcON', these include:
-            - eps: Gravitational softening length (kpc)
+            - eps: Softening length (kpc) to use instead of the particles' own
             - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
 
             For 'direct' and 'direct_C', these include:
-            - eps: Gravitational softening length (kpc)
+            - eps: Softening length (kpc) to use instead of the particles' own
         use_cached : bool, optional
             Whether to use the self-potential cached during the run. Default is True, unless
             ``method`` is given.
@@ -943,7 +940,7 @@ class Sim(_ParticleView):
             - 'direct': direct summation.
         **kwargs
             Additional keyword arguments to pass to the gravity method,
-            e.g. eps, the gravitational softening length (kpc).
+            e.g. eps, a softening length (kpc) to use instead of the particles' own.
 
         Returns
         -------
@@ -1001,6 +998,8 @@ class Sim(_ParticleView):
         elif use_cached and self._cached_self_acc is None:
             raise ValueError("Cached self-gravity is not available. Please set use_cached to False and provide a method for computing self-gravity.")
         else:
+            if 'eps' not in kwargs:
+                kwargs['eps'] = self._softening(everyone=True)
             return self_gravity(self.pos(self._ti(t, vectorized=False), return_internal=True),
                                 self.mass, method=method, **kwargs)[0]
         
@@ -1175,7 +1174,7 @@ class Sim(_ParticleView):
         **kwargs
             Additional keyword arguments to pass to the gravity method.
             For 'falcON', these include:
-            - eps: Gravitational softening length (kpc)
+            - eps: Softening length (kpc) to use instead of the particles' own
             - theta: Tree opening angle
         '''
         import matplotlib.pyplot as plt
