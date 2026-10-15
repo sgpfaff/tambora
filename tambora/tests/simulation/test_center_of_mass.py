@@ -19,7 +19,8 @@ def _sim():
     sim = Sim()
     sim.add_particles('stars', **STARS)
     sim.add_particles('dm', **DM)
-    sim.run(t_end=0.03, dt=0.01, dt_out=0.01, method='direct', eps=0.1, progress=False, monitors=False)
+    sim.eps = 0.1
+    sim.run(t_end=0.03, dt=0.01, dt_out=0.01, method='direct', progress=False, monitors=False)
     return sim
 
 

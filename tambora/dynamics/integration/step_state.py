@@ -9,6 +9,7 @@ class StepContext:
     conserv_ext_force: object
     base_ext_force: object
     progress: object = None # _Progress wrapping the run's progress bar, or None
+    eps: object = None      # the particles' softening: a number, or (N,) [kpc]
 
 
 class _Progress:
@@ -138,12 +139,14 @@ class StepState:
             key = ("sg_all", id(solver))
             if key not in self._cache:
                 self._cache[key] = solver.acc_and_potential(
-                    self._result.pos, self._result.mass)
+                    self._result.pos, self._result.mass, self._ctx.eps)
             acc, pot = self._cache[key]
             return acc, pot, sl
         key = ("sg_iso", id(solver), (sl.start, sl.stop, sl.step))
         if key not in self._cache:
-            self._cache[key] = solver.acc_and_potential(self.pos(), self.mass)
+            eps = self._ctx.eps
+            self._cache[key] = solver.acc_and_potential(
+                self.pos(), self.mass, eps if np.ndim(eps) == 0 else eps[sl])
         acc, pot = self._cache[key]
         return acc, pot, slice(None)
 

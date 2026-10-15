@@ -15,7 +15,8 @@ _DIRECT = DirectSummationGravity(eps=0.)
 
 
 def _run(sim, t_end=0.01, dt=0.01, dt_out=0.01):
-    sim.run(t_end=t_end, dt=dt, dt_out=dt_out, method='direct', eps=0., progress=False, monitors=False)
+    sim.eps = 0.0
+    sim.run(t_end=t_end, dt=dt, dt_out=dt_out, method='direct', progress=False, monitors=False)
     return sim
 
 

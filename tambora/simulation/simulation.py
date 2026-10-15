@@ -17,6 +17,21 @@ from typing import Optional
 from ._decorators import _USE_CACHED_DEFAULT, _resolve_use_cached, _resolve_t
 
 
+def _check_eps(eps, n):
+    """``eps`` as one softening length per particle [kpc], from a number or n values."""
+    arr = np.asarray(eps)
+    if isinstance(eps, bool) or arr.dtype.kind not in 'iuf':
+        raise TypeError(f"eps must be a number or an array of numbers, got {type(eps).__name__}")
+    arr = np.array(arr, dtype=np.float64)
+    if arr.ndim == 0:
+        arr = np.full(n, float(arr))
+    elif arr.shape != (n,):
+        raise ValueError(f"eps must be a number or one value per particle ({n}), got shape {arr.shape}")
+    if not np.all(np.isfinite(arr) & (arr >= 0)):
+        raise ValueError("eps must be finite and non-negative")
+    return arr
+
+
 def _hook_dedup_key(hook):
     """A hook's configuration-identity key, or ``None`` if it opts out of dedup.
 
@@ -90,6 +105,7 @@ class Sim(_ParticleView):
         self._init_pos = None     # (N, 3) kpc
         self._init_vel = None     # (N, 3) kpc/Gyr
         self._mass = None         # (N,) Msun
+        self._eps = None          # (N,) kpc, NaN where not set
         self._slices = {}         # component name -> slice
 
         # Snapshot arrays -- populated by run()
@@ -149,7 +165,7 @@ class Sim(_ParticleView):
     
     # --- Setup ---------------------------------------------------------------------------------                                                   
 
-    def add_particles(self, name, pos, vel=None, mass=None):
+    def add_particles(self, name, pos, vel=None, mass=None, eps=None):
         """
         Add a named particle component.
         Provide a :class:`~tambora.ic.ParticleSet`, or (pos, vel, mass) directly [kpc, km/s, Msun]::
@@ -171,6 +187,10 @@ class Sim(_ParticleView):
         mass : (N,) array, optional
             Masses of particles. Required unless ``pos`` is a ParticleSet.
             Units: `Msun`
+        eps : float or (N,) array, optional
+            Softening length of the particles, one for all or one each. Required
+            to run with self-gravity; it can also be set later through ``eps``.
+            Units: `kpc`
 
         Returns
         -------
@@ -211,6 +231,7 @@ class Sim(_ParticleView):
             raise ValueError(f"mass must be shape (N,), received {mass.shape}")
         if not (pos.shape[0] == vel.shape[0] == mass.shape[0]):
             raise ValueError(f"pos, vel, mass must have same number of particles, received {pos.shape[0]}, {vel.shape[0]}, {mass.shape[0]}.")
+        eps = np.full(pos.shape[0], np.nan) if eps is None else _check_eps(eps, pos.shape[0])
 
         # Build slice and append to flat arrays
         n = pos.shape[0]
@@ -221,16 +242,41 @@ class Sim(_ParticleView):
             self._init_pos = pos
             self._init_vel = vel
             self._mass = mass
+            self._eps = eps
         else:
             self._init_pos = np.concatenate([self._init_pos, pos])
             self._init_vel = np.concatenate([self._init_vel, vel])
             self._mass = np.concatenate([self._mass, mass])
+            self._eps = np.concatenate([self._eps, eps])
 
         # Build single-snapshot arrays so accessors work immediately
         N = self._mass.shape[0]
         self._positions = self._init_pos.reshape(1, N, 3)
         self._velocities = self._init_vel.reshape(1, N, 3)
         self._times = np.array([0.0])
+
+    def _set_eps(self, sl, eps):
+        """Set the softening of the particles in *sl*; a previous run's outputs are cleared."""
+        if self._eps is None:
+            raise RuntimeError("Add particles before setting their softening.")
+        self._eps[sl] = _check_eps(eps, len(self._eps[sl]))
+        if self._has_run:
+            self._clear_outputs()
+
+    def _clear_outputs(self):
+        """Back to the initial conditions, as before ``run()``."""
+        N = self._mass.shape[0]
+        self._positions = self._init_pos.reshape(1, N, 3)
+        self._velocities = self._init_vel.reshape(1, N, 3)
+        self._times = np.array([0.0])
+        self._cached_self_acc = None
+        self._cached_self_pot = None
+        self._has_run = False
+
+    def _softening(self):
+        """The particles' softening for a solver: one number if all share it."""
+        eps = self._eps
+        return float(eps[0]) if np.all(eps == eps[0]) else eps
 
     def add_external_force(self, force: Force):
         '''
@@ -354,43 +400,6 @@ class Sim(_ParticleView):
         '''
         raise NotImplementedError("Tagging components by mask is not yet implemented.")
     
-    def _resolve_eps(self, eps):
-        """
-        Convert *eps* to a flat (N,) array.
-        
-        Accepts:
-        - scalar: same softening for all particles
-        - dict: ``{component_name: scalar_or_array}`` for every component.
-          Each value is either a scalar (broadcast to all particles in that
-          component) or an array whose length matches the component's particle
-          count.  All components must be present.
-        """
-        if not isinstance(eps, dict):
-            if isinstance(eps, (int, float, np.number)):
-                return float(eps)
-            else:
-                raise TypeError(f"eps must be a scalar or dict, got {type(eps)}")
-        else:
-            # check for missing keys
-            missing_keys = set(self._slices.keys()) - set(eps.keys())
-            if missing_keys:
-                raise ValueError(f"eps dict is missing components: {missing_keys}. Please specify eps for all components: {set(self._slices.keys())}")
-            extra_keys = set(eps.keys()) - set(self._slices.keys())
-            if extra_keys:
-                raise ValueError(f"eps dict has unknown components: {extra_keys}. Known components are: {set(self._slices.keys())}")    
-            N = self._mass.shape[0]
-            eps_flat = np.empty(N, dtype=np.float64)
-            
-            for name, val in eps.items():
-                s = self._slices[name]
-                n_comp = s.stop - s.start
-                if isinstance(val, (int, float, np.number)):
-                    eps_flat[s] = float(val)
-                elif isinstance(val, np.ndarray) and val.ndim == 1 and val.shape[0] == n_comp:
-                    eps_flat[s] = val
-                else:
-                    raise ValueError(f"eps[{name!r}] must be a scalar or 1D array of length {n_comp}, got {type(val)} with shape {val.shape}")
-            return eps_flat
         
     # --- Running the Simulation ------------------------------------------------------------------------------------------
 
@@ -438,23 +447,13 @@ class Sim(_ParticleView):
             added your own ``ConservationMonitor``; read the results from
             ``sim.monitor``.
         **kwargs
-            Additional keyword arguments to pass to the gravity method.
+            Additional keyword arguments to pass to the gravity method. For 'falcON':
 
-            eps can be provided as:
-
-            - scalar: same softening for every particle.
-            - dict: ``{component_name: scalar_or_array}`` per component.
-              Each value is a scalar (applied to all particles in that
-              component) or an array matching the component's particle count.
-              All components must be present in the dict.
-
-            Other kwargs for 'falcON':
-            
             - theta (float, optional): Tree opening angle. Default is 0.6. Smaller = more accurate but slower.
             - kernel (int, optional): Softening kernel: 0=Plummer, 1=default (~r^-7), 2,3=faster decay.
+
+            The softening comes from the particles: see ``add_particles`` and ``eps``.
         """
-        if 'eps' in kwargs:
-            kwargs['eps'] = self._resolve_eps(kwargs['eps'])
         supported = sorted(m for m in SELF_GRAVITY_METHODS if m is not None)
         if method not in SELF_GRAVITY_METHODS:
             raise ValueError(
@@ -468,6 +467,12 @@ class Sim(_ParticleView):
                 f"{invalid} is (are) invalid kwarg(s) for {method!r} self-gravity method. "
                 "Only kwargs for self-gravity methods are allowed."
             )
+        if method is not None:
+            unset = [name for name, sl in self._slices.items() if np.isnan(self._eps[sl]).any()]
+            if unset:
+                raise ValueError(
+                    f"Softening isn't set for {', '.join(repr(n) for n in unset)}: give it with "
+                    f"add_particles(..., eps=...) or sim.<component>.eps = ..., or run with method=None.")
         self._self_gravity_force = solver_cls(**kwargs)
         # Outside state (e.g. Agama's global units) can invalidate a wrapped
         # potential after it was added; each backend checks for that here.
@@ -499,6 +504,7 @@ class Sim(_ParticleView):
                     slices = self._slices,
                     hooks = self._hooks,
                     progress = progress,
+                    eps = self._softening() if method is not None else None,
                 )
         self._has_run = True
 

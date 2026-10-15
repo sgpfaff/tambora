@@ -82,7 +82,8 @@ def test_component_mass_is_read_only_property():
 
 # --- Shapes after run ------------------------------------------------------- #
 
-multicomp.run(t_end=1., dt=0.1, dt_out=0.1, eps=0.1, theta=0.3)
+multicomp.eps = 0.1
+multicomp.run(t_end=1., dt=0.1, dt_out=0.1, theta=0.3)
 _N_SNAP_MC = 11
 
 def test_component_accessor_shapes_after_run():
@@ -630,7 +631,8 @@ def _iac_sim():
                       vel=_IAC_COMP1_VEL.copy(), mass=_IAC_COMP1_MASS.copy())
     sim.add_particles('sat', pos=_IAC_COMP2_POS.copy(),
                       vel=_IAC_COMP2_VEL.copy(), mass=_IAC_COMP2_MASS.copy())
-    sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0,
+    sim.eps = 0.0
+    sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct',
             cache_self_gravity_acc=True, cache_self_gravity_pot=True)
     return sim
 

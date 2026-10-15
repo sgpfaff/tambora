@@ -21,6 +21,25 @@ class _ParticleView:
             return array[:, self._sl]
         return array[ti, self._sl]
 
+    @property
+    def eps(self):
+        """
+        Softening length of each particle [kpc], NaN where it isn't set.
+
+        Set it to a number, or one value per particle, to change it. Changing it after a
+        run clears that run's outputs, so a new run uses it.
+        """
+        eps = self._sim._eps
+        if eps is None:
+            return None
+        view = eps[self._sl]
+        view.flags.writeable = False
+        return view
+
+    @eps.setter
+    def eps(self, eps):
+        self._sim._set_eps(self._sl, eps)
+
     # --- Position Accessors -------------------------------------------------------------------
 
     @unit_handler('length')

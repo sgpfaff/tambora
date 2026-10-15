@@ -42,7 +42,7 @@ class SpySolver:
         self.phi = phi
         self.calls = 0
 
-    def acc_and_potential(self, pos, mass):
+    def acc_and_potential(self, pos, mass, eps=None):
         self.calls += 1
         return np.zeros_like(pos), np.full(len(mass), self.phi)
 
