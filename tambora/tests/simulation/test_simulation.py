@@ -482,6 +482,27 @@ def test_gravity_computed_again_needs_a_softening():
     sim.self_gravity(t=0, method='direct', eps=0.1)
 
 
+def test_in_a_hook_gravity_computed_again_needs_a_softening_unless_the_solver_has_one():
+    sim = _two_components(eps_a=0.1)
+    seen = {}
+    def hook(state):
+        if seen:
+            return
+        for view, everyone in [(state.b, False), (state, True)]:
+            with pytest.raises(ValueError, match="Softening isn't set"):
+                view.self_gravity(include_all_components=everyone, solver=DirectSummationGravity())
+        seen['a'] = state.a.self_gravity(include_all_components=False, solver=DirectSummationGravity())
+        seen['b'] = state.b.self_gravity(include_all_components=False, solver=DirectSummationGravity(eps=0.3))
+        seen['all'] = state.self_gravity(include_all_components=True, solver=DirectSummationGravity(eps=0.3))
+    sim.add_hook(hook)
+    _quick_run(sim, method=None)
+    pos, mass = sim.pos(t=0, return_internal=True), sim.mass
+    a, b = sim._slices['a'], sim._slices['b']
+    np.testing.assert_array_equal(seen['a'], DirectSummationGravity(eps=0.1).acc(pos[a], mass[a]))
+    np.testing.assert_array_equal(seen['b'], DirectSummationGravity(eps=0.3).acc(pos[b], mass[b]))
+    np.testing.assert_array_equal(seen['all'], DirectSummationGravity(eps=0.3).acc(pos, mass))
+
+
 def test_hooks_get_the_particles_softening_and_unbind_with_it(monkeypatch):
     import tambora.dynamics.diagnostics as diagnostics
     real, used = diagnostics.bound_mask, []
@@ -565,8 +586,10 @@ def test_the_softening_given_back_cannot_be_changed_in_place():
 
 
 def test_softening_can_only_be_set_once_there_are_particles():
+    sim = Sim()
+    assert sim.eps is None
     with pytest.raises(RuntimeError, match="Add particles before"):
-        Sim().eps = 0.1
+        sim.eps = 0.1
 
 
 # --- .add_external_force() ---------------------------------------------------------------------- #

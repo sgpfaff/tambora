@@ -149,6 +149,11 @@ def test_mass_is_a_property():
         st.mass()                              # calling the array raises
 
 
+def test_a_run_without_softening_gives_none():
+    st = make_state()
+    assert st.eps is None and st.a.eps is None
+
+
 # --- component views & attribute access ---------------------------------------
 
 def test_attribute_access_matches_component_method():

@@ -82,7 +82,8 @@ class StepState:
         eps = eps if everyone else eps[self._sl]
         if np.isnan(eps).any():
             raise ValueError("Softening isn't set for every particle here: give it with "
-                             "add_particles(..., eps=...) or sim.<component>.eps, or pass eps=....")
+                             "add_particles(..., eps=...) or sim.<component>.eps, or give this "
+                             "calculation one (eps=..., or a solver with its own).")
         return eps
 
     # -- reporting: push display fields to the run's progress bar --
@@ -151,6 +152,7 @@ class StepState:
         '''
         run_solver = self._ctx.self_gravity_force
         solver = solver if solver is not None else run_solver
+        own_eps = getattr(solver, 'eps', None) is not None     # replaces the particles'
         sl = self._sl
         if include_all_components:
             if solver is run_solver:
@@ -158,12 +160,13 @@ class StepState:
             key = ("sg_all", id(solver))
             if key not in self._cache:
                 self._cache[key] = solver.acc_and_potential(
-                    self._result.pos, self._result.mass, self._softening(everyone=True))
+                    self._result.pos, self._result.mass, None if own_eps else self._softening(everyone=True))
             acc, pot = self._cache[key]
             return acc, pot, sl
         key = ("sg_iso", id(solver), (sl.start, sl.stop, sl.step))
         if key not in self._cache:
-            self._cache[key] = solver.acc_and_potential(self.pos(), self.mass, self._softening())
+            self._cache[key] = solver.acc_and_potential(self.pos(), self.mass,
+                                                        None if own_eps else self._softening())
         acc, pot = self._cache[key]
         return acc, pot, slice(None)
 
