@@ -43,6 +43,28 @@ def test_without_any_softening_a_solver_refuses(make):
 
 
 @pytest.mark.parametrize("cls", [DirectSummationGravity, FalcONGravity])
+@pytest.mark.parametrize("eps, error", [
+    pytest.param(np.ones((2, 2)), TypeError, id='2d'),
+    pytest.param('0.1', TypeError, id='string'),
+    pytest.param(True, TypeError, id='bool'),
+    pytest.param(-0.1, ValueError, id='negative'),
+    pytest.param(np.inf, ValueError, id='inf'),
+    pytest.param([0.1, np.nan], ValueError, id='nan_in_array'),
+])
+def test_a_solvers_own_softening_must_be_good_values(cls, eps, error):
+    with pytest.raises(error, match="A solver's own eps must"):
+        cls(eps=eps)
+
+
+@pytest.mark.parametrize("cls", [DirectSummationGravity, FalcONGravity])
+def test_a_solvers_own_softening_can_be_a_number_or_one_per_particle(cls):
+    assert cls(eps=0.25).eps == 0.25
+    assert cls().eps is None
+    as_list = cls(eps=EPS.tolist()).acc(POS, MASS)          # the C solvers take arrays only
+    np.testing.assert_array_equal(as_list, cls(eps=EPS).acc(POS, MASS))
+
+
+@pytest.mark.parametrize("cls", [DirectSummationGravity, FalcONGravity])
 def test_a_solvers_arguments_must_be_named(cls):
     with pytest.raises(TypeError):
         cls(0.1)

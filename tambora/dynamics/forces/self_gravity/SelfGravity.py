@@ -19,6 +19,19 @@ from .falcON import _falcON_gravity
 from .directSummation import _direct_summation_C, _direct_summation_py
 from abc import abstractmethod
 
+
+def _own_softening(eps):
+    """A solver's own softening [kpc]: None, a number, or one value per particle."""
+    if eps is None:
+        return None
+    arr = np.asarray(eps)
+    if arr.ndim > 1 or arr.dtype.kind not in 'iuf':
+        raise TypeError("A solver's own eps must be a number or one value per particle.")
+    if not np.all(np.isfinite(arr) & (arr >= 0)):
+        raise ValueError("A solver's own eps must be finite and non-negative.")
+    return eps if arr.ndim == 0 else np.asarray(eps, dtype=np.float64)
+
+
 class SelfGravityForce(Force, Conservative):
     """Base class for self-gravity solvers.
 
@@ -69,7 +82,7 @@ class FalcONGravity(SelfGravityForce):
                  eps: Union[float, np.ndarray, None] = None):
         self.theta = theta
         self.kernel = kernel
-        self.eps = eps
+        self.eps = _own_softening(eps)
 
     def acc_and_potential(
         self, pos: np.ndarray, mass: np.ndarray, eps=None) -> Tuple[np.ndarray, np.ndarray]:
@@ -104,7 +117,7 @@ class DirectSummationGravity(SelfGravityForce):
 
     def __init__(self, *, use_C: bool = True, eps: Union[float, np.ndarray, None] = None):
         self.use_C = use_C
-        self.eps = eps
+        self.eps = _own_softening(eps)
 
     def acc_and_potential(
         self, pos: np.ndarray, mass: np.ndarray, eps=None
@@ -125,13 +138,16 @@ class NullSelfGravity(SelfGravityForce):
         self._zeros_array_3d = None
         self._zeros_array_1d = None
 
+    # Shared read-only zeros, remade only for a new number of particles.
     def acc(self, pos, mass, eps=None):
-        if self._zeros_array_3d is None:
+        if self._zeros_array_3d is None or self._zeros_array_3d.shape != pos.shape:
             self._zeros_array_3d = np.zeros_like(pos)
+            self._zeros_array_3d.flags.writeable = False
         return self._zeros_array_3d
     def potential(self, pos, mass, eps=None):
-        if self._zeros_array_1d is None:
-            self._zeros_array_1d = np.zeros(pos.shape[0])
+        if self._zeros_array_1d is None or len(self._zeros_array_1d) != len(pos):
+            self._zeros_array_1d = np.zeros(len(pos))
+            self._zeros_array_1d.flags.writeable = False
         return self._zeros_array_1d
     def acc_and_potential(self, pos, mass, eps=None):
         return self.acc(pos, mass), self.potential(pos, mass)
