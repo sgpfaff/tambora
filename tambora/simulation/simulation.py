@@ -4,7 +4,7 @@ Simulation class for tambora.
 
 import numpy as np
 from .component import Component
-from ._view import _ParticleView
+from ._view import _ParticleView, _External
 from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, NullSelfGravity, Conservative, ExternalPotential,
                         SELF_GRAVITY_METHODS, INTEGRATORS)
 
@@ -620,6 +620,16 @@ class Sim(_ParticleView):
             if isinstance(hook, ConservationMonitor):
                 return hook
         return None
+
+    @property
+    def particles(self):
+        """All the particles, as a view like ``sim.<component>``, e.g. for ``sources=sim.particles``."""
+        return Component(self, slice(None), 'particles')
+
+    @property
+    def external(self):
+        """All the external forces, for ``sources=sim.external``."""
+        return _External(self)
 
     @property
     def components(self) -> tuple:

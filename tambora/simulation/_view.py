@@ -3,12 +3,33 @@ Accessors shared by Sim and Component, in terms of ``self._sim``, the Sim holdin
 ``self._sl``, which of its particles.
 """
 
+import copy
 import warnings
 
 import numpy as np
+from tqdm import tqdm
 
-from ..dynamics import diagnostics
+from ..dynamics import diagnostics, NullSelfGravity
 from ..units import unit_handler
+
+_PROGRESS_DELAY = 1.0   # s a loop over snapshots runs before showing its progress
+_GUEST_MASS = 1e-30     # x the sources' mean mass, for solved particles that aren't sources (falcON: NaN at 0)
+
+
+class _External:
+    """All of a Sim's external forces, as ``sources``: ``sim.external``."""
+
+    def __init__(self, sim):
+        self._sim = sim
+
+    def __repr__(self):
+        n = len(self._sim._conserv_ext_force.members) + len(self._sim._base_ext_force.members)
+        return f"<external forces of a Sim ({n})>"
+
+
+def _one_if_shared(eps):
+    """*eps* as one number if every particle has it: falcON then gives the run's values bit for bit."""
+    return float(eps[0]) if np.all(eps == eps[0]) else eps
 
 
 class _ParticleView:
@@ -46,7 +67,89 @@ class _ParticleView:
         if np.isnan(eps).any():
             raise ValueError("Softening isn't set for every particle here: set it with sim.eps or "
                              "sim.<component>.eps, or pass eps=... to use one value for all.")
-        return float(eps[0]) if np.all(eps == eps[0]) else eps
+        return _one_if_shared(eps)
+
+    # --- Sources of acceleration and potential -----------------------------------------------
+
+    def _sources(self, sources, solver):
+        """*sources* as (a boolean mask of the particles, or None; whether the external forces count)."""
+        sim = self._sim
+        if sources is None:
+            mask, external = np.ones(len(sim._mass), dtype=bool), True
+        else:
+            items = list(sources) if isinstance(sources, (list, tuple)) else [sources]
+            if not items:
+                raise ValueError("sources is empty: leave it out for everything, or say what to include.")
+            mask, external = np.zeros(len(sim._mass), dtype=bool), False
+            for src in items:
+                if isinstance(src, _ParticleView) and src._sim is src:
+                    raise ValueError("sources=sim is ambiguous: use sim.particles for all the particles, "
+                                     "sim.external for the external forces, or leave sources out for both.")
+                if not isinstance(src, (_ParticleView, _External)):
+                    raise TypeError("sources must be particles (e.g. sim.particles, sim.sat), sim.external, "
+                                    f"or a list of these, got {type(src).__name__}")
+                if src._sim is not sim:
+                    raise ValueError("sources must belong to the same Sim.")
+                if isinstance(src, _External):
+                    external = True
+                else:
+                    mask[src._sl] = True
+        if not mask.any():
+            mask = None
+        if mask is None and solver is not None:
+            raise ValueError("solver computes the particles' gravity, but sources has no particles.")
+        if mask is not None and solver is None and not sim._has_run:
+            raise ValueError("No run yet, so no run's solver: pass solver=... for the particles' gravity.")
+        return mask, external
+
+    def _softening_for(self, solver, solved):
+        """The solver to call and the softening to give it, for a solve over the particles *solved*."""
+        own = getattr(solver, 'eps', None)
+        if isinstance(solver, NullSelfGravity) or (own is not None and np.ndim(own) == 0):
+            return solver, None
+        if own is None:
+            eps = self._sim._eps[solved]
+            if np.isnan(eps).any():
+                raise ValueError("Softening isn't set for every particle in this solve: set it with sim.eps "
+                                 "or sim.<component>.eps, or use a solver with its own eps.")
+            return solver, _one_if_shared(eps)
+        if len(own) != len(solved):
+            raise ValueError(f"The solver's own eps has {len(own)} values; in a Sim it needs one per "
+                             f"particle ({len(solved)}).")
+        solver = copy.copy(solver)
+        solver.eps = None           # its own values go in with the call, for the solved particles only
+        return solver, own[solved]
+
+    def _gravity(self, ti, sources, solver):
+        """(acc, specific potential) on these particles at snapshot *ti* from the particles in *sources*
+        [internal units], solving the sources and these particles together."""
+        sim = self._sim
+        solver = sim._self_gravity_force if solver is None else solver
+        targets = np.zeros_like(sources)
+        targets[self._sl] = True
+        solved = sources | targets
+        mass = sim._mass[solved]
+        guests = ~sources[solved]       # feel the field without adding to it
+        if guests.any():
+            mass = np.where(guests, _GUEST_MASS * mass[~guests].mean(), mass)
+        solver, eps = self._softening_for(solver, solved)
+        acc, pot = solver.acc_and_potential(sim._positions[ti][solved], mass, eps)
+        keep = targets[solved]
+        return acc[keep], pot[keep]
+
+    def _external_acc(self, ti):
+        """The external forces' acceleration on these particles at snapshot *ti* [internal units]."""
+        sim = self._sim
+        t, pos, vel = sim._times[ti], self.pos(ti, return_internal=True), self.vel(ti, return_internal=True)
+        return (sim._conserv_ext_force.acc(pos=pos, mass=self.mass, t=t)
+                + sim._base_ext_force.acc(pos=pos, vel=vel, mass=self.mass, t=t))
+
+    def _each_snapshot(self, ti, at):
+        """``at(i)`` at snapshot *ti*, or stacked over every snapshot, with a progress bar if that's slow."""
+        if ti is not ...:
+            return at(ti)
+        n = len(self._sim._times)
+        return np.stack([at(i) for i in tqdm(range(n), desc='snapshots', delay=_PROGRESS_DELAY, leave=False)])
 
     # --- Position Accessors -------------------------------------------------------------------
 
@@ -880,3 +983,74 @@ class _ParticleView:
             Units: `km / s^2`
         '''
         return self.external_acc(t=t, return_internal=True)[..., 2]
+
+    # --- Acceleration -------------------------------------------------------------------------
+
+    @unit_handler('acceleration')
+    def acc(self, t=..., sources=None, solver=None):
+        '''
+        Acceleration of each particle at *t*, from *sources*.
+
+        Units: `km / s / Gyr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+        sources : optional
+            What the acceleration comes from. Default: everything the run integrated, the
+            particles and the external forces. Otherwise ``sim.particles`` (the particles'
+            gravity), ``sim.external`` (the external forces), a component such as ``sim.sat``
+            (its gravity alone), or a list of these.
+        solver : SelfGravityForce, optional
+            Solver for the particles' gravity, e.g. ``FalcONGravity(theta=0.3)``. Its own
+            ``eps``, if it has one, replaces the particles' softening: a number, or one value
+            per particle of the Sim. Default: the run's values when every particle is a
+            source, otherwise the run's solver. Needed before a run.
+
+        Returns
+        -------
+        acc : (n_snaps, n_particles, 3) array or (n_particles, 3) array
+            Units: `km / s / Gyr`
+
+        Notes
+        -----
+        Unless the run's values serve, each snapshot takes its own solve; a loop over every
+        snapshot shows a progress bar once it has run for a second.
+        '''
+        sim = self._sim
+        mask, external = self._sources(sources, solver)
+        ti = self._ti(t)
+        cached = mask is not None and mask.all() and solver is None and sim._cached_self_acc is not None
+        solve = mask is not None and not cached
+
+        def at(i):
+            a = np.zeros((len(self.mass), 3))
+            if solve:
+                a += self._gravity(i, mask, solver)[0]
+            if external:
+                a += self._external_acc(i)
+            return a
+
+        acc = self._each_snapshot(ti, at) if solve or external else 0.0
+        if cached:
+            acc = acc + self._snap(sim._cached_self_acc, ti)
+        return acc
+
+    @unit_handler('acceleration')
+    def ax(self, t=..., sources=None, solver=None):
+        '''x-component of :meth:`acc`, which see. Units: `km / s / Gyr`'''
+        return self.acc(t, sources, solver, return_internal=True)[..., 0]
+
+    @unit_handler('acceleration')
+    def ay(self, t=..., sources=None, solver=None):
+        '''y-component of :meth:`acc`, which see. Units: `km / s / Gyr`'''
+        return self.acc(t, sources, solver, return_internal=True)[..., 1]
+
+    @unit_handler('acceleration')
+    def az(self, t=..., sources=None, solver=None):
+        '''z-component of :meth:`acc`, which see. Units: `km / s / Gyr`'''
+        return self.acc(t, sources, solver, return_internal=True)[..., 2]
