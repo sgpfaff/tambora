@@ -42,7 +42,9 @@ class BaseIntegrator(ABC):
         conserv_ext_force: Conservative,
         base_external_force: Force,
         eps=None,
+        t_new=None,
     ) -> StepResult:
+        """Advance the state by *dt* from time *t*; *t_new* is the end time (default t + dt)."""
         ...
     
     def _eval_conservative(

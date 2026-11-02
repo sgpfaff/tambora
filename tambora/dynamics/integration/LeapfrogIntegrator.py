@@ -22,6 +22,7 @@ class LeapfrogIntegrator(BaseIntegrator):
         conserv_ext_force: Conservative,
         base_ext_force: Force,
         eps=None,
+        t_new=None,
     ) -> StepResult:
         
         # --- base force half-kick -------------------------------------------------------
@@ -34,7 +35,7 @@ class LeapfrogIntegrator(BaseIntegrator):
 
         # --- full step drift ------------------------------------------------------------
         pos_new = pos + vel_half * dt
-        t_new = t + dt
+        t_new = t + dt if t_new is None else t_new
 
         # --- conservative force half-kick -----------------------------------------------
         sg_acc, sg_pot, conserv_ext_acc = self._eval_conservative(pos_new, mass, t_new,
