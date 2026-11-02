@@ -29,8 +29,10 @@ BUILT_WITH = {
     'RotateAndTiltWrapperPotential': lambda: potential.RotateAndTiltWrapperPotential(
         pot=potential.MiyamotoNagaiPotential(), zvec=[0., 0.3, 1.]),
 }
-# The snapshot potentials need a pynbody snapshot; a CompositePotential is tested as a sum.
-NOT_BUILT = {'SnapshotRZPotential', 'InterpSnapshotRZPotential', 'CompositePotential'}
+# The snapshot potentials need a pynbody snapshot; a CompositePotential is tested as a sum;
+# TruncatedTwoPowerSphericalPotential (galpy > 1.12) is a base class for its NFW and Hernquist subclasses.
+NOT_BUILT = {'SnapshotRZPotential', 'InterpSnapshotRZPotential', 'CompositePotential',
+             'TruncatedTwoPowerSphericalPotential'}
 
 EVERY_GALPY_POTENTIAL = sorted(name for name, c in inspect.getmembers(potential, inspect.isclass)
                                if issubclass(c, potential.Potential) and c is not potential.Potential
