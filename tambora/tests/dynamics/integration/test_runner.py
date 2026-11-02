@@ -631,11 +631,9 @@ class TestStepClock:
         _, seen, _ = _run_recording_times(self.t0, self.t_end, self.dt, self.dt_out, EveryStep())
         np.testing.assert_array_equal(seen, self.t0 + np.arange(len(seen)) * self.dt)
 
-    def test_forces_are_evaluated_at_t0_plus_step_times_dt(self):
+    def test_forces_are_evaluated_at_exactly_the_step_times(self):
         _, _, forced = _run_recording_times(self.t0, self.t_end, self.dt, self.dt_out, EveryStep())
-        steps = self.t0 + np.arange(1001) * self.dt
-        assert set(forced) <= set(steps)
-        assert forced[-1] == steps[-1]
+        assert set(forced) == set(self.t0 + np.arange(1001) * self.dt)
 
     def test_backward_runs_count_steps_too(self):
         ts_out, seen, _ = _run_recording_times(0.0, -1.0, -self.dt, -self.dt_out, EveryOutput())
