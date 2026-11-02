@@ -117,9 +117,10 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
                                     base_ext_acc=base_ext_acc0, step=0)
         _fire(hooks, state, initial_result, 0, steps_per_output)
 
-    for step, t in enumerate(pbar, start=1):
+    for step, _ in enumerate(pbar, start=1):
         step_result = integrator.step(current_pos, current_vel, mass, current_t, dt,
-                                      self_gravity_force, conserv_ext_force, base_ext_force, eps)
+                                      self_gravity_force, conserv_ext_force, base_ext_force, eps,
+                                      t_new=_time_at(t0, dt, step))
         step_result.step = step
         current_pos, current_vel, current_t = step_result.pos, step_result.vel, step_result.t
         if hooks:
@@ -176,6 +177,11 @@ def _check_dt_dt_out(dt, dt_out, t0, t_end):
         warnings.warn(f"Simulation duration ({t_end - t0} Gyr) is not an exact multiple of dt_out={dt_out} Gyr. "
                         f"Last output will be at t={actual_t_end:.10g} Gyr instead of t={t_end} Gyr.")
 
+def _time_at(t0, dt, step):
+    """Time after *step* steps (an int or int array), from the count: summing dt drifts."""
+    return t0 + step * dt
+
+
 def _make_time_arrays(dt, dt_out, t0, t_end):
     ratio_save = (t_end - t0) / dt_out
     n_steps_save = round(ratio_save) if abs(ratio_save - round(ratio_save)) < 1e-9 else int(ratio_save)
@@ -185,8 +191,8 @@ def _make_time_arrays(dt, dt_out, t0, t_end):
 
     steps_per_output = round(dt_out / dt)
     nsnaps = n_steps_save + 1  # +1 for initial snapshot at t=0
-    ts_out = np.arange(nsnaps, dtype=np.float64) * dt_out + t0
-    ts_integrate = np.arange(n_steps_integrate + 1, dtype=np.float64) * dt + t0
+    ts_out = _time_at(t0, dt, np.arange(nsnaps) * steps_per_output)
+    ts_integrate = _time_at(t0, dt, np.arange(n_steps_integrate + 1))
     return ts_out, ts_integrate, nsnaps, steps_per_output
 
 

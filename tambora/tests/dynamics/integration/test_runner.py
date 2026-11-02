@@ -580,3 +580,90 @@ def test_bare_function_hook_fires_during_run_with_step_state():
     assert all(seen_is_state)                    # really a StepState, not a raw tuple
     assert seen_shapes == [(4, 3), (4, 3), (4, 3)]   # component's live positions
 
+
+
+# --- times come from the step count, so every part of a run agrees on them ------ #
+
+from tambora.dynamics.forces.external_force import ExternalConservativeForce as _ExtCons
+from tambora.dynamics.hooks import EveryOutput, EveryStep, BoundednessHook
+
+
+class _TimeRecordingField(_ExtCons):
+    """A zero field that records each time it is evaluated at."""
+    def __init__(self):
+        self.times = []
+
+    def acc(self, pos, t):
+        self.times.append(t)
+        return np.zeros_like(pos)
+
+    def potential(self, pos, t):
+        return np.zeros(len(pos))
+
+
+def _run_recording_times(t0, t_end, dt, dt_out, cadence):
+    """Run one particle; return the snapshot times, the times hooks saw, and the times forces saw."""
+    seen, field = [], _TimeRecordingField()
+    _, _, ts_out, _, _ = _runner(np.zeros((1, 3)), np.zeros((1, 3)), np.ones(1), LeapfrogIntegrator(),
+                                 NullSelfGravity(), _CompositeConservative([field]), NullForce(),
+                                 t0=t0, t_end=t_end, dt=dt, dt_out=dt_out, progress=False,
+                                 hooks=[(lambda state: seen.append(state.t), cadence)])
+    return ts_out, np.array(seen), np.array(field.times)
+
+
+class TestStepClock:
+    # dt = 1e-3 is a case where summing dt drifts: the 10th sum is 0.010000000000000002, not 0.01.
+    t0, t_end, dt, dt_out = 0.3, 1.3, 1e-3, 1e-2
+
+    def test_summing_dt_would_drift_here(self):
+        # Guards the tests below: with these settings, t + dt + ... differs from t0 + n dt.
+        t, drifted = self.t0, False
+        for n in range(1, 1001):
+            t += self.dt
+            drifted |= t != self.t0 + n * self.dt
+        assert drifted
+
+    def test_hooks_at_outputs_see_the_snapshot_times_exactly(self):
+        ts_out, seen, _ = _run_recording_times(self.t0, self.t_end, self.dt, self.dt_out, EveryOutput())
+        np.testing.assert_array_equal(seen, ts_out)
+
+    def test_hooks_see_t0_plus_step_times_dt_at_every_step(self):
+        _, seen, _ = _run_recording_times(self.t0, self.t_end, self.dt, self.dt_out, EveryStep())
+        np.testing.assert_array_equal(seen, self.t0 + np.arange(len(seen)) * self.dt)
+
+    def test_forces_are_evaluated_at_t0_plus_step_times_dt(self):
+        _, _, forced = _run_recording_times(self.t0, self.t_end, self.dt, self.dt_out, EveryStep())
+        steps = self.t0 + np.arange(1001) * self.dt
+        assert set(forced) <= set(steps)
+        assert forced[-1] == steps[-1]
+
+    def test_backward_runs_count_steps_too(self):
+        ts_out, seen, _ = _run_recording_times(0.0, -1.0, -self.dt, -self.dt_out, EveryOutput())
+        np.testing.assert_array_equal(seen, ts_out)
+        np.testing.assert_array_equal(ts_out, np.arange(len(ts_out)) * 10 * -self.dt)
+
+    def test_boundedness_transitions_are_found_at_the_snapshot_times(self, monkeypatch):
+        # A particle unbinding at an output must show up in mask_at(sim.times[k]) for that output.
+        flip_step = 30
+
+        def scripted(state, component=None, **kw):
+            mask = np.ones(3, dtype=bool)
+            mask[0] = state.step < flip_step
+            return mask
+
+        monkeypatch.setattr(StepState, 'bound_mask', scripted)
+        sim = Sim()
+        sim.add_particles(np.zeros((3, 3)), np.zeros((3, 3)), np.ones(3), name='c')
+        bh = BoundednessHook('c', eps=0.01)
+        sim.add_hook(bh, EveryOutput())
+        sim.run(t_end=0.1, dt=self.dt, dt_out=self.dt_out, method=None, progress=False, monitors=False)
+
+        k = flip_step // round(self.dt_out / self.dt)
+        assert bh.mask_at(sim.times[k - 1])[0]
+        assert not bh.mask_at(sim.times[k])[0]
+
+    def test_monitor_times_match_the_snapshot_times(self):
+        sim = Sim()
+        sim.add_particles(np.zeros((2, 3)), np.ones((2, 3)), np.ones(2), name='c')
+        sim.run(t_end=1.0, dt=self.dt, dt_out=self.dt_out, method=None, progress=False)
+        np.testing.assert_array_equal(sim.monitor.t, sim.times)
