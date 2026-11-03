@@ -2495,15 +2495,17 @@ class _ResetCountingHook(Hook):
 def test_running_again_starts_every_hook_afresh():
     sim = Sim()
     sim.add_particles(name='c', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS)
-    hook = _ResetCountingHook()
+    hook, mon = _ResetCountingHook(), ConservationMonitor()
     sim.add_hook(hook)
+    sim.add_hook(mon)
     for eps in (0.1, 0.5):
         sim.eps = eps
         sim.run(t_end=0.2, dt=0.1, dt_out=0.1, method='direct', progress=False)
     assert hook.resets == 2
     np.testing.assert_allclose(hook.times, sim.times)
-    np.testing.assert_allclose(sim.monitor.t, sim.times)
-    assert sim.monitor.drift['energy'][0] == 0.     # measured from the second run's energy
+    assert sim.monitor is mon
+    np.testing.assert_allclose(mon.t, sim.times)
+    assert mon.drift['energy'][0] == 0.     # measured from the second run's energy
 
 
 class _CanBeInvalidated(ExternalConservativeForce):
@@ -2526,6 +2528,7 @@ class _CanBeInvalidated(ExternalConservativeForce):
     (dict(dt=-0.1), ValueError, "dt must be positive"),
     (dict(integration_method='rk4'), ValueError, r"Unknown integration_method 'rk4'.*\['leapfrog'\]"),
     ('invalid force', RuntimeError, "force invalidated"),
+    (dict(monitors='bogus'), ValueError, "Unknown conserved quantity 'bogus'"),
 ])
 def test_a_rejected_run_leaves_the_sim_as_the_last_run_left_it(bad, error, match):
     sim = Sim()
@@ -2872,11 +2875,10 @@ class TestDefaultMonitors:
 
     def _sim(self):
         sim = Sim()
-        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='a')
+        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='a', eps=0.0)
         return sim
 
     def _run(self, sim, **kw):
-        sim.eps = 0.0
         sim.run(t_end=2.0, dt=1.0, dt_out=1.0, method='direct',
                 progress=False, **kw)
 
@@ -2938,3 +2940,48 @@ class TestDefaultMonitors:
         assert len(sim.hooks) == 1
         assert "ConservationMonitor" in r
         assert "t = 0 -> 2 Gyr" in r
+
+    @pytest.mark.parametrize("off", [False, None, (), []])
+    def test_a_rerun_without_monitors_drops_the_default_one(self, off):
+        sim = self._sim()
+        self._run(sim)
+        self._run(sim, monitors=off)
+        assert sim.monitor is None and sim._auto_monitor is None
+        assert sim.hooks == ()
+
+    def test_a_rerun_with_monitors_attaches_one_after_a_run_without(self):
+        sim = self._sim()
+        self._run(sim, monitors=False)
+        self._run(sim)
+        assert sim.monitor.t == list(sim.times)
+
+    def test_each_run_attaches_its_own_default_monitor(self):
+        sim = self._sim()
+        self._run(sim)
+        first, first_t = sim.monitor, list(sim.monitor.t)
+        self._run(sim)
+        assert sim.monitor is not first and first.t == first_t
+        assert len(sim.hooks) == 1
+        assert sim.monitor.t == list(sim.times)
+
+    @pytest.mark.parametrize("monitors", ['auto', False, ('energy',)])
+    def test_your_own_monitor_wins_over_every_rerun(self, monitors):
+        sim = self._sim()
+        mine = ConservationMonitor()
+        sim.add_hook(mine)
+        self._run(sim)
+        self._run(sim, monitors=monitors)
+        assert sim.hooks == ((mine, ConservationMonitor.default_cadence),)
+        assert mine.t == list(sim.times)
+
+    def test_the_default_monitor_fires_after_your_hooks(self):
+        sim = self._sim()
+        hook, later = _StubHook(), _KeyedHook('later')
+        sim.add_hook(hook)
+        for _ in range(2):
+            self._run(sim)
+            assert [h for h, _ in sim.hooks] == [hook, sim.monitor]
+        sim.eps = 0.0                       # clears the outputs, so hooks can be added again
+        sim.add_hook(later)
+        self._run(sim)
+        assert [h for h, _ in sim.hooks] == [hook, later, sim.monitor]

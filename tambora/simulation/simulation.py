@@ -126,6 +126,7 @@ class Sim(_ParticleView):
         self._conserv_ext_force = _CompositeConservative([]) # conservative external forces
         self._base_ext_force = _CompositePlain([]) # non-conservative external forces
         self._hooks = [] # (Hook, Cadence) pairs run during integration
+        self._auto_monitor = None # the ConservationMonitor the last run attached itself
 
     def _ti(self, t, vectorized=True):
         """
@@ -456,8 +457,9 @@ class Sim(_ParticleView):
             :class:`~tambora.dynamics.hooks.ConservationMonitor`. ``'auto'``
             (default) picks a sensible set (currently ``('energy',)``). Pass a
             name or sequence of names (e.g. ``('energy',)``) to choose
-            explicitly, or ``False`` to attach none. Ignored if you already
-            added your own ``ConservationMonitor``; read the results from
+            explicitly, or ``False`` to attach none. Each run replaces the
+            monitor the previous run attached. Ignored if you already added
+            your own ``ConservationMonitor``; read the results from
             ``sim.monitor``.
         **kwargs
             Additional keyword arguments to pass to the gravity method. For 'falcON':
@@ -509,9 +511,11 @@ class Sim(_ParticleView):
         monitor = self._default_monitor(monitors)
 
         # Every check passed: only now change the Sim.
-        if monitor is not None:
-            self.add_hook(monitor)
         self._self_gravity_force = solver
+        self._hooks[:] = [(h, c) for h, c in self._hooks if h is not self._auto_monitor]
+        self._auto_monitor = monitor
+        if monitor is not None:
+            self._hooks.append((monitor, monitor.default_cadence))
         from ..dynamics.hooks import Hook
         for hook, _ in self._hooks:
             if isinstance(hook, Hook):
@@ -616,13 +620,14 @@ class Sim(_ParticleView):
 
         ``monitors`` is ``'auto'`` (default is currently ``('energy',)``),
         ``False``/``None`` to disable, or an explicit quantity name / sequence of
-        names. None if a ``ConservationMonitor`` is already registered, so a
-        monitor you added yourself always wins over the default.
+        names. None if you added a ``ConservationMonitor`` yourself, so yours
+        always wins over the default.
         '''
         from ..dynamics.hooks import ConservationMonitor
         if monitors is False or monitors is None:
             return None
-        if any(isinstance(hook, ConservationMonitor) for hook, _ in self._hooks):
+        if any(isinstance(hook, ConservationMonitor) and hook is not self._auto_monitor
+               for hook, _ in self._hooks):
             return None
         if isinstance(monitors, str):
             track = ('energy',) if monitors == 'auto' else (monitors,)
