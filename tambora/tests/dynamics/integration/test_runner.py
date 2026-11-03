@@ -728,3 +728,17 @@ class TestOutputCount:
     def test_outputs_are_exactly_where_output_hooks_fire(self, t_end, dt, dt_out):
         ts_out, seen, _ = _run_recording_times(0.0, t_end, dt, dt_out, EveryOutput())
         np.testing.assert_array_equal(seen, ts_out)
+
+
+def test_each_output_is_recorded_after_the_hooks_due_at_its_step():
+    log = []
+
+    class OrderRecorder(_MemoryRecorder):
+        def record(self, step, t, pos, vel, self_acc, self_pot):
+            log.append(('record', step))
+            super().record(step, t, pos, vel, self_acc, self_pot)
+
+    _runner(np.zeros((1, 3)), np.ones((1, 3)), np.ones(1), LeapfrogIntegrator(), NullSelfGravity(),
+            _CompositeConservative([]), NullForce(), t0=0.0, t_end=1.0, dt=0.1, dt_out=0.2, progress=False,
+            hooks=[(lambda state: log.append(('hook', state.step)), EveryOutput())], recorder=OrderRecorder())
+    assert log == [(kind, step) for step in (0, 2, 4, 6, 8, 10) for kind in ('hook', 'record')]

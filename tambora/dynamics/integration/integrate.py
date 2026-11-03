@@ -96,7 +96,6 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
     recorder = _MemoryRecorder() if recorder is None else recorder
     recorder.begin(nsnaps, mass.shape[0], return_self_gravity_acc, return_self_gravity_pot)
     self_acc0, self_pot0 = self_gravity_force.acc_and_potential(pos, mass, eps)
-    recorder.record(0, t0, pos, vel, self_acc0, self_pot0)
     current_pos, current_vel = pos, vel
     current_t = t0
     integrator.reset()
@@ -109,27 +108,32 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
                       base_ext_force, progress=_Progress(pbar), eps=eps)
     state = StepState(None, ctx)
 
-    # Fire once on the initial state (t0) so hooks capture the starting point.
-    if hooks:
-        conserv_ext_acc0 = conserv_ext_force.acc(pos, mass, t0)
-        base_ext_acc0 = base_ext_force.acc(pos, vel, mass, t0)
-        initial_result = StepResult(pos=pos, vel=vel, mass=mass, t=t0,
-                                    self_acc=self_acc0, self_pot=self_pot0,
-                                    conserv_ext_acc=conserv_ext_acc0,
-                                    base_ext_acc=base_ext_acc0, step=0)
-        _fire(hooks, state, initial_result, 0, steps_per_output)
-
-    for step in pbar:
-        step_result = integrator.step(current_pos, current_vel, mass, current_t, dt,
-                                      self_gravity_force, conserv_ext_force, base_ext_force, eps,
-                                      t_new=_time_at(t0, dt, step))
-        step_result.step = step
-        current_pos, current_vel, current_t = step_result.pos, step_result.vel, step_result.t
+    # Each output is recorded after the hooks due at its step, t0 included.
+    try:
+        # Fire once on the initial state (t0) so hooks capture the starting point.
         if hooks:
-            _fire(hooks, state, step_result, step, steps_per_output)
-        if step % steps_per_output == 0:
-            recorder.record(step, step_result.t, step_result.pos, step_result.vel,
-                            step_result.self_acc, step_result.self_pot)
+            conserv_ext_acc0 = conserv_ext_force.acc(pos, mass, t0)
+            base_ext_acc0 = base_ext_force.acc(pos, vel, mass, t0)
+            initial_result = StepResult(pos=pos, vel=vel, mass=mass, t=t0,
+                                        self_acc=self_acc0, self_pot=self_pot0,
+                                        conserv_ext_acc=conserv_ext_acc0,
+                                        base_ext_acc=base_ext_acc0, step=0)
+            _fire(hooks, state, initial_result, 0, steps_per_output)
+        recorder.record(0, t0, pos, vel, self_acc0, self_pot0)
+
+        for step in pbar:
+            step_result = integrator.step(current_pos, current_vel, mass, current_t, dt,
+                                          self_gravity_force, conserv_ext_force, base_ext_force, eps,
+                                          t_new=_time_at(t0, dt, step))
+            step_result.step = step
+            current_pos, current_vel, current_t = step_result.pos, step_result.vel, step_result.t
+            if hooks:
+                _fire(hooks, state, step_result, step, steps_per_output)
+            if step % steps_per_output == 0:
+                recorder.record(step, step_result.t, step_result.pos, step_result.vel,
+                                step_result.self_acc, step_result.self_pot)
+    finally:
+        pbar.close()
 
     return recorder.outputs()
 

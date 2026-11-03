@@ -3,6 +3,7 @@ Simulation class for tambora.
 """
 
 import numpy as np
+import warnings
 from .component import Component
 from ._view import _ParticleView
 from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, NullSelfGravity, Conservative, ExternalPotential,
@@ -13,6 +14,7 @@ from ..units import unit_handler, KMS_TO_KPCGYR
 from ..dynamics import diagnostics
 from ..ic import ParticleSet
 from ..dynamics.integration import StepState
+from ..dynamics.integration.recorder import _MemoryRecorder
 import inspect
 import keyword
 from typing import Optional
@@ -423,8 +425,6 @@ class Sim(_ParticleView):
         """
         Run the simulation to *t_end* [Gyr].
 
-        Running again starts from the initial conditions, replaces the previous
-        run's outputs, and resets every hook's records (see ``Hook.reset``).
 
         Parameters
         ----------
@@ -465,6 +465,15 @@ class Sim(_ParticleView):
             - kernel (int, optional): Softening kernel: 0=Plummer, 1=default (~r^-7), 2,3=faster decay.
 
             The softening comes from the particles: see ``add_particles`` and ``eps``.
+
+        Notes
+        -----
+        - Running again starts from the initial conditions, replaces the previous
+                run's outputs, and resets every hook's records (see ``Hook.reset``).
+        
+        - If the run stops early (Ctrl-C, or an error in a hook or a force), the outputs
+                recorded up to then are kept and the error is raised again. falcON aborting the
+                whole process (e.g. on NaN positions) can't be caught, so nothing is kept then.
         """
         supported = sorted(m for m in SELF_GRAVITY_METHODS if m is not None)
         if method not in SELF_GRAVITY_METHODS:
@@ -499,9 +508,9 @@ class Sim(_ParticleView):
                 hook.reset()
         integrator = INTEGRATORS[integration_method]()
 
-        (self._positions, self._velocities, 
-         self._times, self._cached_self_acc, 
-         self._cached_self_pot) = _runner(
+        recorder = _MemoryRecorder()
+        try:
+            _runner(
                     self._init_pos, self._init_vel, self._mass,
                     integrator,
                     self._self_gravity_force,
@@ -517,7 +526,23 @@ class Sim(_ParticleView):
                     hooks = self._hooks,
                     progress = progress,
                     eps = self._eps if np.isnan(self._eps).any() else self._softening(everyone=True),
+                    recorder = recorder,
                 )
+        except BaseException:
+            if recorder.n:
+                self._keep_outputs(recorder)
+                try:
+                    warnings.warn(f"The run stopped early: the {recorder.n} outputs up to "
+                                  f"t = {self._times[-1]:g} Gyr are kept.", stacklevel=2)
+                except Exception:   # warnings made errors must not replace the real one
+                    pass
+            raise
+        self._keep_outputs(recorder)
+
+    def _keep_outputs(self, recorder):
+        """Take the outputs *recorder* holds as this Sim's."""
+        (self._positions, self._velocities, self._times,
+         self._cached_self_acc, self._cached_self_pot) = recorder.outputs()
         self._has_run = True
 
     # --- Hooks -----------------------------------------------------------------------------------
