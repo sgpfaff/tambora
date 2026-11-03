@@ -1,5 +1,6 @@
 from ..forces import SelfGravityForce, Conservative, Force
 from .BaseIntegrator import BaseIntegrator, StepResult
+import math
 import numpy as np
 from tqdm import tqdm
 from functools import partial
@@ -174,7 +175,7 @@ def _warn_uneven_end(dt, dt_out, t0, t_end):
     """Warn if the last step, or the last output, comes before t_end."""
     n_steps, nsnaps, steps_per_output = _count_steps(dt, dt_out, t0, t_end)
     last_output_step = (nsnaps - 1) * steps_per_output
-    steps_fall_short = abs((t_end - t0) / dt - n_steps) >= 1e-9
+    steps_fall_short = not _whole_steps(dt, t0, t_end)[1]
     if steps_fall_short:
         warnings.warn(f"Simulation duration ({t_end - t0} Gyr) is not an exact multiple of dt={dt} Gyr. "
                       f"The run will end at t={_time_at(t0, dt, n_steps):.10g} Gyr instead of t={t_end} Gyr.")
@@ -188,9 +189,18 @@ def _time_at(t0, dt, step):
     return t0 + step * dt
 
 
+def _whole_steps(dt, t0, t_end):
+    """Steps of dt that fit from t0 to t_end, and whether they reach t_end up to round-off."""
+    ratio = (t_end - t0) / dt
+    # round-off in t0, t_end and dt moves the ratio by up to ~4 ulp(t) / dt
+    tolerance = max(1e-9, 8 * math.ulp(max(abs(t0), abs(t_end))) / abs(dt))
+    if abs(ratio - round(ratio)) < tolerance:
+        return round(ratio), True
+    return int(ratio), False
+
+
 def _count_steps(dt, dt_out, t0, t_end):
     """Steps in the run, outputs it makes (t0 included), and steps per output."""
-    ratio = (t_end - t0) / dt
-    n_steps = round(ratio) if abs(ratio - round(ratio)) < 1e-9 else int(ratio)
+    n_steps = _whole_steps(dt, t0, t_end)[0]
     steps_per_output = round(dt_out / dt)
     return n_steps, n_steps // steps_per_output + 1, steps_per_output
