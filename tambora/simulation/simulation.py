@@ -15,6 +15,7 @@ from ..dynamics import diagnostics
 from ..ic import ParticleSet
 from ..dynamics.integration import StepState
 from ..dynamics.integration.recorder import _MemoryRecorder
+from ..dynamics.integration.integrate import _check_dt_dt_out
 import inspect
 import keyword
 from typing import Optional
@@ -494,14 +495,23 @@ class Sim(_ParticleView):
                 raise ValueError(
                     f"Softening isn't set for {', '.join(repr(n) for n in unset)}: give it with "
                     f"add_particles(..., eps=...) or sim.<component>.eps = ..., or run with method=None.")
-        self._self_gravity_force = solver_cls(**kwargs)
+        _check_dt_dt_out(dt, dt_out, t0, t_end)
+        if integration_method not in INTEGRATORS:
+            raise ValueError(f"Unknown integration_method {integration_method!r}. "
+                             f"Supported: {sorted(INTEGRATORS)}.")
+        solver = solver_cls(**kwargs)
         # Outside state (e.g. Agama's global units) can invalidate a wrapped
         # potential after it was added; each backend checks for that here.
         for force in self._conserv_ext_force.members + self._base_ext_force.members:
             check = getattr(force, "check_still_valid", None)
             if check is not None:
                 check()
-        self._add_default_monitors(monitors)
+        monitor = self._default_monitor(monitors)
+
+        # Every check passed: only now change the Sim.
+        if monitor is not None:
+            self.add_hook(monitor)
+        self._self_gravity_force = solver
         from ..dynamics.hooks import Hook
         for hook, _ in self._hooks:
             if isinstance(hook, Hook):
@@ -601,26 +611,24 @@ class Sim(_ParticleView):
                             f"{type(cadence).__name__!r}.")
         self._hooks.append((hook, cadence))
 
-    def _add_default_monitors(self, monitors):
-        '''Attach this run's default ``ConservationMonitor`` (called from ``run``).
+    def _default_monitor(self, monitors):
+        '''This run's default ``ConservationMonitor``, or None (called from ``run``).
 
         ``monitors`` is ``'auto'`` (default is currently ``('energy',)``),
         ``False``/``None`` to disable, or an explicit quantity name / sequence of
-        names. Skipped entirely if a ``ConservationMonitor`` is already
-        registered, so a monitor you added yourself always wins over the default.
+        names. None if a ``ConservationMonitor`` is already registered, so a
+        monitor you added yourself always wins over the default.
         '''
         from ..dynamics.hooks import ConservationMonitor
         if monitors is False or monitors is None:
-            return
+            return None
         if any(isinstance(hook, ConservationMonitor) for hook, _ in self._hooks):
-            return
+            return None
         if isinstance(monitors, str):
             track = ('energy',) if monitors == 'auto' else (monitors,)
         else:
             track = tuple(monitors)
-        if not track:
-            return
-        self.add_hook(ConservationMonitor(track=track))
+        return ConservationMonitor(track=track) if track else None
 
     @property
     def hooks(self):

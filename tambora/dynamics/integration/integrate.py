@@ -90,6 +90,7 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
         Units: `kpc^2 / Myr^2`
     '''
     _check_dt_dt_out(dt, dt_out, t0, t_end)
+    _warn_uneven_end(dt, dt_out, t0, t_end)
 
     n_steps, nsnaps, steps_per_output = _count_steps(dt, dt_out, t0, t_end)
 
@@ -154,6 +155,7 @@ def _fire(hooks, state, result, step, steps_per_output):
 
 
 def _check_dt_dt_out(dt, dt_out, t0, t_end):
+    """Raise if dt, dt_out, t0 and t_end can't make a run."""
     if (t0 > t_end) and (dt > 0):
         raise ValueError("The end time (t_end) is less than the start time (t0), implying backwards integration. " \
         "dt must be negative for backwards integration.")
@@ -166,6 +168,10 @@ def _check_dt_dt_out(dt, dt_out, t0, t_end):
         raise ValueError("dt_out must have the same sign as dt.")
     if abs(dt_out / dt - round(dt_out / dt)) > 1e-9:
         raise ValueError("dt_out must be a multiple of dt.")
+
+
+def _warn_uneven_end(dt, dt_out, t0, t_end):
+    """Warn if the run can't end exactly at t_end, with a step or with an output."""
     if abs((t_end - t0) / dt - round((t_end  - t0) / dt)) > 1e-9:
         actual_t_end = int((t_end - t0) / dt) * dt + t0
         warnings.warn(f"Simulation duration ({t_end - t0} Gyr) is not an exact multiple of dt={dt} Gyr. "

@@ -2506,6 +2506,62 @@ def test_running_again_starts_every_hook_afresh():
     assert sim.monitor.drift['energy'][0] == 0.     # measured from the second run's energy
 
 
+class _CanBeInvalidated(ExternalConservativeForce):
+    """A zero field whose validity check fails once *valid* is set False."""
+    valid = True
+
+    def acc(self, pos, t):
+        return np.zeros_like(pos)
+
+    def potential(self, pos, t):
+        return np.zeros(len(pos))
+
+    def check_still_valid(self):
+        if not self.valid:
+            raise RuntimeError("force invalidated")
+
+
+@pytest.mark.parametrize("bad, error, match", [
+    (dict(dt_out=0.15), ValueError, "multiple of dt"),
+    (dict(dt=-0.1), ValueError, "dt must be positive"),
+    (dict(integration_method='rk4'), ValueError, r"Unknown integration_method 'rk4'.*\['leapfrog'\]"),
+    ('invalid force', RuntimeError, "force invalidated"),
+])
+def test_a_rejected_run_leaves_the_sim_as_the_last_run_left_it(bad, error, match):
+    sim = Sim()
+    sim.add_particles(name='c', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS, eps=0.1)
+    force = _CanBeInvalidated()
+    sim.add_external_force(force)
+    hook = _ResetCountingHook()
+    sim.add_hook(hook)
+    run = dict(t_end=0.2, dt=0.1, dt_out=0.1, method='direct', progress=False)
+    sim.run(**run)
+    solver, monitor, hooks = sim._self_gravity_force, sim.monitor, list(sim._hooks)
+    times, hook_times, drift = sim.times.copy(), list(hook.times), monitor.drift['energy'].copy()
+
+    if bad == 'invalid force':
+        force.valid, bad = False, {}
+    with pytest.raises(error, match=match):
+        sim.run(**{**run, 'method': None, **bad})
+
+    assert sim._self_gravity_force is solver
+    assert sim.monitor is monitor and sim._hooks == hooks
+    assert hook.resets == 1 and hook.times == hook_times
+    np.testing.assert_array_equal(monitor.drift['energy'], drift)
+    np.testing.assert_array_equal(sim.times, times)
+
+
+def test_an_uneven_end_is_warned_about_once():
+    sim = Sim()
+    sim.add_particles(name='c', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS, eps=0.1)
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter('always')
+        sim.run(t_end=0.25, dt=0.1, dt_out=0.2, method='direct', progress=False, monitors=False)
+    messages = [str(w.message) for w in caught]
+    assert sum('not an exact multiple of dt=' in m for m in messages) == 1
+    assert sum('not an exact multiple of dt_out=' in m for m in messages) == 1
+
+
 class TestAddHook:
     """``Sim.add_hook``: cadence resolution, ordering, and the after-run guard.
 
