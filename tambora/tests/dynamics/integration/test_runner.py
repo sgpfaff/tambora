@@ -665,3 +665,42 @@ class TestStepClock:
         sim.add_particles(np.zeros((2, 3)), np.ones((2, 3)), np.ones(2), name='c')
         sim.run(t_end=1.0, dt=self.dt, dt_out=self.dt_out, method=None, progress=False)
         np.testing.assert_array_equal(sim.monitor.t, sim.times)
+
+
+# --- the runner hands each output to a recorder ---------------------------------- #
+
+from tambora.dynamics.integration.recorder import _Recorder, _MemoryRecorder
+
+
+class _LoggingRecorder(_MemoryRecorder):
+    """A memory recorder that also logs what the runner asks of it."""
+    def __init__(self):
+        self.calls = []
+
+    def begin(self, nsnaps, n_particles, keep_acc, keep_pot):
+        self.calls.append(('begin', nsnaps, n_particles, keep_acc, keep_pot))
+        super().begin(nsnaps, n_particles, keep_acc, keep_pot)
+
+    def record(self, step, t, pos, vel, self_acc, self_pot):
+        self.calls.append(('record', step, t))
+        super().record(step, t, pos, vel, self_acc, self_pot)
+
+
+def test_runner_hands_each_output_to_the_recorder():
+    rec = _LoggingRecorder()
+    out = _runner(np.zeros((2, 3)), np.ones((2, 3)), np.ones(2), LeapfrogIntegrator(), DirectSummationGravity(),
+                  _CompositeConservative([]), NullForce(), t0=0.0, t_end=1.0, dt=0.1, dt_out=0.2,
+                  return_self_gravity_pot=False, progress=False, eps=0.1, recorder=rec)
+    assert rec.calls[0] == ('begin', 6, 2, True, False)
+    assert [c[1] for c in rec.calls[1:]] == [0, 2, 4, 6, 8, 10]
+    assert all(c[0] == 'record' for c in rec.calls[1:])
+    for got, want in zip(out, rec.outputs()):
+        assert got is want or (got is None and want is None) or np.shares_memory(got, want)
+
+
+def test_a_recorder_must_implement_the_interface():
+    class Incomplete(_Recorder):
+        def begin(self, nsnaps, n_particles, keep_acc, keep_pot): pass
+
+    with pytest.raises(TypeError):
+        Incomplete()

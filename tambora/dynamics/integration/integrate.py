@@ -5,6 +5,7 @@ from tqdm import tqdm
 from functools import partial
 from typing import Optional
 from .step_state import StepState, StepContext, _Progress
+from .recorder import _MemoryRecorder
 import warnings
 
 def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray, 
@@ -18,7 +19,8 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
             slices: Optional[dict] = None,
             hooks: tuple = (),
             progress: bool = True,
-            eps=None):
+            eps=None,
+            recorder=None):
     '''
     Integrate particle trajectories optionally under 
     influence of self-gravity and external forces.
@@ -61,6 +63,9 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
     hooks : sequence of (Hook, Cadence), optional
         Hooks to run during integration, each paired with the cadence that
         decides when it fires. Default is empty (no hooks).
+    recorder : _Recorder, optional
+        Receives each output as it is made (``begin``, then ``record`` per output);
+        the return value is its ``outputs()``. Default: a new ``_MemoryRecorder``.
     **kwargs
         Additional keyword arguments to pass to the self-gravity method.
 
@@ -86,15 +91,12 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
     '''
     _check_dt_dt_out(dt, dt_out, t0, t_end)
 
-    (ts_out, ts_integrate, 
-    nsnaps, steps_per_output) = _make_time_arrays(dt, dt_out, t0, t_end)
+    _, ts_integrate, nsnaps, steps_per_output = _make_time_arrays(dt, dt_out, t0, t_end)
 
-    positions, velocities = _make_pos_vel_arrays(pos, vel, mass, nsnaps)
-    (self_gravity_pot, self_gravity_acc,
-     self_acc0, self_pot0) = _make_self_gravity_arrays(pos, mass, self_gravity_force,
-                                                       return_self_gravity_pot, return_self_gravity_acc, nsnaps,
-                                                       eps)
-    i_out = 1
+    recorder = _MemoryRecorder() if recorder is None else recorder
+    recorder.begin(nsnaps, mass.shape[0], return_self_gravity_acc, return_self_gravity_pot)
+    self_acc0, self_pot0 = self_gravity_force.acc_and_potential(pos, mass, eps)
+    recorder.record(0, t0, pos, vel, self_acc0, self_pot0)
     current_pos, current_vel = pos, vel
     current_t = t0
     integrator.reset()
@@ -125,16 +127,11 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
         current_pos, current_vel, current_t = step_result.pos, step_result.vel, step_result.t
         if hooks:
             _fire(hooks, state, step_result, step, steps_per_output)
-        if step % steps_per_output == 0 and i_out < nsnaps: # recording snapshot
-            positions[i_out] = step_result.pos.copy()
-            velocities[i_out] = step_result.vel.copy()
-            if return_self_gravity_acc:
-                self_gravity_acc[i_out] += step_result.self_acc.copy() if step_result.self_acc is not None else 0.0
-            if return_self_gravity_pot:
-                self_gravity_pot[i_out] += step_result.self_pot.copy() if step_result.self_pot is not None else 0.0
-            i_out += 1
+        if step % steps_per_output == 0 and recorder.n < nsnaps:
+            recorder.record(step, step_result.t, step_result.pos, step_result.vel,
+                            step_result.self_acc, step_result.self_pot)
 
-    return positions, velocities, ts_out, self_gravity_acc, self_gravity_pot
+    return recorder.outputs()
 
 
 def _fire(hooks, state, result, step, steps_per_output):
@@ -194,27 +191,3 @@ def _make_time_arrays(dt, dt_out, t0, t_end):
     ts_out = _time_at(t0, dt, np.arange(nsnaps) * steps_per_output)
     ts_integrate = _time_at(t0, dt, np.arange(n_steps_integrate + 1))
     return ts_out, ts_integrate, nsnaps, steps_per_output
-
-
-def _make_pos_vel_arrays(pos, vel, mass, nsnaps):
-    n = mass.shape[0]
-    positions = np.zeros((nsnaps, n, 3), dtype=np.float64)
-    velocities = np.zeros((nsnaps, n, 3), dtype=np.float64)
-    positions[0] = pos.copy()
-    velocities[0] = vel.copy()
-    return positions, velocities
-
-
-def _make_self_gravity_arrays(pos, mass, self_gravity_force, return_self_gravity_pot,
-                            return_self_gravity_acc, nsnaps, eps=None):
-    self_gravity_pot = None
-    self_gravity_acc = None
-    self_acc, self_pot = self_gravity_force.acc_and_potential(pos, mass, eps)
-    n = mass.shape[0]
-    if return_self_gravity_pot:
-        self_gravity_pot = np.zeros((nsnaps, n), dtype=np.float64)
-        self_gravity_pot[0] += self_pot.copy() if self_pot is not None else 0.0
-    if return_self_gravity_acc:
-        self_gravity_acc = np.zeros((nsnaps, n, 3), dtype=np.float64)
-        self_gravity_acc[0] = self_acc.copy() if self_acc is not None else 0.0
-    return self_gravity_pot, self_gravity_acc, self_acc, self_pot
