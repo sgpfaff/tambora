@@ -704,3 +704,27 @@ def test_a_recorder_must_implement_the_interface():
 
     with pytest.raises(TypeError):
         Incomplete()
+
+
+# --- the number of outputs is the number the run actually reaches ----------------- #
+
+@pytest.mark.filterwarnings("ignore:Simulation duration")
+class TestOutputCount:
+    def test_no_phantom_output_when_t_end_falls_just_short(self):
+        # (t_end - t0)/dt_out rounds to 2, but only 19 steps fit: one output after t0.
+        ts_out, seen, _ = _run_recording_times(0.0, 0.019999999999, 1e-3, 1e-2, EveryOutput())
+        np.testing.assert_array_equal(ts_out, [0.0, 0.01])
+        np.testing.assert_array_equal(seen, ts_out)
+
+    def test_last_output_is_kept_when_dt_out_is_a_hair_over_a_multiple(self):
+        # (t_end - t0)/dt_out rounds down to 299, but 3000 steps make 300 outputs after t0.
+        ts_out, seen, _ = _run_recording_times(0.0, 3.0, 1e-3, 0.0100000000001, EveryOutput())
+        assert len(ts_out) == 301
+        assert ts_out[-1] == 3.0
+        np.testing.assert_array_equal(seen, ts_out)
+
+    @pytest.mark.parametrize("t_end, dt, dt_out", [(1.0, 0.1, 0.2), (1.0, 0.13, 0.13), (1.0, 0.2, 0.4),
+                                                   (0.5, 0.1, 0.1), (-1.0, -0.1, -0.3)])
+    def test_outputs_are_exactly_where_output_hooks_fire(self, t_end, dt, dt_out):
+        ts_out, seen, _ = _run_recording_times(0.0, t_end, dt, dt_out, EveryOutput())
+        np.testing.assert_array_equal(seen, ts_out)

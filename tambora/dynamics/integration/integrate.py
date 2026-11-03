@@ -91,7 +91,7 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
     '''
     _check_dt_dt_out(dt, dt_out, t0, t_end)
 
-    _, ts_integrate, nsnaps, steps_per_output = _make_time_arrays(dt, dt_out, t0, t_end)
+    n_steps, nsnaps, steps_per_output = _count_steps(dt, dt_out, t0, t_end)
 
     recorder = _MemoryRecorder() if recorder is None else recorder
     recorder.begin(nsnaps, mass.shape[0], return_self_gravity_acc, return_self_gravity_pot)
@@ -104,7 +104,7 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
     # Hook plumbing: one reusable view over the live state, refreshed each fire.
     # The progress bar is created up front so hooks can report to it (via
     # state.report) from the t0 fire onwards.
-    pbar = tqdm(ts_integrate[1:], disable=not progress)
+    pbar = tqdm(range(1, n_steps + 1), disable=not progress)
     ctx = StepContext(slices or {}, self_gravity_force, conserv_ext_force,
                       base_ext_force, progress=_Progress(pbar), eps=eps)
     state = StepState(None, ctx)
@@ -119,7 +119,7 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
                                     base_ext_acc=base_ext_acc0, step=0)
         _fire(hooks, state, initial_result, 0, steps_per_output)
 
-    for step, _ in enumerate(pbar, start=1):
+    for step in pbar:
         step_result = integrator.step(current_pos, current_vel, mass, current_t, dt,
                                       self_gravity_force, conserv_ext_force, base_ext_force, eps,
                                       t_new=_time_at(t0, dt, step))
@@ -127,7 +127,7 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
         current_pos, current_vel, current_t = step_result.pos, step_result.vel, step_result.t
         if hooks:
             _fire(hooks, state, step_result, step, steps_per_output)
-        if step % steps_per_output == 0 and recorder.n < nsnaps:
+        if step % steps_per_output == 0:
             recorder.record(step, step_result.t, step_result.pos, step_result.vel,
                             step_result.self_acc, step_result.self_pot)
 
@@ -179,15 +179,9 @@ def _time_at(t0, dt, step):
     return t0 + step * dt
 
 
-def _make_time_arrays(dt, dt_out, t0, t_end):
-    ratio_save = (t_end - t0) / dt_out
-    n_steps_save = round(ratio_save) if abs(ratio_save - round(ratio_save)) < 1e-9 else int(ratio_save)
-
-    ratio_integrate = (t_end - t0) / dt
-    n_steps_integrate = round(ratio_integrate) if abs(ratio_integrate - round(ratio_integrate)) < 1e-9 else int(ratio_integrate)
-
+def _count_steps(dt, dt_out, t0, t_end):
+    """Steps in the run, outputs it makes (t0 included), and steps per output."""
+    ratio = (t_end - t0) / dt
+    n_steps = round(ratio) if abs(ratio - round(ratio)) < 1e-9 else int(ratio)
     steps_per_output = round(dt_out / dt)
-    nsnaps = n_steps_save + 1  # +1 for initial snapshot at t=0
-    ts_out = _time_at(t0, dt, np.arange(nsnaps) * steps_per_output)
-    ts_integrate = _time_at(t0, dt, np.arange(n_steps_integrate + 1))
-    return ts_out, ts_integrate, nsnaps, steps_per_output
+    return n_steps, n_steps // steps_per_output + 1, steps_per_output
