@@ -1,3 +1,5 @@
+import warnings
+
 import pytest
 import numpy as np
 
@@ -318,11 +320,13 @@ class TestTimeInputs:
         pos = np.zeros((1, 3))
         vel = np.zeros((1, 3))
         mass = np.ones(1)
-        _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                    _CompositeConservative([]), NullForce(), t0=0.0,
-                    t_end=t_end, 
-                    dt=dt, 
-                    dt_out=dt_out)
+        with warnings.catch_warnings():
+            warnings.simplefilter('error')
+            _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+                        _CompositeConservative([]), NullForce(), t0=0.0,
+                        t_end=t_end, 
+                        dt=dt, 
+                        dt_out=dt_out)
 
 class TestTimeStepInputs:
     @classmethod
@@ -728,6 +732,55 @@ class TestOutputCount:
     def test_outputs_are_exactly_where_output_hooks_fire(self, t_end, dt, dt_out):
         ts_out, seen, _ = _run_recording_times(0.0, t_end, dt, dt_out, EveryOutput())
         np.testing.assert_array_equal(seen, ts_out)
+
+
+# --- a warning when, and only when, the last step or the last output comes before t_end --- #
+
+def _warnings_and_ends(t0, t_end, dt, dt_out):
+    """A run's warnings, the time of its last output and the time of its last step."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        ts_out, _, force_ts = _run_recording_times(t0, t_end, dt, dt_out, EveryOutput())
+    return [str(w.message) for w in caught], ts_out[-1], force_ts[-1]
+
+
+class TestUnevenEndWarnings:
+    @pytest.mark.parametrize("t0, t_end, dt, dt_out", [
+        (0.0, 1.0, 0.1, 0.2),
+        (0.0, 3.0, 1e-3, 0.0100000000001),     # dt_out a hair over a multiple of dt
+        (0.0, 3.0, 1e-3, 0.0099999999999),     # ... and a hair under
+        (0.0, 3.0 + 1e-13, 1e-3, 1e-2),        # t_end a hair past a whole number of steps
+        (0.3, 1.3, 1e-3, 1e-2),
+        (0.0, -1.0, -0.1, -0.2),
+    ])
+    def test_no_warning_when_the_last_output_is_at_t_end(self, t0, t_end, dt, dt_out):
+        messages, last_output, _ = _warnings_and_ends(t0, t_end, dt, dt_out)
+        assert messages == []
+        assert last_output == pytest.approx(t_end, abs=1e-12)
+
+    @pytest.mark.parametrize("t0, t_end, dt, dt_out, steps_fall_short", [
+        (0.0, 1.0, 0.1, 0.3, False),           # the last output at 0.9; the run goes on to 1.0
+        (0.0, 1.0, 0.2, 0.4, False),
+        (0.0, -1.0, -0.1, -0.3, False),
+        (0.0, 1.05, 0.1, 0.5, True),           # the run and its last output end at 1.0
+        (0.0, 1.0, 0.13, 0.13, True),
+        (0.0, 1.0, 0.13, 0.1300000001, True),  # the time comes from the steps, not from dt_out
+        (0.0, 0.019999999999, 1e-3, 1e-2, True),
+        (0.3, 1.3, 0.1, 0.3, False),
+        (0.3, 1.35, 0.1, 0.5, True),
+        (1.0, 0.0, -0.1, -0.3, False),
+    ])
+    def test_each_warning_gives_the_time_the_run_actually_reaches(self, t0, t_end, dt, dt_out,
+                                                                  steps_fall_short):
+        messages, last_output, last_step = _warnings_and_ends(t0, t_end, dt, dt_out)
+        expected = [f"multiple of dt={dt} Gyr. The run will end at t={last_step:.10g} Gyr "
+                    f"instead of t={t_end} Gyr."] if steps_fall_short else []
+        expected.append(f"multiple of dt_out={dt_out} Gyr. Last output will be at t={last_output:.10g} Gyr "
+                        f"instead of t={t_end} Gyr.")
+        assert len(messages) == len(expected)
+        for message, end in zip(messages, expected):
+            assert message.startswith(f"Simulation duration ({t_end - t0} Gyr) is not an exact "), message
+            assert message.endswith(end), message
 
 
 def test_each_output_is_recorded_after_the_hooks_due_at_its_step():

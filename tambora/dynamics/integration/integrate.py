@@ -171,18 +171,17 @@ def _check_dt_dt_out(dt, dt_out, t0, t_end):
 
 
 def _warn_uneven_end(dt, dt_out, t0, t_end):
-    """Warn if the run can't end exactly at t_end, with a step or with an output."""
-    if abs((t_end - t0) / dt - round((t_end  - t0) / dt)) > 1e-9:
-        actual_t_end = int((t_end - t0) / dt) * dt + t0
+    """Warn if the last step, or the last output, comes before t_end."""
+    n_steps, nsnaps, steps_per_output = _count_steps(dt, dt_out, t0, t_end)
+    last_output_step = (nsnaps - 1) * steps_per_output
+    steps_fall_short = abs((t_end - t0) / dt - n_steps) >= 1e-9
+    if steps_fall_short:
         warnings.warn(f"Simulation duration ({t_end - t0} Gyr) is not an exact multiple of dt={dt} Gyr. "
-                        f"The simulation will end before t_end it reaches t_end.")
-    if abs((t_end - t0) / dt_out - round((t_end - t0) / dt_out)) > 1e-9:
-        n_steps_w = int((t_end - t0) / dt) if abs((t_end - t0)/ dt - round((t_end - t0) / dt)) > 1e-9 else round((t_end - t0) / dt)
-        steps_per_output = round(dt_out / dt)
-        nsnaps = n_steps_w // steps_per_output
-        actual_t_end = nsnaps * dt_out + t0
+                      f"The run will end at t={_time_at(t0, dt, n_steps):.10g} Gyr instead of t={t_end} Gyr.")
+    if steps_fall_short or last_output_step != n_steps:
         warnings.warn(f"Simulation duration ({t_end - t0} Gyr) is not an exact multiple of dt_out={dt_out} Gyr. "
-                        f"Last output will be at t={actual_t_end:.10g} Gyr instead of t={t_end} Gyr.")
+                      f"Last output will be at t={_time_at(t0, dt, last_output_step):.10g} Gyr "
+                      f"instead of t={t_end} Gyr.")
 
 def _time_at(t0, dt, step):
     """Time after *step* steps (an int or int array), from the count: summing dt drifts."""
