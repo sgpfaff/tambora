@@ -258,6 +258,7 @@ def test_a_failed_write_leaves_neither_the_file_nor_a_temporary(tmp_path, monkey
         recorder.record(0, 0.0, np.zeros((2, 3)), np.zeros((2, 3)), None, None)
     assert sorted(os.listdir(tmp_path)) == ['run.h5']
     assert recorder.n == 0
+    assert [len(a) for a in recorder.outputs()[:3]] == [0, 0, 0]
 
 
 def test_a_failed_cleanup_does_not_replace_the_original_error(tmp_path, monkeypatch):
@@ -313,7 +314,9 @@ def test_an_interrupt_just_after_a_rename_still_counts_the_file(tmp_path, monkey
         recorder.record(0, 0.0, np.ones((2, 3)), np.ones((2, 3)), None, None)
     assert sorted(os.listdir(tmp_path)) == ['run.h5', 'snap_000000.h5']
     assert recorder.n == 1
-    np.testing.assert_array_equal(recorder.outputs()[0], np.ones((1, 2, 3)))
+    pos, _, times = recorder.outputs()[:3]
+    np.testing.assert_array_equal(pos, np.ones((1, 2, 3)))
+    np.testing.assert_array_equal(times, [0.0])
 
 
 def test_a_run_stopped_early_keeps_the_files_written_so_far(tmp_path):
@@ -392,7 +395,7 @@ def test_reading_back_takes_no_file_lock(tmp_path):
     _run(recorder, t_end=0.1)
     with open(tmp_path / snapshot_name(0), 'rb') as held:
         fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        assert len(recorder.outputs()[2]) == 2
+        assert recorder.outputs()[0][0].shape == (N, 3)
 
 
 _KILLED_WRITER = """

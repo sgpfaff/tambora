@@ -28,8 +28,11 @@ def snapshot_name(index):
     return f"snap_{index:06d}.h5"
 
 
+@contextlib.contextmanager
 def _open_for_reading(path):
-    return h5py.File(path, 'r', locking=False)
+    """*path* opened for reading, through a Python file."""
+    with open(path, 'rb') as raw, h5py.File(raw, 'r') as f:
+        yield f
 
 
 class _FileRecorder(_Recorder):
@@ -46,6 +49,7 @@ class _FileRecorder(_Recorder):
         self.fsync = fsync
         self._done = 0
         self._writing = None    # index of the file being written
+        self._times = []
 
     @property
     def n(self):
@@ -60,7 +64,7 @@ class _FileRecorder(_Recorder):
         if taken:
             raise FileExistsError(f"{self.directory!r} already holds a run ({taken[0]}).")
         self.n_particles, self.keep_acc, self.keep_pot = n_particles, keep_acc, keep_pot
-        self._done = 0
+        self._done, self._times = 0, []
 
         def fill(f):
             f.attrs['format'] = FORMAT
@@ -80,6 +84,7 @@ class _FileRecorder(_Recorder):
 
     def record(self, step, t, pos, vel, self_acc, self_pot):
         i = self._writing = self._done
+        self._times[i:] = [t]
 
         def fill(f):
             f.attrs['format_version'] = FORMAT_VERSION
@@ -96,19 +101,13 @@ class _FileRecorder(_Recorder):
         self._done, self._writing = i + 1, None
 
     def outputs(self):
-        """Every output, read back into memory."""
+        """The outputs recorded so far, as arrays that read their snapshot files when indexed."""
         n, N = self.n, self.n_particles
-        pos, vel, times = np.empty((n, N, 3)), np.empty((n, N, 3)), np.empty(n)
-        acc = np.zeros((n, N, 3)) if self.keep_acc else None
-        pot = np.zeros((n, N)) if self.keep_pot else None
-        for i in range(n):
-            with _open_for_reading(self._path(snapshot_name(i))) as f:
-                pos[i], vel[i], times[i] = f['pos'][...], f['vel'][...], f.attrs['t']
-                if acc is not None and 'self_acc' in f:
-                    acc[i] = f['self_acc'][...]
-                if pot is not None and 'self_pot' in f:
-                    pot[i] = f['self_pot'][...]
-        return pos, vel, times, acc, pot
+        acc = _SnapshotArray(self.directory, 'self_acc', n, (N, 3)) if self.keep_acc else None
+        pot = _SnapshotArray(self.directory, 'self_pot', n, (N,)) if self.keep_pot else None
+        pos = _SnapshotArray(self.directory, 'pos', n, (N, 3))
+        vel = _SnapshotArray(self.directory, 'vel', n, (N, 3))
+        return pos, vel, np.array(self._times[:n], dtype=np.float64), acc, pot
 
     def _path(self, name):
         return os.path.join(self.directory, name)
@@ -137,6 +136,109 @@ class _FileRecorder(_Recorder):
             raise
         if self.fsync:
             _fsync_directory(self.directory)
+
+
+class _SnapshotArray:
+    """One dataset (pos, vel, self_acc or self_pot) across a run's snapshot files, read on demand.
+
+    Indexes like the (n_snapshots, N, ...) array it stands for and returns numpy
+    arrays, reading only the snapshots, and the particles in them, that the index
+    selects, each file opened only for the read. np.newaxis, boolean scalars and
+    boolean masks over several axes are refused. A snapshot without self_acc or
+    self_pot reads as zeros.
+    """
+
+    dtype = np.dtype(np.float64)
+
+    def __init__(self, directory, name, n, row_shape):
+        self.directory, self.name = directory, name
+        self.shape = (n,) + tuple(row_shape)
+
+    @property
+    def ndim(self):
+        return len(self.shape)
+
+    def __len__(self):
+        return self.shape[0]
+
+    def __repr__(self):
+        return f"<{type(self).__name__} {self.name!r} {self.shape} in {self.directory!r}>"
+
+    def __array__(self, dtype=None, copy=None):
+        a = self[...]
+        return a if dtype is None else a.astype(dtype)
+
+    def __getitem__(self, key):
+        key, ellipsis = _expand_index(key, self.ndim)
+        snapshots, snapshot_key = _rows(key[0], self.shape[0])
+        particles, particle_key = _block(key[1], self.shape[1])
+        needed = np.empty((len(snapshots), len(range(self.shape[1])[particles])) + self.shape[2:], self.dtype)
+        for j, i in enumerate(snapshots):
+            with _open_for_reading(os.path.join(self.directory, snapshot_name(i))) as f:
+                if self.name in f:
+                    needed[j] = f[self.name][particles]
+                elif self.name in ('self_acc', 'self_pot'):
+                    needed[j] = 0.0
+                else:
+                    raise KeyError(f"{snapshot_name(i)} in {self.directory!r} has no {self.name!r}.")
+        final = (snapshot_key, particle_key) + key[2:]
+        if ellipsis is not None:        # put it back: a zero-width ... still matters to numpy
+            final = final[:ellipsis[0]] + (Ellipsis,) + final[ellipsis[1]:]
+        return needed[final]
+
+
+def _expand_index(key, ndim):
+    """*key* as one index per axis, ``...`` expanded as numpy does, and the axes the ``...`` covered."""
+    key = key if isinstance(key, tuple) else (key,)
+    for k in key:
+        if k is None:
+            raise IndexError("np.newaxis isn't supported here.")
+        if isinstance(k, (bool, np.bool_)) or (isinstance(k, (list, np.ndarray))
+                                               and np.asarray(k).dtype == bool and np.ndim(k) != 1):
+            raise IndexError("Boolean scalars and boolean masks over several axes aren't supported here.")
+    ellipses = [i for i, k in enumerate(key) if k is Ellipsis]
+    if len(ellipses) > 1:
+        raise IndexError("an index can only have a single ellipsis ('...')")
+    if len(key) - len(ellipses) > ndim:
+        raise IndexError(f"too many indices: the array has {ndim} dimensions, "
+                         f"{len(key) - len(ellipses)} were indexed")
+    covered = None
+    if ellipses:
+        i, width = ellipses[0], ndim - len(key) + 1
+        key = key[:i] + (slice(None),) * width + key[i + 1:]
+        covered = (i, i + width)
+    return key + (slice(None),) * (ndim - len(key)), covered
+
+
+def _rows(index, length):
+    """The snapshots *index* selects, each read once, and *index* rewritten to point into them."""
+    if isinstance(index, (int, np.integer)):
+        return [range(length)[index]], 0
+    if isinstance(index, slice):
+        return list(range(length)[index]), slice(None)
+    chosen = np.arange(length)[index]
+    rows = np.unique(chosen)
+    return rows.tolist(), np.searchsorted(rows, chosen)
+
+
+def _block(index, length):
+    """The particles to read, as a slice with a positive step, and *index* rewritten to point into them."""
+    if isinstance(index, (int, np.integer)):
+        i = range(length)[index]
+        return slice(i, i + 1), 0
+    if isinstance(index, slice):
+        r = range(length)[index]
+        if not r:
+            return slice(0, 0), slice(None)
+        step = abs(r.step) if abs(r.step) != 1 else None
+        if r.step > 0:
+            return slice(r.start, r[-1] + 1, step), slice(None)
+        return slice(r[-1], r.start + 1, step), slice(None, None, -1)
+    chosen = np.arange(length)[index]
+    if chosen.size == 0:
+        return slice(0, 0), chosen
+    lo = int(chosen.min())
+    return slice(lo, int(chosen.max()) + 1), chosen - lo
 
 
 def _rename_exclusive(tmp, final):
