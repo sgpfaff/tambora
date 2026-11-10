@@ -28,6 +28,16 @@ def snapshot_name(index):
     return f"snap_{index:06d}.h5"
 
 
+def existing_run(directory):
+    """The first of a run's files (``run.h5``, ``snap_*``) in *directory*, or None."""
+    try:
+        names = os.listdir(directory)
+    except FileNotFoundError:
+        return None
+    taken = sorted(f for f in names if f == RUN_FILE or f.startswith('snap_'))
+    return taken[0] if taken else None
+
+
 @contextlib.contextmanager
 def _open_for_reading(path):
     """*path* opened for reading, through a Python file."""
@@ -49,7 +59,9 @@ class _FileRecorder(_Recorder):
         self.fsync = fsync
         self._done = 0
         self._writing = None    # index of the file being written
+        self._claimed = False   # run.h5 is this recorder's
         self._times = []
+        self.steps = []
 
     @property
     def n(self):
@@ -60,11 +72,11 @@ class _FileRecorder(_Recorder):
 
     def begin(self, nsnaps, n_particles, keep_acc, keep_pot):
         os.makedirs(self.directory, exist_ok=True)
-        taken = sorted(f for f in os.listdir(self.directory) if f == RUN_FILE or f.startswith('snap_'))
+        taken = existing_run(self.directory)
         if taken:
-            raise FileExistsError(f"{self.directory!r} already holds a run ({taken[0]}).")
+            raise FileExistsError(f"{self.directory!r} already holds a run ({taken}).")
         self.n_particles, self.keep_acc, self.keep_pot = n_particles, keep_acc, keep_pot
-        self._done, self._times = 0, []
+        self._done, self._times, self.steps = 0, [], []
 
         def fill(f):
             f.attrs['format'] = FORMAT
@@ -81,10 +93,18 @@ class _FileRecorder(_Recorder):
             self._write_atomically(RUN_FILE, fill, exclusive=True)
         except FileExistsError:     # another run claimed the directory after the check above
             raise FileExistsError(f"{self.directory!r} already holds a run ({RUN_FILE}).") from None
+        self._claimed = True
+
+    def abandon(self):
+        """Remove ``run.h5`` if this recorder wrote it and no output was recorded."""
+        if self._claimed and self.n == 0:
+            with contextlib.suppress(OSError):
+                os.remove(self._path(RUN_FILE))
+            self._claimed = False
 
     def record(self, step, t, pos, vel, self_acc, self_pot):
         i = self._writing = self._done
-        self._times[i:] = [t]
+        self._times[i:], self.steps[i:] = [t], [step]
 
         def fill(f):
             f.attrs['format_version'] = FORMAT_VERSION

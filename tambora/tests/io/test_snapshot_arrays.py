@@ -10,7 +10,6 @@ import h5py
 import numpy as np
 import pytest
 
-import tambora.simulation.simulation as simulation_module
 from tambora.dynamics import DirectSummationGravity, NullForce, NullSelfGravity
 from tambora.dynamics.forces.CompositeForce import _CompositeConservative
 from tambora.dynamics.forces.external_force import ExternalConservativeForce
@@ -160,7 +159,7 @@ def test_a_strided_or_repeated_index_reads_each_snapshot_once_and_only_its_parti
     assert read == [('/pos', selection)] * len(snapshots)
 
 
-def test_an_output_written_again_after_a_failed_write_keeps_its_own_time(tmp_path, monkeypatch):
+def test_an_output_written_again_after_a_failed_write_keeps_its_own_time_and_step(tmp_path, monkeypatch):
     recorder = _FileRecorder(tmp_path)
     recorder.begin(2, 2, False, False)
     replace = run_files.os.replace
@@ -171,9 +170,10 @@ def test_an_output_written_again_after_a_failed_write_keeps_its_own_time(tmp_pat
     monkeypatch.setattr(run_files.os, 'replace', fail_once)
     with pytest.raises(OSError):
         recorder.record(0, 0.0, np.zeros((2, 3)), np.zeros((2, 3)), None, None)
-    recorder.record(0, 0.5, np.zeros((2, 3)), np.zeros((2, 3)), None, None)
-    recorder.record(1, 1.0, np.zeros((2, 3)), np.zeros((2, 3)), None, None)
+    recorder.record(5, 0.5, np.zeros((2, 3)), np.zeros((2, 3)), None, None)
+    recorder.record(10, 1.0, np.zeros((2, 3)), np.zeros((2, 3)), None, None)
     np.testing.assert_array_equal(recorder.outputs()[2], [0.5, 1.0])
+    assert recorder.steps == [5, 10]
 
 
 def test_a_snapshot_held_open_with_h5py_can_still_be_read(tmp_path):
@@ -265,9 +265,9 @@ class _Halo(ExternalConservativeForce):
         return -1e4 / np.sqrt(np.sum(pos**2, axis=1) + 1.0)
 
 
-def _sim():
+def _sim(**kwargs):
     rng = np.random.default_rng(1)
-    sim = Sim()
+    sim = Sim(**kwargs)
     sim.add_particles(rng.normal(size=(30, 3)) + 5, rng.normal(size=(30, 3)) * 20, np.full(30, 1e5), name='a', eps=0.05)
     sim.add_particles(rng.normal(size=(20, 3)) - 5, rng.normal(size=(20, 3)) * 20, np.full(20, 2e5), name='b', eps=0.1)
     sim.add_external_force(_Halo())
@@ -277,14 +277,8 @@ def _sim():
 @pytest.fixture(scope='module')
 def sims(tmp_path_factory):
     run = dict(t_end=0.5, dt=0.01, dt_out=0.05, method='direct', progress=False)
-    on_disk, in_memory = _sim(), _sim()
-    directory = tmp_path_factory.mktemp('sim_run')
-    memory_recorder = simulation_module._MemoryRecorder
-    simulation_module._MemoryRecorder = lambda: _FileRecorder(directory)
-    try:
-        on_disk.run(**run)
-    finally:
-        simulation_module._MemoryRecorder = memory_recorder
+    on_disk, in_memory = _sim(stream_to=tmp_path_factory.mktemp('sim_run')), _sim()
+    on_disk.run(**run)
     in_memory.run(**run)
     assert isinstance(on_disk._positions, _SnapshotArray)
     return on_disk, in_memory

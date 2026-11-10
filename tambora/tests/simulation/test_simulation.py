@@ -2,6 +2,7 @@
 Test the Sim class and its methods.
 '''
 
+import os
 import pytest 
 from tambora.simulation import Sim
 from tambora.simulation.simulation import _force_label, Component
@@ -2529,9 +2530,12 @@ class _CanBeInvalidated(ExternalConservativeForce):
     (dict(integration_method='rk4'), ValueError, r"Unknown integration_method 'rk4'.*\['leapfrog'\]"),
     ('invalid force', RuntimeError, "force invalidated"),
     (dict(monitors='bogus'), ValueError, "Unknown conserved quantity 'bogus'"),
+    (dict(monitors=['energy', 1]), TypeError, "monitors must be 'auto', a quantity name"),
+    ('second streamed run', FileExistsError, r"already holds a run \(run.h5\), which this run would overwrite"),
 ])
-def test_a_rejected_run_leaves_the_sim_as_the_last_run_left_it(bad, error, match):
-    sim = Sim()
+def test_a_rejected_run_leaves_the_sim_as_the_last_run_left_it(bad, error, match, tmp_path):
+    streamed = bad == 'second streamed run'
+    sim = Sim(stream_to=tmp_path / 'run') if streamed else Sim()
     sim.add_particles(name='c', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS, eps=0.1)
     force = _CanBeInvalidated()
     sim.add_external_force(force)
@@ -2541,12 +2545,19 @@ def test_a_rejected_run_leaves_the_sim_as_the_last_run_left_it(bad, error, match
     sim.run(**run)
     solver, monitor, hooks = sim._self_gravity_force, sim.monitor, list(sim._hooks)
     times, hook_times, drift = sim.times.copy(), list(hook.times), monitor.drift['energy'].copy()
+    settings, steps = sim._run_settings, sim._steps
+    files = {f: (tmp_path / 'run' / f).read_bytes() for f in os.listdir(tmp_path / 'run')} if streamed else None
 
     if bad == 'invalid force':
         force.valid, bad = False, {}
+    elif streamed:
+        bad = {}
     with pytest.raises(error, match=match):
         sim.run(**{**run, 'method': None, **bad})
 
+    assert sim._run_settings is settings and sim._steps is steps
+    if streamed:
+        assert {f: (tmp_path / 'run' / f).read_bytes() for f in os.listdir(tmp_path / 'run')} == files
     assert sim._self_gravity_force is solver
     assert sim.monitor is monitor and sim._hooks == hooks
     assert hook.resets == 1 and hook.times == hook_times
@@ -2917,6 +2928,23 @@ class TestDefaultMonitors:
         sim = self._sim()
         self._run(sim, monitors=('energy',))
         assert sim.monitor.track == ('energy',)
+
+    @pytest.mark.parametrize("bad", [5, True, ['energy', 1], [b'energy']])
+    def test_monitors_that_are_not_names_are_refused(self, bad):
+        with pytest.raises(TypeError, match="monitors must be 'auto', a quantity name"):
+            self._run(self._sim(), monitors=bad)
+
+    def test_bad_monitors_are_refused_also_when_your_own_monitor_wins(self):
+        sim = self._sim()
+        sim.add_hook(ConservationMonitor())
+        with pytest.raises(TypeError, match="monitors must be"):
+            self._run(sim, monitors=5)
+
+    def test_a_generator_of_names_is_read_once(self):
+        sim = self._sim()
+        self._run(sim, monitors=(name for name in ['energy']))
+        assert sim.monitor.track == ('energy',)
+        assert sim._run_settings['monitors'] == ('energy',)
 
     def test_bare_string_track_is_accepted(self):
         # monitors='energy' must not be exploded into ('e','n','e','r','g','y').

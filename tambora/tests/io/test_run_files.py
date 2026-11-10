@@ -443,3 +443,23 @@ def test_a_killed_writer_leaves_only_whole_files(tmp_path, files_before_kill):
             np.testing.assert_array_equal(f['vel'][...], np.ones((200_000, 3)))
     for name in names:                  # ~10 MB each; pytest keeps its last few temporary directories
         os.remove(tmp_path / name)
+
+
+def test_abandon_removes_the_run_file_only_while_nothing_is_recorded(tmp_path):
+    empty, started = _FileRecorder(tmp_path / 'empty'), _FileRecorder(tmp_path / 'started')
+    for recorder in (empty, started):
+        recorder.begin(2, 2, False, False)
+    started.record(0, 0.0, np.zeros((2, 3)), np.zeros((2, 3)), None, None)
+    for recorder in (empty, started):
+        recorder.abandon()
+    assert os.listdir(tmp_path / 'empty') == []
+    assert sorted(os.listdir(tmp_path / 'started')) == ['run.h5', 'snap_000000.h5']
+
+
+def test_abandon_leaves_a_run_file_the_recorder_did_not_write(tmp_path):
+    _run(_FileRecorder(tmp_path), t_end=0.1)
+    refused = _FileRecorder(tmp_path)
+    with pytest.raises(FileExistsError):
+        refused.begin(2, 2, False, False)
+    refused.abandon()
+    assert sorted(os.listdir(tmp_path)) == ['run.h5', 'snap_000000.h5', 'snap_000001.h5']

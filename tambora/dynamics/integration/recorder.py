@@ -6,6 +6,7 @@ class _Recorder(ABC):
     """Receives a run's outputs as they are made: ``begin`` once, then ``record`` per output."""
 
     n = 0  # outputs recorded so far
+    steps = ()  # each output's step; the first n are recorded
 
     @abstractmethod
     def begin(self, nsnaps, n_particles, keep_acc, keep_pot):
@@ -18,6 +19,9 @@ class _Recorder(ABC):
     @abstractmethod
     def outputs(self):
         """(pos, vel, times, self acc, self pot) of the outputs recorded so far."""
+
+    def abandon(self):
+        """Undo ``begin`` for a run that recorded nothing."""
 
 
 class _MemoryRecorder(_Recorder):
