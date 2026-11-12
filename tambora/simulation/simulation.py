@@ -2,6 +2,7 @@
 Simulation class for tambora.
 """
 
+import contextlib
 import os
 import numpy as np
 import warnings
@@ -53,19 +54,19 @@ def _check_monitors(monitors):
     return names
 
 
-def _check_stream_to(stream_to):
-    """*stream_to* as an absolute path."""
+def _check_stream_to(stream_to, name='stream_to'):
+    """*stream_to*, the directory argument *name*, as an absolute path."""
     try:
         path = os.fspath(stream_to)
     except TypeError:
         path = None
     if not isinstance(path, str):
-        raise TypeError(f"stream_to must be a path (str or os.PathLike), got {type(stream_to).__name__}.")
+        raise TypeError(f"{name} must be a path (str or os.PathLike), got {type(stream_to).__name__}.")
     if not path:
-        raise ValueError("stream_to can't be empty: name a directory.")
+        raise ValueError(f"{name} can't be empty: name a directory.")
     path = os.path.abspath(os.path.expanduser(path))
     if os.path.exists(path) and not os.path.isdir(path):
-        raise NotADirectoryError(f"stream_to={path!r} is a file, not a directory.")
+        raise NotADirectoryError(f"{name}={path!r} is a file, not a directory.")
     return path
 
 
@@ -1405,8 +1406,48 @@ class Sim(_ParticleView):
 
     # --- I/O ------------------------------------------------------------------------------
 
-    def save(self):
-        raise NotImplementedError("Saving simulations is not yet supported.")
+    def save(self, path):
+        """
+        Write this Sim's run to the directory *path*, as ``Sim(stream_to=path)`` would have.
+
+        ``Sim.load(path)`` reads it back.
+
+        Parameters
+        ----------
+        path : str or path
+            The directory to write to. It's made if it doesn't exist.
+
+        Raises
+        ------
+        RuntimeError
+            If the Sim hasn't run.
+        FileExistsError
+            If *path* holds a run.
+        NotADirectoryError
+            If *path* is a file.
+
+        Notes
+        -----
+        - A Sim that streams, or was loaded, is copied.
+        - As for a streamed run, external forces and hooks aren't saved. Their labels are.
+        - If saving stops partway (an error, Ctrl-C), the files written are removed.
+        """
+        if not self._has_run:
+            raise RuntimeError("This Sim hasn't run. There's nothing to save.")
+        directory = _check_stream_to(path, name='path')
+        run, acc, pot = self._run_settings, self._cached_self_acc, self._cached_self_pot
+        recorder = _FileRecorder(directory, settings=self._settings(run))
+        recorder.begin(run['n_steps'] // run['steps_per_output'] + 1, self._mass.shape[0],
+                       acc is not None, pot is not None)
+        try:
+            for i, (step, t) in enumerate(zip(self._steps, self._times)):
+                recorder.record(int(step), float(t), self._positions[i], self._velocities[i],
+                                None if acc is None else acc[i], None if pot is None else pot[i])
+        except BaseException:
+            for name in [snapshot_name(i) for i in range(recorder.n)] + [RUN_FILE]:
+                with contextlib.suppress(OSError):
+                    os.remove(os.path.join(directory, name))
+            raise
 
     @classmethod
     def load(cls, path):
