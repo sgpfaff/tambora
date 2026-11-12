@@ -16,8 +16,8 @@ from ..dynamics import diagnostics
 from ..ic import ParticleSet
 from ..dynamics.integration import StepState
 from ..dynamics.integration.recorder import _MemoryRecorder
-from ..dynamics.integration.integrate import _check_dt_dt_out, _count_steps
-from ..io.run_files import _FileRecorder, existing_run
+from ..dynamics.integration.integrate import _check_dt_dt_out, _count_steps, _time_at
+from ..io.run_files import RUN_FILE, _FileRecorder, _snapshot_arrays, existing_run, read_run, snapshot_name
 import inspect
 import keyword
 from typing import Optional
@@ -134,6 +134,7 @@ class Sim(_ParticleView):
         Directory to write the run to, one file per output, instead of keeping it
         in memory; the accessors then read the files. It must not hold a run
         already, and a Sim that streams runs once. Default: None (in memory).
+        ``Sim.load(path)`` reads the run back.
     """
 
     _sl = slice(None)
@@ -171,6 +172,7 @@ class Sim(_ParticleView):
         self._self_gravity_force = NullSelfGravity()
         self._conserv_ext_force = _CompositeConservative([]) # conservative external forces
         self._base_ext_force = _CompositePlain([]) # non-conservative external forces
+        self._loaded = False # made by Sim.load: can't run
         self._hooks = [] # (Hook, Cadence) pairs run during integration
         self._auto_monitor = None # the ConservationMonitor the last run attached itself
 
@@ -334,6 +336,8 @@ class Sim(_ParticleView):
     def _clear_outputs(self):
         """Back to the initial conditions, as before ``run()``."""
         N = self._mass.shape[0]
+        if self._init_pos is None:      # i.e., use the first output in a loaded Sim
+            self._init_pos, self._init_vel = self._positions[0], self._velocities[0]
         self._positions = self._init_pos.reshape(1, N, 3)
         self._velocities = self._init_vel.reshape(1, N, 3)
         self._times = np.array([0.0])
@@ -531,10 +535,13 @@ class Sim(_ParticleView):
                 recorded up to then are kept and the error is raised again. falcON aborting the
                 whole process (e.g. on NaN positions) can't be caught, so nothing is kept then.
 
-        - A Sim made with ``stream_to`` runs once: running again would overwrite its run,
-                so it raises. A run that stops before its first output leaves nothing in the
-                directory.
+        - A Sim made with ``stream_to`` runs once. A Sim from ``Sim.load`` can't run.
+
+        - A run that stops before its first output leaves nothing in the directory. 
         """
+        if self._loaded:
+            raise RuntimeError(f"This Sim was loaded from {self._stream_to!r} and can't run. "
+                               "Make a new Sim to run again.")
         supported = sorted(m for m in SELF_GRAVITY_METHODS if m is not None)
         if method not in SELF_GRAVITY_METHODS:
             raise ValueError(
@@ -1399,10 +1406,80 @@ class Sim(_ParticleView):
     # --- I/O ------------------------------------------------------------------------------
 
     def save(self):
-        raise NotImplementedError("Saving and loading simulations is not yet supported.")
-    
-    def load(self):
-        raise NotImplementedError("Saving and loading simulations is not yet supported.")
+        raise NotImplementedError("Saving simulations is not yet supported.")
+
+    @classmethod
+    def load(cls, path):
+        """
+        The Sim whose run was streamed to *path* with ``Sim(stream_to=path)``.
+
+        Parameters
+        ----------
+        path : str or path
+            The run's directory.
+
+        Returns
+        -------
+        Sim
+
+        Raises
+        ------
+        FileNotFoundError
+            If *path* holds no run.
+        NotADirectoryError
+            If *path* is a file, e.g. ``run.h5`` itself.
+        ValueError
+            If the run can't be read (e.g., another format, no outputs, or snapshot files
+            that don't match ``run.h5``).
+
+        Warns
+        -----
+        UserWarning
+            If the run used external forces that couldn't be loaded, naming them.
+        UserWarning
+            If the run made fewer outputs than planned: it stopped early, or is still
+            running.
+
+        Notes
+        -----
+        - Snapshots are read from their files when an accessor asks for them.
+        - The run's external forces aren't saved. Add them again with ``add_external_pot`` or
+                ``add_external_force`` before computing anything that needs them. They're left out 
+                until then.
+        - Hooks and their records aren't saved either.
+        - A loaded Sim can't run again.
+        """
+        directory = os.path.abspath(os.path.expanduser(os.fspath(path)))
+        run = read_run(directory)
+        settings, n = run['settings'], run['n_outputs']
+        if n == 0:
+            raise ValueError(f"{directory!r} holds no outputs.")
+        steps = np.arange(n, dtype=np.int64) * settings['run']['steps_per_output']
+        times = _time_at(settings['run']['t0'], settings['run']['dt'], steps)
+        if run['last'] != (int(steps[-1]), float(times[-1])):
+            raise ValueError(f"{snapshot_name(n - 1)} in {directory!r} has step {run['last'][0]} at "
+                             f"t = {run['last'][1]!r} Gyr, but {RUN_FILE} puts output {n - 1} at step "
+                             f"{steps[-1]}, t = {float(times[-1])!r} Gyr.")
+        sim = cls()
+        components = settings['components']
+        sim._slices = {str(name): slice(int(start), int(stop)) for name, start, stop
+                       in zip(components['names'], components['start'], components['stop'])}
+        sim._mass = np.asarray(settings['particles']['mass'], dtype=np.float64)
+        sim._eps = np.asarray(settings['particles']['eps'], dtype=np.float64)
+        sim._positions, sim._velocities, sim._cached_self_acc, sim._cached_self_pot = _snapshot_arrays(
+            directory, n, run['n_particles'], run['keep_self_acc'], run['keep_self_pot'])
+        sim._times, sim._steps = times, steps
+        sim._run_settings = settings['run']
+        sim._has_run = sim._loaded = True
+        sim._stream_to = directory
+        if settings['run']['forces']:
+            warnings.warn(f"{', '.join(settings['run']['forces'])} couldn't be loaded. Add them again with add_external_pot "
+                          "or add_external_force before computing anything that needs them. Until then, "
+                          "they're left out.", stacklevel=2)
+        if n < run['expected_outputs']:
+            warnings.warn(f"{directory!r} holds {n} of the {run['expected_outputs']} outputs its run "
+                          "was to make. The run stopped early, or is still running.", stacklevel=2)
+        return sim
 
     # --- Output to external formats -------------------------------------------------------
 

@@ -122,11 +122,8 @@ class _FileRecorder(_Recorder):
 
     def outputs(self):
         """The outputs recorded so far, as arrays that read their snapshot files when indexed."""
-        n, N = self.n, self.n_particles
-        acc = _SnapshotArray(self.directory, 'self_acc', n, (N, 3)) if self.keep_acc else None
-        pot = _SnapshotArray(self.directory, 'self_pot', n, (N,)) if self.keep_pot else None
-        pos = _SnapshotArray(self.directory, 'pos', n, (N, 3))
-        vel = _SnapshotArray(self.directory, 'vel', n, (N, 3))
+        n = self.n
+        pos, vel, acc, pot = _snapshot_arrays(self.directory, n, self.n_particles, self.keep_acc, self.keep_pot)
         return pos, vel, np.array(self._times[:n], dtype=np.float64), acc, pot
 
     def _path(self, name):
@@ -156,6 +153,49 @@ class _FileRecorder(_Recorder):
             raise
         if self.fsync:
             _fsync_directory(self.directory)
+
+
+def read_run(directory):
+    """What ``Sim.load`` needs from a run directory, without reading snapshot data.
+
+    A dict: ``run.h5``'s ``settings``, ``expected_outputs``, ``n_particles``,
+    ``keep_self_acc`` and ``keep_self_pot``; ``n_outputs``, the snapshot files
+    written, counted from the first; and ``last``, the step and time of the last
+    of them (None if there's none).
+    """
+    if os.path.isfile(directory):
+        raise NotADirectoryError(f"{directory!r} is a file. Pass the run's directory.")
+    path = os.path.join(directory, RUN_FILE)
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"{directory!r} holds no run. It has no {RUN_FILE}.")
+    with _open_for_reading(path) as f:
+        if f.attrs.get('format') != FORMAT:
+            raise ValueError(f"{path!r} isn't a tambora run file.")
+        major, minor = (int(v) for v in f.attrs['format_version'])
+        if major != FORMAT_VERSION[0]:
+            raise ValueError(f"{path!r} has format version {major}.{minor}; "
+                             f"this tambora reads {FORMAT_VERSION[0]}.x.")
+        run = {key: f.attrs[key].item()
+               for key in ('expected_outputs', 'n_particles', 'keep_self_acc', 'keep_self_pot')}
+        run['settings'] = _read_settings(f['settings'])
+    names = set(os.listdir(directory))
+    n = 0
+    while snapshot_name(n) in names:
+        n += 1
+    run['n_outputs'], run['last'] = n, None
+    if n:
+        with _open_for_reading(os.path.join(directory, snapshot_name(n - 1))) as f:
+            run['last'] = (int(f.attrs['step']), float(f.attrs['t']))
+    return run
+
+
+def _snapshot_arrays(directory, n, n_particles, keep_acc, keep_pot):
+    """pos, vel, self_acc and self_pot over the first *n* snapshot files; None for a cache not kept."""
+    acc = _SnapshotArray(directory, 'self_acc', n, (n_particles, 3)) if keep_acc else None
+    pot = _SnapshotArray(directory, 'self_pot', n, (n_particles,)) if keep_pot else None
+    pos = _SnapshotArray(directory, 'pos', n, (n_particles, 3))
+    vel = _SnapshotArray(directory, 'vel', n, (n_particles, 3))
+    return pos, vel, acc, pot
 
 
 class _SnapshotArray:
