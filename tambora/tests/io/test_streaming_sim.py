@@ -9,6 +9,9 @@ import numpy as np
 import pytest
 
 import tambora.simulation.simulation as simulation_module
+from galpy import potential as gp
+
+from tambora.dynamics.forces.Force import Force
 from tambora.dynamics.hooks import EveryOutput, EveryStep, Hook
 from tambora.io import run_files
 from tambora.io.run_files import RUN_FILE, _read_settings, _SnapshotArray, snapshot_name
@@ -139,13 +142,53 @@ def test_run_h5_holds_the_components_particles_and_run_settings(tmp_path):
     assert settings['run'] == sim._run_settings == {
         't0': 0.0, 't_end': 1.0, 'dt': 0.01, 'dt_out': 0.05, 'n_steps': 100, 'steps_per_output': 5,
         'integration_method': 'leapfrog', 'self_gravity': {'method': 'falcON', 'kernel': 1, 'theta': 0.6},
-        'cache_self_gravity_acc': True, 'cache_self_gravity_pot': True, 'monitors': 'auto'}
+        'cache_self_gravity_acc': True, 'cache_self_gravity_pot': True, 'monitors': 'auto', 'forces': [],
+        'hooks': {'names': ['ConservationMonitor'], 'cadences': ['EveryOutput']}}
     assert all(type(settings['run'][k]) is float for k in ('t0', 't_end', 'dt', 'dt_out'))
     with h5py.File(tmp_path / 'run' / RUN_FILE, 'r') as f:
         assert (f.attrs['expected_outputs'], f.attrs['n_particles']) == (21, 50)
     for i, step in enumerate(sim._steps):
         with h5py.File(tmp_path / 'run' / snapshot_name(i), 'r') as f:
             assert (f.attrs['step'], f.attrs['t']) == (step, sim.times[i])
+
+
+class _Drag(Force):
+    def acc(self, pos, vel, mass, t):
+        return -0.1 * vel
+
+
+def _note(state):
+    pass
+
+
+def test_run_h5_lists_the_forces_and_hooks_as_repr_does(tmp_path):
+    sim = _sim(stream_to=tmp_path / 'run')
+    sim.add_external_force(_Drag())
+    sim.add_external_pot([gp.NFWPotential(ro=8, vo=220), gp.MiyamotoNagaiPotential(ro=8, vo=220)])
+    sim.add_hook(_note, EveryStep())
+    sim.run(**RUN)
+    assert _settings(tmp_path / 'run')['run'] == sim._run_settings
+    assert sim._run_settings['forces'] == ['ExternalPotential(NFWPotential+MiyamotoNagaiPotential)', '_Drag']
+    assert sim._run_settings['hooks'] == {'names': ['function', 'ConservationMonitor'],
+                                          'cadences': ['EveryStep', 'EveryOutput']}
+    assert all(label in repr(sim) for label in sim._run_settings['forces'] + sim._run_settings['hooks']['names'])
+
+
+def test_run_h5_lists_the_hooks_the_run_had():
+    sim = _sim()
+    sim.add_hook(_note)
+    sim.run(**RUN)
+    assert sim._run_settings['hooks']['names'] == ['function', 'ConservationMonitor']
+    sim.eps = 0.3                                   # clears the outputs: the Sim can run again
+    sim.run(**RUN, monitors=False)
+    assert sim._run_settings['hooks'] == {'names': ['function'], 'cadences': ['EveryOutput']}
+
+
+def test_a_run_without_forces_or_hooks_lists_none(tmp_path):
+    sim = _sim(stream_to=tmp_path / 'run')
+    sim.run(**RUN, monitors=False)
+    assert sim._run_settings['forces'] == [] and sim._run_settings['hooks'] == {'names': [], 'cadences': []}
+    assert _settings(tmp_path / 'run')['run'] == sim._run_settings
 
 
 @pytest.mark.parametrize("times, n_steps, steps_per_output", [

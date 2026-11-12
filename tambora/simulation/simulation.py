@@ -582,6 +582,8 @@ class Sim(_ParticleView):
             'cache_self_gravity_acc': cache_self_gravity_acc,
             'cache_self_gravity_pot': cache_self_gravity_pot,
             'monitors': monitors,
+            'forces': [_force_label(force) for force in
+                       self._conserv_ext_force.members + self._base_ext_force.members],
         }
 
         # Every check passed: only now change the Sim.
@@ -590,6 +592,8 @@ class Sim(_ParticleView):
         self._auto_monitor = monitor
         if monitor is not None:
             self._hooks.append((monitor, monitor.default_cadence))
+        run_settings['hooks'] = {'names': [type(h).__name__ for h, _ in self._hooks],
+                                 'cadences': [_cadence_label(c) for _, c in self._hooks]}
         from ..dynamics.hooks import Hook
         for hook, _ in self._hooks:
             if isinstance(hook, Hook):
@@ -643,7 +647,8 @@ class Sim(_ParticleView):
     def _settings(self, run_settings):
         """``run.h5``'s settings: the components, the particles' mass and softening, and the run's settings.
 
-        The initial positions and velocities are the first output's.
+        The run's settings list its external forces and hooks as ``repr(sim)`` does. The initial
+        positions and velocities are the first output's.
         """
         return {
             'components': {
