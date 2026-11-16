@@ -42,7 +42,7 @@ def _assert_same_files(saved, streamed):
 ], ids=['default', 'no caches', 'no pot', 'no self-gravity', 'falcON', 'backward', 'later t0, uneven end',
         'no monitor'])
 def test_a_saved_run_is_what_streaming_writes(tmp_path, run):
-    memory, disk = _sim(), _sim(stream_to=tmp_path / 'streamed')
+    memory, disk = _sim(), _sim(output_dir=tmp_path / 'streamed')
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')     # the uneven end
         memory.run(**{**RUN, **run})
@@ -55,7 +55,7 @@ def test_a_saved_run_is_what_streaming_writes(tmp_path, run):
 
 
 def test_saving_a_streamed_or_loaded_sim_copies_its_run(tmp_path):
-    streamed = _sim(stream_to=tmp_path / 'run')
+    streamed = _sim(output_dir=tmp_path / 'run')
     streamed.run(**RUN)
     streamed.save(tmp_path / 'copy')
     Sim.load(tmp_path / 'run').save(str(tmp_path / 'copy of loaded'))
@@ -109,7 +109,7 @@ def test_a_sim_that_hasnt_run_isnt_saved(tmp_path):
 
 
 def test_a_directory_holding_a_run_is_refused_and_left_alone(tmp_path):
-    _sim(stream_to=tmp_path / 'run').run(**RUN)
+    _sim(output_dir=tmp_path / 'run').run(**RUN)
     files = _files(tmp_path / 'run')
     sim = _sim()
     sim.run(**RUN)

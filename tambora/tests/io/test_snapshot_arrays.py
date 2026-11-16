@@ -278,7 +278,7 @@ def _sim(**kwargs):
 @pytest.fixture(scope='module')
 def sims(tmp_path_factory):
     run = dict(t_end=0.5, dt=0.01, dt_out=0.05, method='direct', progress=False)
-    on_disk, in_memory = _sim(stream_to=tmp_path_factory.mktemp('sim_run')), _sim()
+    on_disk, in_memory = _sim(output_dir=tmp_path_factory.mktemp('sim_run')), _sim()
     on_disk.run(**run)
     in_memory.run(**run)
     assert isinstance(on_disk._positions, _SnapshotArray)

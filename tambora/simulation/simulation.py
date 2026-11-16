@@ -54,14 +54,14 @@ def _check_monitors(monitors):
     return names
 
 
-def _check_stream_to(stream_to, name='stream_to'):
-    """*stream_to*, the directory argument *name*, as an absolute path."""
+def _check_output_dir(output_dir, name='output_dir'):
+    """*output_dir*, the directory argument *name*, as an absolute path."""
     try:
-        path = os.fspath(stream_to)
+        path = os.fspath(output_dir)
     except TypeError:
         path = None
     if not isinstance(path, str):
-        raise TypeError(f"{name} must be a path (str or os.PathLike), got {type(stream_to).__name__}.")
+        raise TypeError(f"{name} must be a path (str or os.PathLike), got {type(output_dir).__name__}.")
     if not path:
         raise ValueError(f"{name} can't be empty: name a directory.")
     path = os.path.abspath(os.path.expanduser(path))
@@ -131,10 +131,10 @@ class Sim(_ParticleView):
 
     Parameters
     ----------
-    stream_to : str or path, optional
+    output_dir : str or path, optional
         Directory to write the run to, one file per output, instead of keeping it
         in memory; the accessors then read the files. It must not hold a run
-        already, and a Sim that streams runs once. Default: None (in memory).
+        already, and a Sim with an output_dir runs once. Default: None (in memory).
         ``Sim.load(path)`` reads the run back.
     """
 
@@ -144,12 +144,12 @@ class Sim(_ParticleView):
     def _sim(self):
         return self
 
-    def __init__(self, *, stream_to=None):
-        self._stream_to = None if stream_to is None else _check_stream_to(stream_to)
-        taken = self._run_in_stream_to()
+    def __init__(self, *, output_dir=None):
+        self._output_dir = None if output_dir is None else _check_output_dir(output_dir)
+        taken = self._run_in_output_dir()
         if taken:
-            raise FileExistsError(f"{self._stream_to!r} already holds a run ({taken}). "
-                                  "Delete it, or stream to another directory.")
+            raise FileExistsError(f"{self._output_dir!r} already holds a run ({taken}). "
+                                  "Delete it, or use another output_dir.")
         self._host = None
 
         # Particle arrays -- built incrementally by add_particles()
@@ -348,9 +348,9 @@ class Sim(_ParticleView):
         self._run_settings = None
         self._has_run = False
 
-    def _run_in_stream_to(self):
-        """The first of a run's files in the directory this Sim streams to, or None."""
-        return None if self._stream_to is None else existing_run(self._stream_to)
+    def _run_in_output_dir(self):
+        """The first of a run's files in this Sim's output_dir, or None."""
+        return None if self._output_dir is None else existing_run(self._output_dir)
 
     def add_external_force(self, force: Force):
         '''
@@ -535,12 +535,12 @@ class Sim(_ParticleView):
           recorded up to then are kept and the error is raised again. falcON aborting the
           whole process (e.g. on NaN positions) can't be caught, so nothing is kept then.
 
-        - A Sim made with ``stream_to`` runs once. A Sim from ``Sim.load`` can't run.
+        - A Sim made with ``output_dir`` runs once. A Sim from ``Sim.load`` can't run.
 
         - A run that stops before its first output leaves nothing in the directory.
         """
         if self._loaded:
-            raise RuntimeError(f"This Sim was loaded from {self._stream_to!r} and can't run. "
+            raise RuntimeError(f"This Sim was loaded from {self._output_dir!r} and can't run. "
                                "Make a new Sim to run again.")
         supported = sorted(m for m in SELF_GRAVITY_METHODS if m is not None)
         if method not in SELF_GRAVITY_METHODS:
@@ -576,10 +576,10 @@ class Sim(_ParticleView):
                 check()
         monitors = _check_monitors(monitors)
         monitor = self._default_monitor(monitors)
-        taken = self._run_in_stream_to()
+        taken = self._run_in_output_dir()
         if taken:
-            raise FileExistsError(f"{self._stream_to!r} already holds a run ({taken}), which this run "
-                                  "would overwrite. Stream to another directory from a new Sim, or delete the old run.")
+            raise FileExistsError(f"{self._output_dir!r} already holds a run ({taken}), which this run "
+                                  "would overwrite. Make a new Sim with another output_dir, or delete the old run.")
         n_steps, _, steps_per_output = _count_steps(dt, dt_out, t0, t_end)
         run_settings = {
             't0': t0, 't_end': t_end, 'dt': dt, 'dt_out': dt_out,
@@ -607,10 +607,10 @@ class Sim(_ParticleView):
                 hook.reset()
         integrator = INTEGRATORS[integration_method]()
 
-        if self._stream_to is None:
+        if self._output_dir is None:
             recorder = _MemoryRecorder()
         else:
-            recorder = _FileRecorder(self._stream_to, settings=self._settings(run_settings))
+            recorder = _FileRecorder(self._output_dir, settings=self._settings(run_settings))
         try:
             _runner(
                     self._init_pos, self._init_vel, self._mass,
@@ -1407,7 +1407,7 @@ class Sim(_ParticleView):
 
     def save(self, path):
         """
-        Write this Sim's run to the directory *path*, as ``Sim(stream_to=path)`` would have.
+        Write this Sim's run to the directory *path*, as ``Sim(output_dir=path)`` would have.
 
         ``Sim.load(path)`` reads it back.
 
@@ -1427,13 +1427,13 @@ class Sim(_ParticleView):
 
         Notes
         -----
-        - A Sim that streams, or was loaded, is copied.
-        - As for a streamed run, external forces and hooks aren't saved. Their labels are.
+        - A Sim with an ``output_dir``, or a loaded one, is copied.
+        - External forces and hooks aren't saved. Their labels are.
         - If saving stops partway (an error, Ctrl-C), the files written are removed.
         """
         if not self._has_run:
             raise RuntimeError("This Sim hasn't run. There's nothing to save.")
-        directory = _check_stream_to(path, name='path')
+        directory = _check_output_dir(path, name='path')
         run, acc, pot = self._run_settings, self._cached_self_acc, self._cached_self_pot
         recorder = _FileRecorder(directory, settings=self._settings(run))
         recorder.begin(run['n_steps'] // run['steps_per_output'] + 1, self._mass.shape[0],
@@ -1451,7 +1451,7 @@ class Sim(_ParticleView):
     @classmethod
     def load(cls, path):
         """
-        The Sim whose run was streamed to *path* with ``Sim(stream_to=path)``.
+        The Sim whose run was written to *path* by ``Sim(output_dir=path)`` or ``sim.save(path)``.
 
         Parameters
         ----------
@@ -1511,7 +1511,7 @@ class Sim(_ParticleView):
         sim._times, sim._steps = times, steps
         sim._run_settings = settings['run']
         sim._has_run = sim._loaded = True
-        sim._stream_to = directory
+        sim._output_dir = directory
         if settings['run']['forces']:
             warnings.warn(f"{', '.join(settings['run']['forces'])} couldn't be loaded. Add them again with add_external_pot "
                           "or add_external_force before computing anything that needs them. Until then, "

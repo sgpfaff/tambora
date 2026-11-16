@@ -2535,7 +2535,7 @@ class _CanBeInvalidated(ExternalConservativeForce):
 ])
 def test_a_rejected_run_leaves_the_sim_as_the_last_run_left_it(bad, error, match, tmp_path):
     streamed = bad == 'second streamed run'
-    sim = Sim(stream_to=tmp_path / 'run') if streamed else Sim()
+    sim = Sim(output_dir=tmp_path / 'run') if streamed else Sim()
     sim.add_particles(name='c', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS, eps=0.1)
     force = _CanBeInvalidated()
     sim.add_external_force(force)

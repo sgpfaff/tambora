@@ -1,4 +1,4 @@
-"""Sim(stream_to=...): a run written to a directory as it runs, and read back from it."""
+"""Sim(output_dir=...): a run written to a directory as it runs, and read back from it."""
 
 import os
 import pathlib
@@ -77,7 +77,7 @@ class _Steps(Hook):
     dict(method=None), dict(method='falcON', theta=0.4), dict(t_end=-0.2, dt=-0.01, dt_out=-0.05),
 ], ids=['default', 'no caches', 'no pot', 'no self-gravity', 'falcON', 'backward'])
 def test_a_streamed_run_is_the_run_kept_in_memory_bit_for_bit(tmp_path, run):
-    disk, memory = _sim(stream_to=tmp_path / 'run'), _sim()
+    disk, memory = _sim(output_dir=tmp_path / 'run'), _sim()
     disk.run(**{**RUN, **run})
     memory.run(**{**RUN, **run})
     for name in ('_positions', '_velocities', '_cached_self_acc', '_cached_self_pot'):
@@ -87,7 +87,7 @@ def test_a_streamed_run_is_the_run_kept_in_memory_bit_for_bit(tmp_path, run):
 
 
 def test_a_run_that_stops_early_keeps_the_same_outputs_streamed_as_in_memory(tmp_path):
-    disk, memory = _sim(stream_to=tmp_path / 'run'), _sim()
+    disk, memory = _sim(output_dir=tmp_path / 'run'), _sim()
     for sim in (disk, memory):
         sim.add_hook(_Stop(at=12), EveryStep())
         with pytest.warns(UserWarning, match="stopped early: the 3 outputs"), \
@@ -105,7 +105,7 @@ def test_a_streamed_run_that_stops_before_its_first_output_leaves_no_run_behind(
         def __call__(self, state):
             raise stop("stopped by the test")
     (tmp_path / 'notes.txt').write_text('mine')
-    sim = _sim(stream_to=tmp_path)
+    sim = _sim(output_dir=tmp_path)
     hook = _StopAtStart()
     sim.add_hook(hook, EveryStep())
     with pytest.raises(stop, match="stopped by the test"):
@@ -118,7 +118,7 @@ def test_a_streamed_run_that_stops_before_its_first_output_leaves_no_run_behind(
 
 
 def test_a_run_refused_by_the_writer_leaves_the_other_runs_files(tmp_path, monkeypatch):
-    first, second = _sim(stream_to=tmp_path / 'run'), _sim(stream_to=tmp_path / 'run')
+    first, second = _sim(output_dir=tmp_path / 'run'), _sim(output_dir=tmp_path / 'run')
     first.run(**RUN)
     files = _files(tmp_path / 'run')
     monkeypatch.setattr(simulation_module, 'existing_run', lambda directory: None)
@@ -130,7 +130,7 @@ def test_a_run_refused_by_the_writer_leaves_the_other_runs_files(tmp_path, monke
 # --- run.h5 holds what Sim.load needs ------------------------------------------------- #
 
 def test_run_h5_holds_the_components_particles_and_run_settings(tmp_path):
-    sim = _sim(stream_to=tmp_path / 'run')
+    sim = _sim(output_dir=tmp_path / 'run')
     sim.run(t_end=1, dt=0.01, dt_out=0.05, method='falcON', progress=False)
     settings = _settings(tmp_path / 'run')
     assert list(settings) == ['components', 'particles', 'run']
@@ -162,7 +162,7 @@ def _note(state):
 
 
 def test_run_h5_lists_the_forces_and_hooks_as_repr_does(tmp_path):
-    sim = _sim(stream_to=tmp_path / 'run')
+    sim = _sim(output_dir=tmp_path / 'run')
     sim.add_external_force(_Drag())
     sim.add_external_pot([gp.NFWPotential(ro=8, vo=220), gp.MiyamotoNagaiPotential(ro=8, vo=220)])
     sim.add_hook(_note, EveryStep())
@@ -185,7 +185,7 @@ def test_run_h5_lists_the_hooks_the_run_had():
 
 
 def test_a_run_without_forces_or_hooks_lists_none(tmp_path):
-    sim = _sim(stream_to=tmp_path / 'run')
+    sim = _sim(output_dir=tmp_path / 'run')
     sim.run(**RUN, monitors=False)
     assert sim._run_settings['forces'] == [] and sim._run_settings['hooks'] == {'names': [], 'cadences': []}
     assert _settings(tmp_path / 'run')['run'] == sim._run_settings
@@ -198,7 +198,7 @@ def test_a_run_without_forces_or_hooks_lists_none(tmp_path):
     (dict(t0=-1, t_end=1, dt=0.25, dt_out=0.5), 8, 2),
 ], ids=['later t0', 'backward', 'uneven end', 'ints'])
 def test_the_run_settings_are_the_arguments_given(tmp_path, times, n_steps, steps_per_output):
-    sim = _sim(stream_to=tmp_path / 'run')
+    sim = _sim(output_dir=tmp_path / 'run')
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         sim.run(**{**RUN, **times})
@@ -210,7 +210,7 @@ def test_the_run_settings_are_the_arguments_given(tmp_path, times, n_steps, step
 
 def test_the_times_are_those_the_settings_give(tmp_path):
     """float32 or int times are run in float64, as recorded; every snapshot's t is a float."""
-    sim = _sim(stream_to=tmp_path / 'run')
+    sim = _sim(output_dir=tmp_path / 'run')
     sim.run(**{**RUN, 't0': np.float32(0.1), 't_end': 2, 'dt': np.float32(0.25), 'dt_out': 0.5})
     settings = _settings(tmp_path / 'run')['run']
     assert sim.times.dtype == np.float64
@@ -227,7 +227,7 @@ def test_the_times_are_those_the_settings_give(tmp_path):
     (None, {}, {'method': None}),
 ])
 def test_the_solver_is_recorded_with_every_setting(tmp_path, method, kwargs, expected):
-    sim = _sim(stream_to=tmp_path / 'run')
+    sim = _sim(output_dir=tmp_path / 'run')
     sim.run(**{**RUN, 'method': method, **kwargs})
     assert sim._run_settings['self_gravity'] == expected
     assert _settings(tmp_path / 'run')['run']['self_gravity'] == expected
@@ -238,7 +238,7 @@ def test_the_solver_is_recorded_with_every_setting(tmp_path, method, kwargs, exp
     (('energy',), ('energy',), ['energy']), (['energy'], ('energy',), ['energy']), ((), (), []),
 ])
 def test_monitors_are_recorded_as_given(tmp_path, monitors, kept, on_disk):
-    sim = _sim(stream_to=tmp_path / 'run')
+    sim = _sim(output_dir=tmp_path / 'run')
     sim.run(**RUN, monitors=monitors)
     assert sim._run_settings['monitors'] == kept
     recorded = _settings(tmp_path / 'run')['run']['monitors']
@@ -247,7 +247,7 @@ def test_monitors_are_recorded_as_given(tmp_path, monitors, kept, on_disk):
 
 @pytest.mark.parametrize("acc, pot", [(1, np.False_), (np.True_, None), ('yes', 0)])
 def test_the_cache_flags_are_recorded_as_true_or_false(tmp_path, acc, pot):
-    sim, memory = _sim(stream_to=tmp_path / 'run'), _sim()
+    sim, memory = _sim(output_dir=tmp_path / 'run'), _sim()
     for each in (sim, memory):
         each.run(**RUN, cache_self_gravity_acc=acc, cache_self_gravity_pot=pot)
     _assert_same_run(sim, memory)
@@ -259,7 +259,7 @@ def test_the_cache_flags_are_recorded_as_true_or_false(tmp_path, acc, pot):
 
 
 def test_an_unset_softening_is_recorded_as_nan(tmp_path):
-    sim = Sim(stream_to=tmp_path / 'run')
+    sim = Sim(output_dir=tmp_path / 'run')
     sim.add_particles(np.zeros((2, 3)), np.ones((2, 3)), np.ones(2), name='a')
     sim.run(**{**RUN, 'method': None})
     assert np.isnan(_settings(tmp_path / 'run')['particles']['eps']).all()
@@ -269,7 +269,7 @@ def test_an_unset_softening_is_recorded_as_nan(tmp_path):
 
 @pytest.mark.parametrize("streamed", [False, True])
 def test_each_output_keeps_the_step_that_made_it(tmp_path, streamed):
-    sim = _sim(stream_to=tmp_path / 'run') if streamed else _sim()
+    sim = _sim(output_dir=tmp_path / 'run') if streamed else _sim()
     hook = _Steps()
     sim.add_hook(hook, EveryOutput())
     sim.run(**RUN)
@@ -317,22 +317,22 @@ def test_a_directory_holding_a_run_is_refused_when_the_sim_is_made_and_left_alon
     (tmp_path / taken).write_bytes(b'an earlier run')
     (tmp_path / 'notes.txt').write_text('mine')
     files = _files(tmp_path)
-    with pytest.raises(FileExistsError, match=rf"already holds a run \({taken}\)\. Delete it, or stream to another"):
-        Sim(stream_to=tmp_path)
+    with pytest.raises(FileExistsError, match=rf"already holds a run \({taken}\)\. Delete it, or use another output_dir"):
+        Sim(output_dir=tmp_path)
     assert _files(tmp_path) == files
 
 
 @pytest.mark.parametrize("other", ['notes.txt', 'run.h5.tmp', 'run.h5.12345-0badc0de.tmp', 'snapshots'])
 def test_other_files_in_the_directory_are_left_alone(tmp_path, other):
     (tmp_path / other).write_text('mine')
-    sim = _sim(stream_to=tmp_path)
+    sim = _sim(output_dir=tmp_path)
     sim.run(**RUN)
     assert (tmp_path / other).read_text() == 'mine'
     assert len(os.listdir(tmp_path)) == 1 + 1 + len(sim.times)
 
 
 def test_a_missing_directory_is_made_by_the_run_not_by_the_sim(tmp_path):
-    sim = _sim(stream_to=tmp_path / 'a' / 'b')
+    sim = _sim(output_dir=tmp_path / 'a' / 'b')
     assert not (tmp_path / 'a').exists()
     sim.run(**RUN)
     assert (tmp_path / 'a' / 'b' / RUN_FILE).exists()
@@ -342,7 +342,7 @@ def test_a_relative_directory_is_fixed_when_the_sim_is_made(tmp_path, monkeypatc
     (tmp_path / 'here').mkdir()
     (tmp_path / 'there').mkdir()
     monkeypatch.chdir(tmp_path / 'here')
-    sim = _sim(stream_to='run')
+    sim = _sim(output_dir='run')
     monkeypatch.chdir(tmp_path / 'there')
     sim.run(**RUN)
     assert os.listdir(tmp_path / 'there') == []
@@ -353,31 +353,31 @@ def test_a_directory_in_the_home_directory_can_be_written_with_a_tilde(tmp_path,
     monkeypatch.setenv('HOME', str(tmp_path))
     monkeypatch.setenv('USERPROFILE', str(tmp_path))
     monkeypatch.chdir(tmp_path)
-    sim = _sim(stream_to='~/run')
+    sim = _sim(output_dir='~/run')
     sim.run(**RUN)
     assert (tmp_path / 'run' / RUN_FILE).exists() and not (tmp_path / '~').exists()
 
 
 def test_a_path_object_works(tmp_path):
-    sim = _sim(stream_to=pathlib.Path(tmp_path) / 'run')
+    sim = _sim(output_dir=pathlib.Path(tmp_path) / 'run')
     sim.run(**RUN)
     assert (tmp_path / 'run' / RUN_FILE).exists()
 
 
 @pytest.mark.parametrize("bad, error, match", [
-    (5, TypeError, "stream_to must be a path"),
-    (b'run', TypeError, "stream_to must be a path"),
-    ('', ValueError, "stream_to can't be empty"),
+    (5, TypeError, "output_dir must be a path"),
+    (b'run', TypeError, "output_dir must be a path"),
+    ('', ValueError, "output_dir can't be empty"),
 ])
-def test_stream_to_must_name_a_directory(bad, error, match):
+def test_output_dir_must_name_a_directory(bad, error, match):
     with pytest.raises(error, match=match):
-        Sim(stream_to=bad)
+        Sim(output_dir=bad)
 
 
-def test_stream_to_naming_a_file_is_refused(tmp_path):
+def test_output_dir_naming_a_file_is_refused(tmp_path):
     (tmp_path / 'run').write_text('a file')
     with pytest.raises(NotADirectoryError, match="is a file, not a directory"):
-        Sim(stream_to=tmp_path / 'run')
+        Sim(output_dir=tmp_path / 'run')
 
 
 def test_the_options_are_keyword_only(tmp_path):
@@ -388,7 +388,7 @@ def test_the_options_are_keyword_only(tmp_path):
 # --- a run that would overwrite a run is refused (Q4) before anything changes -------- #
 
 def test_a_run_into_a_directory_another_sim_filled_is_refused_and_changes_nothing(tmp_path):
-    first, second = _sim(stream_to=tmp_path / 'run'), _sim(stream_to=tmp_path / 'run')
+    first, second = _sim(output_dir=tmp_path / 'run'), _sim(output_dir=tmp_path / 'run')
     hook = _Steps()
     second.add_hook(hook)
     hook.steps = ['before']
@@ -405,7 +405,7 @@ def test_a_run_into_a_directory_another_sim_filled_is_refused_and_changes_nothin
 
 
 def test_a_rerun_after_the_outputs_were_cleared_is_still_refused(tmp_path):
-    sim = _sim(stream_to=tmp_path / 'run')
+    sim = _sim(output_dir=tmp_path / 'run')
     sim.run(**RUN)
     files = _files(tmp_path / 'run')
     sim.eps = 0.3
@@ -415,7 +415,7 @@ def test_a_rerun_after_the_outputs_were_cleared_is_still_refused(tmp_path):
 
 
 def test_a_directory_filled_after_the_check_is_still_refused_by_the_writer(tmp_path, monkeypatch):
-    sim = _sim(stream_to=tmp_path / 'run')
+    sim = _sim(output_dir=tmp_path / 'run')
     sim.run(**RUN)
     files, times, steps, settings = _files(tmp_path / 'run'), sim.times, sim._steps, sim._run_settings
     monkeypatch.setattr(simulation_module, 'existing_run', lambda directory: None)
@@ -431,7 +431,7 @@ def test_every_file_is_pushed_to_the_disk(tmp_path, monkeypatch):
     calls = []
     real = os.fsync
     monkeypatch.setattr(run_files.os, 'fsync', lambda fd: (calls.append(fd), real(fd))[1])
-    sim = _sim(stream_to=tmp_path / 'run')
+    sim = _sim(output_dir=tmp_path / 'run')
     sim.run(**RUN)
     files = 1 + len(sim.times)
     per_file = 1 if os.name == 'nt' else 2                  # each file, then the directory (not on Windows)
