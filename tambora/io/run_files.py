@@ -22,6 +22,7 @@ UNITS = {'length': 'kpc', 'velocity': 'kpc/Gyr', 'mass': 'Msun', 'time': 'Gyr',
          'acceleration': 'kpc/Gyr^2', 'potential': 'kpc^2/Gyr^2'}
 RUN_FILE = "run.h5"
 _ORDER = '__order__'    # the keys of a settings group, in order
+_BYTES = '__bytes__'    # marks a dataset holding bytes
 
 
 def snapshot_name(index):
@@ -49,13 +50,15 @@ class _FileRecorder(_Recorder):
     """A run's outputs written to *directory*: ``run.h5`` at the start, then one file per output.
 
     *settings* is a nested dict saved under ``run.h5``'s ``settings`` group (see
-    ``_write_settings``). With *fsync*, each file reaches the disk before it gets
-    its final name.
+    ``_write_settings``), and *forces* a list of one dict per external force, saved
+    under its ``forces`` group. With *fsync*, each file reaches the disk before it
+    gets its final name.
     """
 
-    def __init__(self, directory, settings=None, fsync=True):
+    def __init__(self, directory, settings=None, forces=(), fsync=True):
         self.directory = os.path.abspath(os.fspath(directory))
         self.settings = {} if settings is None else settings
+        self.forces = list(forces)
         self.fsync = fsync
         self._done = 0
         self._writing = None    # index of the file being written
@@ -89,6 +92,7 @@ class _FileRecorder(_Recorder):
             f.attrs['keep_self_pot'] = keep_pot
             f.create_group('units').attrs.update(UNITS)
             _write_settings(f.create_group('settings'), self.settings)
+            _write_settings(f.create_group('forces'), {str(i): force for i, force in enumerate(self.forces)})
         try:
             self._write_atomically(RUN_FILE, fill, exclusive=True)
         except FileExistsError:     # another run claimed the directory after the check above
@@ -158,8 +162,8 @@ class _FileRecorder(_Recorder):
 def read_run(directory):
     """What ``Sim.load`` needs from a run directory, without reading snapshot data.
 
-    A dict: ``run.h5``'s ``settings``, ``expected_outputs``, ``n_particles``,
-    ``keep_self_acc`` and ``keep_self_pot``; ``n_outputs``, the snapshot files
+    A dict: ``run.h5``'s ``settings``, ``forces`` (a list), ``expected_outputs``,
+    ``n_particles``, ``keep_self_acc`` and ``keep_self_pot``; ``n_outputs``, the snapshot files
     written, counted from the first; and ``last``, the step and time of the last
     of them (None if there's none).
     """
@@ -178,6 +182,7 @@ def read_run(directory):
         run = {key: f.attrs[key].item()
                for key in ('expected_outputs', 'n_particles', 'keep_self_acc', 'keep_self_pot')}
         run['settings'] = _read_settings(f['settings'])
+        run['forces'] = list(_read_settings(f['forces']).values())
     names = set(os.listdir(directory))
     n = 0
     while snapshot_name(n) in names:
@@ -329,7 +334,7 @@ def _fsync_directory(path):
 
 
 def _write_settings(group, settings):
-    """Write a nested dict, keys in order: dicts become groups, arrays datasets, the rest attributes.
+    """Write a nested dict, keys in order: dicts become groups, arrays and bytes datasets, the rest attributes.
 
     Attributes hold str, bool, int, float, None, or a tuple/list of str or numbers,
     which comes back as a list.
@@ -344,6 +349,8 @@ def _write_settings(group, settings):
         elif isinstance(value, np.ndarray):
             strings = value.dtype.kind in 'UO'
             group.create_dataset(key, data=value.astype(h5py.string_dtype()) if strings else value)
+        elif isinstance(value, bytes):
+            group.create_dataset(key, data=np.frombuffer(value, dtype=np.uint8)).attrs[_BYTES] = True
         elif value is None:
             group.attrs[key] = h5py.Empty('f8')
         elif isinstance(value, (tuple, list)):
@@ -363,6 +370,8 @@ def _read_settings(group):
             item = group[key]
             if isinstance(item, h5py.Group):
                 settings[key] = _read_settings(item)
+            elif item.attrs.get(_BYTES, False):
+                settings[key] = item[...].tobytes()
             else:
                 settings[key] = item.asstr()[...] if h5py.check_string_dtype(item.dtype) else item[...]
         else:

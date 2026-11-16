@@ -18,10 +18,15 @@ class ExternalPotential(ExternalConservativeForce):
     potential : object
         A potential from a supported package, e.g. a galpy ``Potential``, a galpy
         ``CompositePotential``, or a list of galpy potentials.
+    save_with_run : bool, optional
+        Whether a run written to disk (``Sim(output_dir=...)`` or ``sim.save``) keeps
+        the potential, so ``Sim.load`` can add it again. Default True. False keeps only
+        its label, e.g. for a large potential many runs share.
     """
 
-    def __init__(self, potential):
+    def __init__(self, potential, save_with_run=True):
         self._backend = potential_backend_for(potential)
+        self.save_with_run = bool(save_with_run)
         key = self._backend.dedup_key()
         self._key = None if key is None else (type(self), self._backend.name, key)
 

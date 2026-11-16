@@ -28,24 +28,30 @@ def _flatten(obj):
 # Each potential's dedup key is its pickle the first time tambora sees it. Some galpy
 # potentials cache results in themselves when evaluated, so a later pickle would stop the
 # same object, or an identical fresh copy, from matching. Kept per component, because
-# wrapping a list builds a new CompositePotential every time.
+# wrapping a list builds a new CompositePotential every time. Kept with it: why that
+# pickle failed, if it did.
 _first_seen_keys = weakref.WeakKeyDictionary()
 
 
-def _component_key(p):
+def _first_seen(p):
+    """*p*'s dedup key, and why it couldn't be pickled (None if it could)."""
     try:
         return _first_seen_keys[p]
     except (KeyError, TypeError):
         pass
     try:
-        key = pickle.dumps(p)
-    except Exception:           # unpicklable (e.g. holds a lambda): fall back to identity
-        key = id(p)
+        seen = pickle.dumps(p), None
+    except Exception as e:      # unpicklable (e.g. holds a lambda): fall back to identity
+        seen = id(p), f"{type(e).__name__}: {e}"
     try:
-        _first_seen_keys[p] = key
+        _first_seen_keys[p] = seen
     except TypeError:           # can't be weakly referenced: recomputed next time
         pass
-    return key
+    return seen
+
+
+def _component_key(p):
+    return _first_seen(p)[0]
 
 
 class GalpyPotential(PotentialBackend):
@@ -91,6 +97,10 @@ class GalpyPotential(PotentialBackend):
 
     def describe(self) -> str:
         return '+'.join(type(p).__name__ for p in _iter_components(self.obj))
+
+    def save_problem(self):
+        """Why pickling a component failed when it was added, or None if every one pickled."""
+        return next((why for why in (_first_seen(p)[1] for p in self._components) if why), None)
 
     def save(self):
         """The components, pickled as they are now, with the units they're converted with.
