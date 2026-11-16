@@ -43,6 +43,9 @@ def test_the_defaults_are_harmless():
     assert b.check_still_valid() is None
     assert b.dedup_key() is None                 # opts out of dedup
     assert b.describe() == 'float'
+    assert b.save_problem() is None and b.save() is None     # label only
+    with pytest.raises(NotImplementedError, match="can't be loaded"):
+        type(b).load({})
 
 
 class _SamplerMissingDraw(SamplerBackend):
