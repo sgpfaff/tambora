@@ -387,6 +387,14 @@ def test_a_directory_that_cant_be_synced_is_skipped_but_a_failing_disk_is_not(tm
         assert sorted(os.listdir(tmp_path)) == ['run.h5', 'snap_000000.h5', 'snap_000001.h5']
 
 
+def test_on_windows_the_directory_isnt_synced(tmp_path, monkeypatch):
+    def refused(*args, **kwargs):       # as Windows does for a directory
+        raise PermissionError(errno.EACCES, os.strerror(errno.EACCES))
+    monkeypatch.setattr(run_files.os, 'name', 'nt')
+    monkeypatch.setattr(run_files.os, 'open', refused)
+    run_files._fsync_directory(tmp_path)
+
+
 @pytest.mark.skipif(not POSIX, reason="needs flock")
 def test_reading_back_takes_no_file_lock(tmp_path):
     # HDF5's locks fail on NFS mounts without a lock manager; finished files never change.

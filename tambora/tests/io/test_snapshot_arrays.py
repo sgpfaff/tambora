@@ -135,6 +135,7 @@ def test_nothing_is_read_until_an_array_is_indexed_and_then_only_what_it_selects
     _run(recorder)
     opened, read = _count_opens(monkeypatch), _log_reads(monkeypatch)
     pos = recorder.outputs()[0]
+    assert repr(pos) == f"<_SnapshotArray 'pos' ({NSNAPS}, {N}, 3) in {str(tmp_path)!r}>"
     assert opened == [] and read == []
     pos[3, 7]
     assert opened == [snapshot_name(3)] and read == [('/pos', slice(7, 8))]

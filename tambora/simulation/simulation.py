@@ -485,7 +485,6 @@ class Sim(_ParticleView):
         """
         Run the simulation to *t_end* [Gyr].
 
-
         Parameters
         ----------
         t_end : float
@@ -530,15 +529,15 @@ class Sim(_ParticleView):
         Notes
         -----
         - Running again starts from the initial conditions, replaces the previous
-                run's outputs, and resets every hook's records (see ``Hook.reset``).
-        
+          run's outputs, and resets every hook's records (see ``Hook.reset``).
+
         - If the run stops early (Ctrl-C, or an error in a hook or a force), the outputs
-                recorded up to then are kept and the error is raised again. falcON aborting the
-                whole process (e.g. on NaN positions) can't be caught, so nothing is kept then.
+          recorded up to then are kept and the error is raised again. falcON aborting the
+          whole process (e.g. on NaN positions) can't be caught, so nothing is kept then.
 
         - A Sim made with ``stream_to`` runs once. A Sim from ``Sim.load`` can't run.
 
-        - A run that stops before its first output leaves nothing in the directory. 
+        - A run that stops before its first output leaves nothing in the directory.
         """
         if self._loaded:
             raise RuntimeError(f"This Sim was loaded from {self._stream_to!r} and can't run. "
@@ -1485,8 +1484,8 @@ class Sim(_ParticleView):
         -----
         - Snapshots are read from their files when an accessor asks for them.
         - The run's external forces aren't saved. Add them again with ``add_external_pot`` or
-                ``add_external_force`` before computing anything that needs them. They're left out 
-                until then.
+          ``add_external_force`` before computing anything that needs them. They're left out
+          until then.
         - Hooks and their records aren't saved either.
         - A loaded Sim can't run again.
         """
