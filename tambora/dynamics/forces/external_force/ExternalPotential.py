@@ -18,10 +18,25 @@ class ExternalPotential(ExternalConservativeForce):
     potential : object
         A potential from a supported package, e.g. a galpy ``Potential``, a galpy
         ``CompositePotential``, or a list of galpy potentials.
+    save_with_run : bool, optional
+        Whether a run written to disk (``Sim(output_dir=...)`` or ``sim.save``) keeps
+        the potential, so ``Sim.load`` can add it again. Default True. False keeps only
+        its label, e.g. for a large potential many runs share.
     """
 
-    def __init__(self, potential):
-        self._backend = potential_backend_for(potential)
+    def __init__(self, potential, save_with_run=True):
+        self._attach(potential_backend_for(potential), save_with_run)
+
+    @classmethod
+    def _from_backend(cls, backend, save_with_run=True):
+        """The force of an already-made backend, e.g. one loaded from a run file."""
+        force = cls.__new__(cls)
+        force._attach(backend, save_with_run)
+        return force
+
+    def _attach(self, backend, save_with_run):
+        self._backend = backend
+        self.save_with_run = bool(save_with_run)
         key = self._backend.dedup_key()
         self._key = None if key is None else (type(self), self._backend.name, key)
 

@@ -1,6 +1,8 @@
 import pytest
 import warnings
+import galpy
 from galpy import potential
+from packaging.version import Version
 from galpy.potential.WrapperPotential import WrapperPotential
 from galpy.util.coords import rect_to_cyl, cyl_to_rect_vec
 import numpy as np
@@ -1002,7 +1004,8 @@ _POT_NAN_ON_AXIS = (
 
 # galpy's array code gives DehnenBarPotential a finite but wrong potential on the axis inside
 # the bar radius: it leaves R^2/r^2 at 1 there instead of 0. Its scalar code and its forces are
-# right. Strict, so this fails once galpy is fixed; then limit it to the affected versions.
+# right. Fixed for galpy 1.12.2 (jobovy/galpy#1904).
+_GALPY_HAS_BAR_AXIS_BUG = Version(galpy.__version__) < Version('1.12.2.dev0')
 _GALPY_BAR_AXIS_BUG = pytest.mark.xfail(
     raises=AssertionError, strict=True,
     reason="galpy bug: DehnenBarPotential's potential is non-zero on the z-axis for array input")
@@ -1027,7 +1030,7 @@ def _hits_galpys_bar_bug(p):
 
 def _pot_on_axis_case(case):
     p = case.values[0]
-    marks = [_GALPY_BAR_AXIS_BUG] if _hits_galpys_bar_bug(p) else []
+    marks = [_GALPY_BAR_AXIS_BUG] if _GALPY_HAS_BAR_AXIS_BUG and _hits_galpys_bar_bug(p) else []
     return pytest.param(p, isinstance(p, _POT_NAN_ON_AXIS), id=case.id, marks=marks)
 
 

@@ -18,6 +18,7 @@ from ..ic import ParticleSet
 from ..dynamics.integration import StepState
 from ..dynamics.integration.recorder import _MemoryRecorder
 from ..dynamics.integration.integrate import _check_dt_dt_out, _count_steps, _time_at
+from ..interop._registry import potential_backend_named
 from ..io.run_files import RUN_FILE, _FileRecorder, _snapshot_arrays, existing_run, read_run, snapshot_name
 import inspect
 import keyword
@@ -118,6 +119,33 @@ def _force_label(force):
     return f"{name}({inner})"
 
 
+def _force_records(forces):
+    """Each of *forces* as a run file keeps it (its label and, for a potential saved with the run, its record).
+
+    A potential that couldn't be saved gets the error saving it raised.
+    """
+    records = []
+    for force in forces:
+        record = {'label': _force_label(force), 'backend': None, 'saved': False, 'error': None}
+        if isinstance(force, ExternalPotential):
+            record['backend'] = force.backend.name
+            if force.save_with_run:
+                try:
+                    saved = force.backend.save()
+                except Exception as e:
+                    record['error'] = f"{type(e).__name__}: {e}"
+                else:
+                    if saved is not None:
+                        record.update(saved=True, record=saved)
+        records.append(record)
+    return records
+
+
+def _warn_not_saved(label, error, stacklevel):
+    warnings.warn(f"{label} can't be saved with the run ({error}). Sim.load will ask you to add it again. "
+                  "Pass save_with_run=False to skip saving it.", stacklevel=stacklevel + 1)
+
+
 def _cadence_label(cadence):
     """Readable label for a cadence, including its interval where it has one."""
     name = type(cadence).__name__
@@ -169,6 +197,7 @@ class Sim(_ParticleView):
         self._times = None           # (n_snap,) Gyr
         self._steps = None           # (n_snap,) step of each output
         self._run_settings = None    # the settings of the run that made the outputs
+        self._run_forces = None      # that run's external forces, as _force_records gave them
         self._has_run = False
         self._self_gravity_force = NullSelfGravity()
         self._conserv_ext_force = _CompositeConservative([]) # conservative external forces
@@ -346,6 +375,7 @@ class Sim(_ParticleView):
         self._cached_self_acc = None
         self._cached_self_pot = None
         self._run_settings = None
+        self._run_forces = None
         self._has_run = False
 
     def _run_in_output_dir(self):
@@ -375,7 +405,17 @@ class Sim(_ParticleView):
             If this exact force instance is already added, or an equivalently
             configured force is already added (see the force's ``_dedup_key``).
             Adding a duplicate would double-count the field.
+
+        Warns
+        -----
+        UserWarning
+            For a Sim with an ``output_dir``, if a potential can't be saved with the run
+            (e.g. it holds a lambda). It's kept by its label.
         '''
+        self._add_external_force(force)
+        self._warn_if_not_savable(force, stacklevel=2)
+
+    def _add_external_force(self, force):
         def _assign_force(_force):
             if isinstance(_force, SelfGravityForce):
                 raise TypeError("The provided force is a self-gravity force, "
@@ -406,18 +446,31 @@ class Sim(_ParticleView):
                 _assign_force(_force)
         else:
             _assign_force(force)
+
+    def _warn_if_not_savable(self, force, stacklevel):
+        """For a Sim whose run will be written, warn now about a potential in *force* that can't be saved."""
+        if self._output_dir is None or self._loaded:
+            return
+        for _force in getattr(force, 'members', [force]):
+            why = _force.backend.save_problem() if isinstance(_force, ExternalPotential) else None
+            if why and _force.save_with_run:
+                _warn_not_saved(_force_label(_force), why, stacklevel=stacklevel + 1)
             
-    def add_external_pot(self, potential):
+    def add_external_pot(self, potential, save_with_run=True):
         '''
         Add an external potential from a supported package.
 
-        Shorthand for ``add_external_force(ExternalPotential(potential))``.
+        Shorthand for ``add_external_force(ExternalPotential(potential, save_with_run))``.
 
         Parameters
         ----------
         potential : object
             A potential from a supported package, e.g. a galpy ``Potential``,
             a galpy ``CompositePotential``, or a list of galpy potentials.
+        save_with_run : bool, optional
+            Whether a run written to disk (``output_dir`` or ``save``) keeps the potential,
+            so ``Sim.load`` can add it again. Default True. False keeps only its label,
+            e.g. for a large potential many runs share.
 
         Returns
         -------
@@ -434,8 +487,13 @@ class Sim(_ParticleView):
         --------
         UserWarning
             If the provided galpy potential has physical outputs turned off.
+        UserWarning
+            For a Sim with an ``output_dir``, if the potential can't be saved with the run
+            (e.g. it holds a lambda). It's kept by its label.
         '''
-        self.add_external_force(ExternalPotential(potential))
+        force = ExternalPotential(potential, save_with_run)
+        self._add_external_force(force)
+        self._warn_if_not_savable(force, stacklevel=2)
 
     def add_subhalos(self, pos, vel, mass):
         '''
@@ -581,6 +639,12 @@ class Sim(_ParticleView):
             raise FileExistsError(f"{self._output_dir!r} already holds a run ({taken}), which this run "
                                   "would overwrite. Make a new Sim with another output_dir, or delete the old run.")
         n_steps, _, steps_per_output = _count_steps(dt, dt_out, t0, t_end)
+        forces = self._conserv_ext_force.members + self._base_ext_force.members
+        force_records = _force_records(forces)
+        if self._output_dir is not None:    # warned when added, unless it changed since
+            for force, record in zip(forces, force_records):
+                if record['error'] and not force.backend.save_problem():
+                    _warn_not_saved(record['label'], record['error'], stacklevel=2)
         run_settings = {
             't0': t0, 't_end': t_end, 'dt': dt, 'dt_out': dt_out,
             'n_steps': n_steps, 'steps_per_output': steps_per_output,
@@ -589,8 +653,7 @@ class Sim(_ParticleView):
             'cache_self_gravity_acc': cache_self_gravity_acc,
             'cache_self_gravity_pot': cache_self_gravity_pot,
             'monitors': monitors,
-            'forces': [_force_label(force) for force in
-                       self._conserv_ext_force.members + self._base_ext_force.members],
+            'forces': [record['label'] for record in force_records],
         }
 
         # Every check passed: only now change the Sim.
@@ -610,7 +673,7 @@ class Sim(_ParticleView):
         if self._output_dir is None:
             recorder = _MemoryRecorder()
         else:
-            recorder = _FileRecorder(self._output_dir, settings=self._settings(run_settings))
+            recorder = _FileRecorder(self._output_dir, settings=self._settings(run_settings), forces=force_records)
         try:
             _runner(
                     self._init_pos, self._init_vel, self._mass,
@@ -632,7 +695,7 @@ class Sim(_ParticleView):
                 )
         except BaseException:
             if recorder.n:
-                self._keep_outputs(recorder, run_settings)
+                self._keep_outputs(recorder, run_settings, force_records)
                 try:
                     warnings.warn(f"The run stopped early: the {recorder.n} outputs up to "
                                   f"t = {self._times[-1]:g} Gyr are kept.", stacklevel=2)
@@ -641,14 +704,15 @@ class Sim(_ParticleView):
             else:
                 recorder.abandon()
             raise
-        self._keep_outputs(recorder, run_settings)
+        self._keep_outputs(recorder, run_settings, force_records)
 
-    def _keep_outputs(self, recorder, run_settings):
-        """Take the outputs *recorder* holds, and the settings of the run that made them, as this Sim's."""
+    def _keep_outputs(self, recorder, run_settings, force_records):
+        """Take the outputs *recorder* holds, and the settings and forces of the run that made them, as this Sim's."""
         (self._positions, self._velocities, self._times,
          self._cached_self_acc, self._cached_self_pot) = recorder.outputs()
         self._steps = np.array(recorder.steps[:len(self._times)], dtype=np.int64)
         self._run_settings = run_settings
+        self._run_forces = force_records
         self._has_run = True
 
     def _settings(self, run_settings):
@@ -1425,17 +1489,28 @@ class Sim(_ParticleView):
         NotADirectoryError
             If *path* is a file.
 
+        Warns
+        -----
+        UserWarning
+            If a potential can't be saved (e.g. it holds a lambda). It's kept by its label.
+
         Notes
         -----
         - A Sim with an ``output_dir``, or a loaded one, is copied.
-        - External forces and hooks aren't saved. Their labels are.
+        - Potentials from supported packages are saved as they were when the run started,
+          unless added with ``save_with_run=False``. Other external forces, and hooks, are
+          kept by their labels only.
         - If saving stops partway (an error, Ctrl-C), the files written are removed.
         """
         if not self._has_run:
             raise RuntimeError("This Sim hasn't run. There's nothing to save.")
         directory = _check_output_dir(path, name='path')
         run, acc, pot = self._run_settings, self._cached_self_acc, self._cached_self_pot
-        recorder = _FileRecorder(directory, settings=self._settings(run))
+        if self._output_dir is None:        # one written as it ran warned then
+            for record in self._run_forces:
+                if record['error']:
+                    _warn_not_saved(record['label'], record['error'], stacklevel=2)
+        recorder = _FileRecorder(directory, settings=self._settings(run), forces=self._run_forces)
         recorder.begin(run['n_steps'] // run['steps_per_output'] + 1, self._mass.shape[0],
                        acc is not None, pot is not None)
         try:
@@ -1475,7 +1550,8 @@ class Sim(_ParticleView):
         Warns
         -----
         UserWarning
-            If the run used external forces that couldn't be loaded, naming them.
+            If the run used external forces that couldn't be loaded, naming them, with the
+            reason for a saved potential that couldn't.
         UserWarning
             If the run made fewer outputs than planned: it stopped early, or is still
             running.
@@ -1483,10 +1559,12 @@ class Sim(_ParticleView):
         Notes
         -----
         - Snapshots are read from their files when an accessor asks for them.
-        - The run's external forces aren't saved. Add them again with ``add_external_pot`` or
-          ``add_external_force`` before computing anything that needs them. They're left out
-          until then.
-        - Hooks and their records aren't saved either.
+        - The run's potentials from supported packages are added again, as the run used them.
+          Other external forces, and potentials added with ``save_with_run=False``, aren't
+          saved. Add them again with ``add_external_pot`` or ``add_external_force`` before
+          computing anything that needs them. They're left out until then.
+        - Only load runs you trust. Loading a saved potential runs code its run file names.
+        - Hooks and their records aren't saved.
         - A loaded Sim can't run again.
         """
         directory = os.path.abspath(os.path.expanduser(os.fspath(path)))
@@ -1509,11 +1587,21 @@ class Sim(_ParticleView):
         sim._positions, sim._velocities, sim._cached_self_acc, sim._cached_self_pot = _snapshot_arrays(
             directory, n, run['n_particles'], run['keep_self_acc'], run['keep_self_pot'])
         sim._times, sim._steps = times, steps
-        sim._run_settings = settings['run']
+        sim._run_settings, sim._run_forces = settings['run'], run['forces']
         sim._has_run = sim._loaded = True
         sim._output_dir = directory
-        if settings['run']['forces']:
-            warnings.warn(f"{', '.join(settings['run']['forces'])} couldn't be loaded. Add them again with add_external_pot "
+        not_loaded = []
+        for record in run['forces']:
+            if not record['saved']:
+                not_loaded.append(record['label'])
+                continue
+            try:
+                backend = potential_backend_named(record['backend']).load(record['record'])
+                sim._add_external_force(ExternalPotential._from_backend(backend))
+            except Exception as e:
+                not_loaded.append(f"{record['label']} ({type(e).__name__}: {e})")
+        if not_loaded:
+            warnings.warn(f"{', '.join(not_loaded)} couldn't be loaded. Add them again with add_external_pot "
                           "or add_external_force before computing anything that needs them. Until then, "
                           "they're left out.", stacklevel=2)
         if n < run['expected_outputs']:

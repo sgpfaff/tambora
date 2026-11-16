@@ -91,6 +91,24 @@ def potential_backend_for(obj) -> PotentialBackend:
         obj)
 
 
+def potential_backend_named(name) -> type:
+    """The potential backend class called *name*, e.g. to load a record its ``save`` made.
+
+    Raises
+    ------
+    ValueError
+        If there's no such backend.
+    ImportError
+        If its package isn't installed.
+    """
+    for entry in _POTENTIAL_BACKENDS:
+        if entry.name == name:
+            if importlib.util.find_spec(entry.package) is None:
+                raise ImportError(f"{entry.package} isn't installed.")
+            return _load(entry)
+    raise ValueError(f"This tambora has no {name!r} potential backend.")
+
+
 def sampler_backend_for(obj, *, potential=None) -> SamplerBackend:
     """Wrap the model ``obj`` in the sampler backend for its package.
 

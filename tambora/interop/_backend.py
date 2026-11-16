@@ -64,6 +64,22 @@ class PotentialBackend(ABC):
         """Short label for ``Sim.__repr__``."""
         return type(self.obj).__name__
 
+    def save_problem(self) -> Optional[str]:
+        """Why ``save`` would fail, if that's known without trying, else None."""
+        return None
+
+    def save(self) -> Optional[dict]:
+        """The wrapped object as a record a saved run can hold, or None if this backend doesn't save.
+
+        A record is a dict of plain values, arrays and bytes. ``load`` rebuilds the backend from it.
+        """
+        return None
+
+    @classmethod
+    def load(cls, record: dict) -> 'PotentialBackend':
+        """The backend that ``save`` made *record* from."""
+        raise NotImplementedError(f"{cls.name} potentials can't be loaded.")
+
 
 class SamplerBackend(ABC):
     """Adapter that draws particles from one package's models.

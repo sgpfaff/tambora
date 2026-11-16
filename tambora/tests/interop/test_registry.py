@@ -43,6 +43,9 @@ def test_the_defaults_are_harmless():
     assert b.check_still_valid() is None
     assert b.dedup_key() is None                 # opts out of dedup
     assert b.describe() == 'float'
+    assert b.save_problem() is None and b.save() is None     # label only
+    with pytest.raises(NotImplementedError, match="can't be loaded"):
+        type(b).load({})
 
 
 class _SamplerMissingDraw(SamplerBackend):
@@ -127,3 +130,17 @@ def test_nested_lists_of_galpy_potentials_go_to_the_galpy_backend():
     gp = pytest.importorskip("galpy.potential")
     p, q = gp.PlummerPotential(ro=8., vo=220.), gp.NFWPotential(ro=8., vo=220.)
     assert potential_backend_for([[p, q]]).name == 'galpy'
+
+
+def test_a_potential_backend_is_found_by_name():
+    pytest.importorskip("galpy")
+    from tambora.interop._galpy.potential import GalpyPotential
+    assert _registry.potential_backend_named('galpy') is GalpyPotential
+    with pytest.raises(ValueError, match="no 'agama' potential backend"):
+        _registry.potential_backend_named('agama')
+
+
+def test_a_potential_backend_whose_package_isnt_installed_is_refused_by_name(monkeypatch):
+    monkeypatch.setattr(_registry, '_POTENTIAL_BACKENDS', (_registry._Entry('x', 'no_such_package_xyz', 'm', 'C'),))
+    with pytest.raises(ImportError, match="no_such_package_xyz isn't installed"):
+        _registry.potential_backend_named('x')
