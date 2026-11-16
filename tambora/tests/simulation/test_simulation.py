@@ -2,6 +2,7 @@
 Test the Sim class and its methods.
 '''
 
+import os
 import pytest 
 from tambora.simulation import Sim
 from tambora.simulation.simulation import _force_label, Component
@@ -2495,15 +2496,84 @@ class _ResetCountingHook(Hook):
 def test_running_again_starts_every_hook_afresh():
     sim = Sim()
     sim.add_particles(name='c', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS)
-    hook = _ResetCountingHook()
+    hook, mon = _ResetCountingHook(), ConservationMonitor()
     sim.add_hook(hook)
+    sim.add_hook(mon)
     for eps in (0.1, 0.5):
         sim.eps = eps
         sim.run(t_end=0.2, dt=0.1, dt_out=0.1, method='direct', progress=False)
     assert hook.resets == 2
     np.testing.assert_allclose(hook.times, sim.times)
-    np.testing.assert_allclose(sim.monitor.t, sim.times)
-    assert sim.monitor.drift['energy'][0] == 0.     # measured from the second run's energy
+    assert sim.monitor is mon
+    np.testing.assert_allclose(mon.t, sim.times)
+    assert mon.drift['energy'][0] == 0.     # measured from the second run's energy
+
+
+class _CanBeInvalidated(ExternalConservativeForce):
+    """A zero field whose validity check fails once *valid* is set False."""
+    valid = True
+
+    def acc(self, pos, t):
+        return np.zeros_like(pos)
+
+    def potential(self, pos, t):
+        return np.zeros(len(pos))
+
+    def check_still_valid(self):
+        if not self.valid:
+            raise RuntimeError("force invalidated")
+
+
+@pytest.mark.parametrize("bad, error, match", [
+    (dict(dt_out=0.15), ValueError, "multiple of dt"),
+    (dict(dt=-0.1), ValueError, "dt must be positive"),
+    (dict(integration_method='rk4'), ValueError, r"Unknown integration_method 'rk4'.*\['leapfrog'\]"),
+    ('invalid force', RuntimeError, "force invalidated"),
+    (dict(monitors='bogus'), ValueError, "Unknown conserved quantity 'bogus'"),
+    (dict(monitors=['energy', 1]), TypeError, "monitors must be 'auto', a quantity name"),
+    ('second streamed run', FileExistsError, r"already holds a run \(run.h5\), which this run would overwrite"),
+])
+def test_a_rejected_run_leaves_the_sim_as_the_last_run_left_it(bad, error, match, tmp_path):
+    streamed = bad == 'second streamed run'
+    sim = Sim(output_dir=tmp_path / 'run') if streamed else Sim()
+    sim.add_particles(name='c', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS, eps=0.1)
+    force = _CanBeInvalidated()
+    sim.add_external_force(force)
+    hook = _ResetCountingHook()
+    sim.add_hook(hook)
+    run = dict(t_end=0.2, dt=0.1, dt_out=0.1, method='direct', progress=False)
+    sim.run(**run)
+    solver, monitor, hooks = sim._self_gravity_force, sim.monitor, list(sim._hooks)
+    times, hook_times, drift = sim.times.copy(), list(hook.times), monitor.drift['energy'].copy()
+    settings, steps = sim._run_settings, sim._steps
+    files = {f: (tmp_path / 'run' / f).read_bytes() for f in os.listdir(tmp_path / 'run')} if streamed else None
+
+    if bad == 'invalid force':
+        force.valid, bad = False, {}
+    elif streamed:
+        bad = {}
+    with pytest.raises(error, match=match):
+        sim.run(**{**run, 'method': None, **bad})
+
+    assert sim._run_settings is settings and sim._steps is steps
+    if streamed:
+        assert {f: (tmp_path / 'run' / f).read_bytes() for f in os.listdir(tmp_path / 'run')} == files
+    assert sim._self_gravity_force is solver
+    assert sim.monitor is monitor and sim._hooks == hooks
+    assert hook.resets == 1 and hook.times == hook_times
+    np.testing.assert_array_equal(monitor.drift['energy'], drift)
+    np.testing.assert_array_equal(sim.times, times)
+
+
+def test_an_uneven_end_is_warned_about_once():
+    sim = Sim()
+    sim.add_particles(name='c', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS, eps=0.1)
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter('always')
+        sim.run(t_end=0.25, dt=0.1, dt_out=0.2, method='direct', progress=False, monitors=False)
+    messages = [str(w.message) for w in caught]
+    assert sum('not an exact multiple of dt=' in m for m in messages) == 1
+    assert sum('not an exact multiple of dt_out=' in m for m in messages) == 1
 
 
 class TestAddHook:
@@ -2816,11 +2886,10 @@ class TestDefaultMonitors:
 
     def _sim(self):
         sim = Sim()
-        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='a')
+        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='a', eps=0.0)
         return sim
 
     def _run(self, sim, **kw):
-        sim.eps = 0.0
         sim.run(t_end=2.0, dt=1.0, dt_out=1.0, method='direct',
                 progress=False, **kw)
 
@@ -2860,6 +2929,23 @@ class TestDefaultMonitors:
         self._run(sim, monitors=('energy',))
         assert sim.monitor.track == ('energy',)
 
+    @pytest.mark.parametrize("bad", [5, True, ['energy', 1], [b'energy']])
+    def test_monitors_that_are_not_names_are_refused(self, bad):
+        with pytest.raises(TypeError, match="monitors must be 'auto', a quantity name"):
+            self._run(self._sim(), monitors=bad)
+
+    def test_bad_monitors_are_refused_also_when_your_own_monitor_wins(self):
+        sim = self._sim()
+        sim.add_hook(ConservationMonitor())
+        with pytest.raises(TypeError, match="monitors must be"):
+            self._run(sim, monitors=5)
+
+    def test_a_generator_of_names_is_read_once(self):
+        sim = self._sim()
+        self._run(sim, monitors=(name for name in ['energy']))
+        assert sim.monitor.track == ('energy',)
+        assert sim._run_settings['monitors'] == ('energy',)
+
     def test_bare_string_track_is_accepted(self):
         # monitors='energy' must not be exploded into ('e','n','e','r','g','y').
         sim = self._sim()
@@ -2882,3 +2968,48 @@ class TestDefaultMonitors:
         assert len(sim.hooks) == 1
         assert "ConservationMonitor" in r
         assert "t = 0 -> 2 Gyr" in r
+
+    @pytest.mark.parametrize("off", [False, None, (), []])
+    def test_a_rerun_without_monitors_drops_the_default_one(self, off):
+        sim = self._sim()
+        self._run(sim)
+        self._run(sim, monitors=off)
+        assert sim.monitor is None and sim._auto_monitor is None
+        assert sim.hooks == ()
+
+    def test_a_rerun_with_monitors_attaches_one_after_a_run_without(self):
+        sim = self._sim()
+        self._run(sim, monitors=False)
+        self._run(sim)
+        assert sim.monitor.t == list(sim.times)
+
+    def test_each_run_attaches_its_own_default_monitor(self):
+        sim = self._sim()
+        self._run(sim)
+        first, first_t = sim.monitor, list(sim.monitor.t)
+        self._run(sim)
+        assert sim.monitor is not first and first.t == first_t
+        assert len(sim.hooks) == 1
+        assert sim.monitor.t == list(sim.times)
+
+    @pytest.mark.parametrize("monitors", ['auto', False, ('energy',)])
+    def test_your_own_monitor_wins_over_every_rerun(self, monitors):
+        sim = self._sim()
+        mine = ConservationMonitor()
+        sim.add_hook(mine)
+        self._run(sim)
+        self._run(sim, monitors=monitors)
+        assert sim.hooks == ((mine, ConservationMonitor.default_cadence),)
+        assert mine.t == list(sim.times)
+
+    def test_the_default_monitor_fires_after_your_hooks(self):
+        sim = self._sim()
+        hook, later = _StubHook(), _KeyedHook('later')
+        sim.add_hook(hook)
+        for _ in range(2):
+            self._run(sim)
+            assert [h for h, _ in sim.hooks] == [hook, sim.monitor]
+        sim.eps = 0.0                       # clears the outputs, so hooks can be added again
+        sim.add_hook(later)
+        self._run(sim)
+        assert [h for h, _ in sim.hooks] == [hook, later, sim.monitor]

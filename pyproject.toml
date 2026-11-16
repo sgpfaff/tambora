@@ -26,7 +26,8 @@ classifiers = [
 ]
 dependencies = [
     "numpy",
-    "tqdm"
+    "tqdm",
+    "h5py>=3.5"
 ]
 dynamic = ["version"]
 

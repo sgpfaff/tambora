@@ -1,3 +1,6 @@
+import warnings
+from decimal import Decimal
+
 import pytest
 import numpy as np
 
@@ -8,6 +11,7 @@ from tambora.simulation import Sim
 from tambora.dynamics import ExternalPotential, DirectSummationGravity, NullForce, NullSelfGravity
 from tambora.dynamics.forces.CompositeForce import _CompositeConservative
 from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
+from tambora.dynamics.integration.integrate import _count_steps, _warn_uneven_end, _whole_steps
 from galpy.potential import NFWPotential
 from galpy.orbit import Orbit
 import astropy.units as u
@@ -318,11 +322,13 @@ class TestTimeInputs:
         pos = np.zeros((1, 3))
         vel = np.zeros((1, 3))
         mass = np.ones(1)
-        _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                    _CompositeConservative([]), NullForce(), t0=0.0,
-                    t_end=t_end, 
-                    dt=dt, 
-                    dt_out=dt_out)
+        with warnings.catch_warnings():
+            warnings.simplefilter('error')
+            _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+                        _CompositeConservative([]), NullForce(), t0=0.0,
+                        t_end=t_end, 
+                        dt=dt, 
+                        dt_out=dt_out)
 
 class TestTimeStepInputs:
     @classmethod
@@ -665,3 +671,168 @@ class TestStepClock:
         sim.add_particles(np.zeros((2, 3)), np.ones((2, 3)), np.ones(2), name='c')
         sim.run(t_end=1.0, dt=self.dt, dt_out=self.dt_out, method=None, progress=False)
         np.testing.assert_array_equal(sim.monitor.t, sim.times)
+
+
+# --- the runner hands each output to a recorder ---------------------------------- #
+
+from tambora.dynamics.integration.recorder import _Recorder, _MemoryRecorder
+
+
+class _LoggingRecorder(_MemoryRecorder):
+    """A memory recorder that also logs what the runner asks of it."""
+    def __init__(self):
+        self.calls = []
+
+    def begin(self, nsnaps, n_particles, keep_acc, keep_pot):
+        self.calls.append(('begin', nsnaps, n_particles, keep_acc, keep_pot))
+        super().begin(nsnaps, n_particles, keep_acc, keep_pot)
+
+    def record(self, step, t, pos, vel, self_acc, self_pot):
+        self.calls.append(('record', step, t))
+        super().record(step, t, pos, vel, self_acc, self_pot)
+
+
+def test_runner_hands_each_output_to_the_recorder():
+    rec = _LoggingRecorder()
+    out = _runner(np.zeros((2, 3)), np.ones((2, 3)), np.ones(2), LeapfrogIntegrator(), DirectSummationGravity(),
+                  _CompositeConservative([]), NullForce(), t0=0.0, t_end=1.0, dt=0.1, dt_out=0.2,
+                  return_self_gravity_pot=False, progress=False, eps=0.1, recorder=rec)
+    assert rec.calls[0] == ('begin', 6, 2, True, False)
+    assert [c[1] for c in rec.calls[1:]] == [0, 2, 4, 6, 8, 10]
+    assert all(c[0] == 'record' for c in rec.calls[1:])
+    for got, want in zip(out, rec.outputs()):
+        assert got is want or (got is None and want is None) or np.shares_memory(got, want)
+
+
+def test_a_recorder_must_implement_the_interface():
+    class Incomplete(_Recorder):
+        def begin(self, nsnaps, n_particles, keep_acc, keep_pot): pass
+
+    with pytest.raises(TypeError):
+        Incomplete()
+
+
+# --- the number of outputs is the number the run actually reaches ----------------- #
+
+@pytest.mark.filterwarnings("ignore:Simulation duration")
+class TestOutputCount:
+    def test_no_phantom_output_when_t_end_falls_just_short(self):
+        # (t_end - t0)/dt_out rounds to 2, but only 19 steps fit: one output after t0.
+        ts_out, seen, _ = _run_recording_times(0.0, 0.019999999999, 1e-3, 1e-2, EveryOutput())
+        np.testing.assert_array_equal(ts_out, [0.0, 0.01])
+        np.testing.assert_array_equal(seen, ts_out)
+
+    def test_last_output_is_kept_when_dt_out_is_a_hair_over_a_multiple(self):
+        # (t_end - t0)/dt_out rounds down to 299, but 3000 steps make 300 outputs after t0.
+        ts_out, seen, _ = _run_recording_times(0.0, 3.0, 1e-3, 0.0100000000001, EveryOutput())
+        assert len(ts_out) == 301
+        assert ts_out[-1] == 3.0
+        np.testing.assert_array_equal(seen, ts_out)
+
+    @pytest.mark.parametrize("t_end, dt, dt_out", [(1.0, 0.1, 0.2), (1.0, 0.13, 0.13), (1.0, 0.2, 0.4),
+                                                   (0.5, 0.1, 0.1), (-1.0, -0.1, -0.3)])
+    def test_outputs_are_exactly_where_output_hooks_fire(self, t_end, dt, dt_out):
+        ts_out, seen, _ = _run_recording_times(0.0, t_end, dt, dt_out, EveryOutput())
+        np.testing.assert_array_equal(seen, ts_out)
+
+
+# --- a warning when, and only when, the last step or the last output comes before t_end --- #
+
+def _warnings_and_ends(t0, t_end, dt, dt_out):
+    """A run's warnings, the time of its last output and the time of its last step."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        ts_out, _, force_ts = _run_recording_times(t0, t_end, dt, dt_out, EveryOutput())
+    return [str(w.message) for w in caught], ts_out[-1], force_ts[-1]
+
+
+class TestUnevenEndWarnings:
+    @pytest.mark.parametrize("t0, t_end, dt, dt_out", [
+        (0.0, 1.0, 0.1, 0.2),
+        (0.0, 3.0, 1e-3, 0.0100000000001),     # dt_out a hair over a multiple of dt
+        (0.0, 3.0, 1e-3, 0.0099999999999),     # ... and a hair under
+        (0.0, 3.0 + 1e-13, 1e-3, 1e-2),        # t_end a hair past a whole number of steps
+        (0.3, 1.3, 1e-3, 1e-2),
+        (0.0, -1.0, -0.1, -0.2),
+        (4.2, 4.201, 5e-7, 5e-5),              # a tiny dt late in time (see TestTinyStepsLateInTime):
+        (4.1, 4.099, -5e-7, -5e-5),            # a fixed 1e-9 tolerance lost the last step and output here,
+        (8.1, 8.101, 1e-6, 1e-4),              # and raised false alarms here
+        (8.3, 8.299, -1e-6, -1e-4),
+    ])
+    def test_no_warning_when_the_last_output_is_at_t_end(self, t0, t_end, dt, dt_out):
+        messages, last_output, _ = _warnings_and_ends(t0, t_end, dt, dt_out)
+        assert messages == []
+        assert last_output == pytest.approx(t_end, abs=1e-12)
+
+    @pytest.mark.parametrize("t0, t_end, dt, dt_out, steps_fall_short", [
+        (0.0, 1.0, 0.1, 0.3, False),           # the last output at 0.9; the run goes on to 1.0
+        (0.0, 1.0, 0.2, 0.4, False),
+        (0.0, -1.0, -0.1, -0.3, False),
+        (0.0, 1.05, 0.1, 0.5, True),           # the run and its last output end at 1.0
+        (0.0, 1.0, 0.13, 0.13, True),
+        (0.0, 1.0, 0.13, 0.1300000001, True),  # the time comes from the steps, not from dt_out
+        (0.0, 0.019999999999, 1e-3, 1e-2, True),
+        (0.3, 1.3, 0.1, 0.3, False),
+        (0.3, 1.35, 0.1, 0.5, True),
+        (1.0, 0.0, -0.1, -0.3, False),
+        (8.1, 8.1010005, 1e-6, 1e-4, True),    # half a step over, late in time: still cut
+        (8.1, 8.1010000000001, 1e-6, 1e-4, True),  # ... and 1e-7 of a step over
+    ])
+    def test_each_warning_gives_the_time_the_run_actually_reaches(self, t0, t_end, dt, dt_out,
+                                                                  steps_fall_short):
+        messages, last_output, last_step = _warnings_and_ends(t0, t_end, dt, dt_out)
+        expected = [f"multiple of dt={dt} Gyr. The run will end at t={last_step:.10g} Gyr "
+                    f"instead of t={t_end} Gyr."] if steps_fall_short else []
+        expected.append(f"multiple of dt_out={dt_out} Gyr. Last output will be at t={last_output:.10g} Gyr "
+                        f"instead of t={t_end} Gyr.")
+        assert len(messages) == len(expected)
+        for message, end in zip(messages, expected):
+            assert message.startswith(f"Simulation duration ({t_end - t0} Gyr) is not an exact "), message
+            assert message.endswith(end), message
+
+
+# --- a tiny dt late in time: round-off in t_end - t0 is more than 1e-9 of a step --- #
+
+def _decimal_runs():
+    """(t0, t_end, dt, steps) of runs typed as decimals, forward and backward, t0 within 13.8 Gyr."""
+    for t0 in (Decimal(i) / 10 for i in range(-138, 139)):
+        for duration in (Decimal('0.01'), Decimal('0.05'), Decimal('0.35'), Decimal('7.3')):
+            for dt in (Decimal('1e-6'), Decimal('2e-7')):
+                for sign in (1, -1):
+                    yield float(t0), float(t0 + sign * duration), sign * float(dt), int(duration / dt)
+    for t_end in (Decimal('8.8'), Decimal('10.3'), Decimal('13.8')):     # long runs from 0
+        yield 0.0, float(t_end), 1e-6, int(t_end / Decimal('1e-6'))
+
+
+class TestTinyStepsLateInTime:
+    def test_a_whole_number_of_steps_late_in_time_is_counted_whole(self):
+        # The ratio is off by up to ~4 ulp(t)/dt: here more than a fixed 1e-9 of a step.
+        t0, t_end, dt = 8.3, 8.35, 1e-6
+        assert abs((t_end - t0) / dt - 50000) > 1e-9
+        assert _whole_steps(dt, t0, t_end) == (50000, True)
+        assert _count_steps(dt, 1e-4, t0, t_end)[:2] == (50000, 501)
+
+    def test_whole_steps_are_counted_whole_and_not_warned_about(self):
+        wrong = []
+        for t0, t_end, dt, steps in _decimal_runs():
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter('always')
+                _warn_uneven_end(dt, 100 * dt, t0, t_end)
+            n_steps = _count_steps(dt, 100 * dt, t0, t_end)[0]
+            if n_steps != steps or caught:
+                wrong.append((t0, t_end, dt, n_steps - steps, len(caught)))
+        assert wrong == []
+
+
+def test_each_output_is_recorded_after_the_hooks_due_at_its_step():
+    log = []
+
+    class OrderRecorder(_MemoryRecorder):
+        def record(self, step, t, pos, vel, self_acc, self_pot):
+            log.append(('record', step))
+            super().record(step, t, pos, vel, self_acc, self_pot)
+
+    _runner(np.zeros((1, 3)), np.ones((1, 3)), np.ones(1), LeapfrogIntegrator(), NullSelfGravity(),
+            _CompositeConservative([]), NullForce(), t0=0.0, t_end=1.0, dt=0.1, dt_out=0.2, progress=False,
+            hooks=[(lambda state: log.append(('hook', state.step)), EveryOutput())], recorder=OrderRecorder())
+    assert log == [(kind, step) for step in (0, 2, 4, 6, 8, 10) for kind in ('hook', 'record')]

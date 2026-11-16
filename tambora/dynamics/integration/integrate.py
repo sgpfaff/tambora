@@ -1,10 +1,12 @@
 from ..forces import SelfGravityForce, Conservative, Force
 from .BaseIntegrator import BaseIntegrator, StepResult
+import math
 import numpy as np
 from tqdm import tqdm
 from functools import partial
 from typing import Optional
 from .step_state import StepState, StepContext, _Progress
+from .recorder import _MemoryRecorder
 import warnings
 
 def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray, 
@@ -18,7 +20,8 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
             slices: Optional[dict] = None,
             hooks: tuple = (),
             progress: bool = True,
-            eps=None):
+            eps=None,
+            recorder=None):
     '''
     Integrate particle trajectories optionally under 
     influence of self-gravity and external forces.
@@ -61,6 +64,9 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
     hooks : sequence of (Hook, Cadence), optional
         Hooks to run during integration, each paired with the cadence that
         decides when it fires. Default is empty (no hooks).
+    recorder : _Recorder, optional
+        Receives each output as it is made (``begin``, then ``record`` per output);
+        the return value is its ``outputs()``. Default: a new ``_MemoryRecorder``.
     **kwargs
         Additional keyword arguments to pass to the self-gravity method.
 
@@ -85,16 +91,13 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
         Units: `kpc^2 / Myr^2`
     '''
     _check_dt_dt_out(dt, dt_out, t0, t_end)
+    _warn_uneven_end(dt, dt_out, t0, t_end)
 
-    (ts_out, ts_integrate, 
-    nsnaps, steps_per_output) = _make_time_arrays(dt, dt_out, t0, t_end)
+    n_steps, nsnaps, steps_per_output = _count_steps(dt, dt_out, t0, t_end)
 
-    positions, velocities = _make_pos_vel_arrays(pos, vel, mass, nsnaps)
-    (self_gravity_pot, self_gravity_acc,
-     self_acc0, self_pot0) = _make_self_gravity_arrays(pos, mass, self_gravity_force,
-                                                       return_self_gravity_pot, return_self_gravity_acc, nsnaps,
-                                                       eps)
-    i_out = 1
+    recorder = _MemoryRecorder() if recorder is None else recorder
+    recorder.begin(nsnaps, mass.shape[0], return_self_gravity_acc, return_self_gravity_pot)
+    self_acc0, self_pot0 = self_gravity_force.acc_and_potential(pos, mass, eps)
     current_pos, current_vel = pos, vel
     current_t = t0
     integrator.reset()
@@ -102,39 +105,39 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
     # Hook plumbing: one reusable view over the live state, refreshed each fire.
     # The progress bar is created up front so hooks can report to it (via
     # state.report) from the t0 fire onwards.
-    pbar = tqdm(ts_integrate[1:], disable=not progress)
+    pbar = tqdm(range(1, n_steps + 1), disable=not progress)
     ctx = StepContext(slices or {}, self_gravity_force, conserv_ext_force,
                       base_ext_force, progress=_Progress(pbar), eps=eps)
     state = StepState(None, ctx)
 
-    # Fire once on the initial state (t0) so hooks capture the starting point.
-    if hooks:
-        conserv_ext_acc0 = conserv_ext_force.acc(pos, mass, t0)
-        base_ext_acc0 = base_ext_force.acc(pos, vel, mass, t0)
-        initial_result = StepResult(pos=pos, vel=vel, mass=mass, t=t0,
-                                    self_acc=self_acc0, self_pot=self_pot0,
-                                    conserv_ext_acc=conserv_ext_acc0,
-                                    base_ext_acc=base_ext_acc0, step=0)
-        _fire(hooks, state, initial_result, 0, steps_per_output)
-
-    for step, _ in enumerate(pbar, start=1):
-        step_result = integrator.step(current_pos, current_vel, mass, current_t, dt,
-                                      self_gravity_force, conserv_ext_force, base_ext_force, eps,
-                                      t_new=_time_at(t0, dt, step))
-        step_result.step = step
-        current_pos, current_vel, current_t = step_result.pos, step_result.vel, step_result.t
+    # Each output is recorded after the hooks due at its step, t0 included.
+    try:
+        # Fire once on the initial state (t0) so hooks capture the starting point.
         if hooks:
-            _fire(hooks, state, step_result, step, steps_per_output)
-        if step % steps_per_output == 0 and i_out < nsnaps: # recording snapshot
-            positions[i_out] = step_result.pos.copy()
-            velocities[i_out] = step_result.vel.copy()
-            if return_self_gravity_acc:
-                self_gravity_acc[i_out] += step_result.self_acc.copy() if step_result.self_acc is not None else 0.0
-            if return_self_gravity_pot:
-                self_gravity_pot[i_out] += step_result.self_pot.copy() if step_result.self_pot is not None else 0.0
-            i_out += 1
+            conserv_ext_acc0 = conserv_ext_force.acc(pos, mass, t0)
+            base_ext_acc0 = base_ext_force.acc(pos, vel, mass, t0)
+            initial_result = StepResult(pos=pos, vel=vel, mass=mass, t=t0,
+                                        self_acc=self_acc0, self_pot=self_pot0,
+                                        conserv_ext_acc=conserv_ext_acc0,
+                                        base_ext_acc=base_ext_acc0, step=0)
+            _fire(hooks, state, initial_result, 0, steps_per_output)
+        recorder.record(0, t0, pos, vel, self_acc0, self_pot0)
 
-    return positions, velocities, ts_out, self_gravity_acc, self_gravity_pot
+        for step in pbar:
+            step_result = integrator.step(current_pos, current_vel, mass, current_t, dt,
+                                          self_gravity_force, conserv_ext_force, base_ext_force, eps,
+                                          t_new=_time_at(t0, dt, step))
+            step_result.step = step
+            current_pos, current_vel, current_t = step_result.pos, step_result.vel, step_result.t
+            if hooks:
+                _fire(hooks, state, step_result, step, steps_per_output)
+            if step % steps_per_output == 0:
+                recorder.record(step, step_result.t, step_result.pos, step_result.vel,
+                                step_result.self_acc, step_result.self_pot)
+    finally:
+        pbar.close()
+
+    return recorder.outputs()
 
 
 def _fire(hooks, state, result, step, steps_per_output):
@@ -153,6 +156,7 @@ def _fire(hooks, state, result, step, steps_per_output):
 
 
 def _check_dt_dt_out(dt, dt_out, t0, t_end):
+    """Raise if dt, dt_out, t0 and t_end can't make a run."""
     if (t0 > t_end) and (dt > 0):
         raise ValueError("The end time (t_end) is less than the start time (t0), implying backwards integration. " \
         "dt must be negative for backwards integration.")
@@ -165,56 +169,38 @@ def _check_dt_dt_out(dt, dt_out, t0, t_end):
         raise ValueError("dt_out must have the same sign as dt.")
     if abs(dt_out / dt - round(dt_out / dt)) > 1e-9:
         raise ValueError("dt_out must be a multiple of dt.")
-    if abs((t_end - t0) / dt - round((t_end  - t0) / dt)) > 1e-9:
-        actual_t_end = int((t_end - t0) / dt) * dt + t0
+
+
+def _warn_uneven_end(dt, dt_out, t0, t_end):
+    """Warn if the last step, or the last output, comes before t_end."""
+    n_steps, nsnaps, steps_per_output = _count_steps(dt, dt_out, t0, t_end)
+    last_output_step = (nsnaps - 1) * steps_per_output
+    steps_fall_short = not _whole_steps(dt, t0, t_end)[1]
+    if steps_fall_short:
         warnings.warn(f"Simulation duration ({t_end - t0} Gyr) is not an exact multiple of dt={dt} Gyr. "
-                        f"The simulation will end before t_end it reaches t_end.")
-    if abs((t_end - t0) / dt_out - round((t_end - t0) / dt_out)) > 1e-9:
-        n_steps_w = int((t_end - t0) / dt) if abs((t_end - t0)/ dt - round((t_end - t0) / dt)) > 1e-9 else round((t_end - t0) / dt)
-        steps_per_output = round(dt_out / dt)
-        nsnaps = n_steps_w // steps_per_output
-        actual_t_end = nsnaps * dt_out + t0
+                      f"The run will end at t={_time_at(t0, dt, n_steps):.10g} Gyr instead of t={t_end} Gyr.")
+    if steps_fall_short or last_output_step != n_steps:
         warnings.warn(f"Simulation duration ({t_end - t0} Gyr) is not an exact multiple of dt_out={dt_out} Gyr. "
-                        f"Last output will be at t={actual_t_end:.10g} Gyr instead of t={t_end} Gyr.")
+                      f"Last output will be at t={_time_at(t0, dt, last_output_step):.10g} Gyr "
+                      f"instead of t={t_end} Gyr.")
 
 def _time_at(t0, dt, step):
     """Time after *step* steps (an int or int array), from the count: summing dt drifts."""
     return t0 + step * dt
 
 
-def _make_time_arrays(dt, dt_out, t0, t_end):
-    ratio_save = (t_end - t0) / dt_out
-    n_steps_save = round(ratio_save) if abs(ratio_save - round(ratio_save)) < 1e-9 else int(ratio_save)
+def _whole_steps(dt, t0, t_end):
+    """Steps of dt that fit from t0 to t_end, and whether they reach t_end up to round-off."""
+    ratio = (t_end - t0) / dt
+    # round-off in t0, t_end and dt moves the ratio by up to ~4 ulp(t) / dt
+    tolerance = max(1e-9, 8 * math.ulp(max(abs(t0), abs(t_end))) / abs(dt))
+    if abs(ratio - round(ratio)) < tolerance:
+        return round(ratio), True
+    return int(ratio), False
 
-    ratio_integrate = (t_end - t0) / dt
-    n_steps_integrate = round(ratio_integrate) if abs(ratio_integrate - round(ratio_integrate)) < 1e-9 else int(ratio_integrate)
 
+def _count_steps(dt, dt_out, t0, t_end):
+    """Steps in the run, outputs it makes (t0 included), and steps per output."""
+    n_steps = _whole_steps(dt, t0, t_end)[0]
     steps_per_output = round(dt_out / dt)
-    nsnaps = n_steps_save + 1  # +1 for initial snapshot at t=0
-    ts_out = _time_at(t0, dt, np.arange(nsnaps) * steps_per_output)
-    ts_integrate = _time_at(t0, dt, np.arange(n_steps_integrate + 1))
-    return ts_out, ts_integrate, nsnaps, steps_per_output
-
-
-def _make_pos_vel_arrays(pos, vel, mass, nsnaps):
-    n = mass.shape[0]
-    positions = np.zeros((nsnaps, n, 3), dtype=np.float64)
-    velocities = np.zeros((nsnaps, n, 3), dtype=np.float64)
-    positions[0] = pos.copy()
-    velocities[0] = vel.copy()
-    return positions, velocities
-
-
-def _make_self_gravity_arrays(pos, mass, self_gravity_force, return_self_gravity_pot,
-                            return_self_gravity_acc, nsnaps, eps=None):
-    self_gravity_pot = None
-    self_gravity_acc = None
-    self_acc, self_pot = self_gravity_force.acc_and_potential(pos, mass, eps)
-    n = mass.shape[0]
-    if return_self_gravity_pot:
-        self_gravity_pot = np.zeros((nsnaps, n), dtype=np.float64)
-        self_gravity_pot[0] += self_pot.copy() if self_pot is not None else 0.0
-    if return_self_gravity_acc:
-        self_gravity_acc = np.zeros((nsnaps, n, 3), dtype=np.float64)
-        self_gravity_acc[0] = self_acc.copy() if self_acc is not None else 0.0
-    return self_gravity_pot, self_gravity_acc, self_acc, self_pot
+    return n_steps, n_steps // steps_per_output + 1, steps_per_output

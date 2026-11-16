@@ -2,7 +2,10 @@
 Simulation class for tambora.
 """
 
+import contextlib
+import os
 import numpy as np
+import warnings
 from .component import Component
 from ._view import _ParticleView
 from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, NullSelfGravity, Conservative, ExternalPotential,
@@ -13,6 +16,9 @@ from ..units import unit_handler, KMS_TO_KPCGYR
 from ..dynamics import diagnostics
 from ..ic import ParticleSet
 from ..dynamics.integration import StepState
+from ..dynamics.integration.recorder import _MemoryRecorder
+from ..dynamics.integration.integrate import _check_dt_dt_out, _count_steps, _time_at
+from ..io.run_files import RUN_FILE, _FileRecorder, _snapshot_arrays, existing_run, read_run, snapshot_name
 import inspect
 import keyword
 from typing import Optional
@@ -32,6 +38,36 @@ def _check_eps(eps, n):
     if not np.all(np.isfinite(arr) & (arr >= 0)):
         raise ValueError("eps must be finite and non-negative")
     return arr
+
+
+def _check_monitors(monitors):
+    """*monitors* as None, False, a name, or a tuple of names."""
+    if monitors is None or monitors is False or isinstance(monitors, str):
+        return monitors
+    try:
+        names = tuple(monitors)
+    except TypeError:
+        names = None
+    if names is None or not all(isinstance(name, str) for name in names):
+        raise TypeError(f"monitors must be 'auto', a quantity name, a sequence of names, or False; "
+                        f"got {monitors!r}.")
+    return names
+
+
+def _check_output_dir(output_dir, name='output_dir'):
+    """*output_dir*, the directory argument *name*, as an absolute path."""
+    try:
+        path = os.fspath(output_dir)
+    except TypeError:
+        path = None
+    if not isinstance(path, str):
+        raise TypeError(f"{name} must be a path (str or os.PathLike), got {type(output_dir).__name__}.")
+    if not path:
+        raise ValueError(f"{name} can't be empty: name a directory.")
+    path = os.path.abspath(os.path.expanduser(path))
+    if os.path.exists(path) and not os.path.isdir(path):
+        raise NotADirectoryError(f"{name}={path!r} is a file, not a directory.")
+    return path
 
 
 def _hook_dedup_key(hook):
@@ -92,6 +128,14 @@ def _cadence_label(cadence):
 class Sim(_ParticleView):
     """
     Self-gravitating N-body simulation.
+
+    Parameters
+    ----------
+    output_dir : str or path, optional
+        Directory to write the run to, one file per output, instead of keeping it
+        in memory; the accessors then read the files. It must not hold a run
+        already, and a Sim with an output_dir runs once. Default: None (in memory).
+        ``Sim.load(path)`` reads the run back.
     """
 
     _sl = slice(None)
@@ -100,7 +144,12 @@ class Sim(_ParticleView):
     def _sim(self):
         return self
 
-    def __init__(self):
+    def __init__(self, *, output_dir=None):
+        self._output_dir = None if output_dir is None else _check_output_dir(output_dir)
+        taken = self._run_in_output_dir()
+        if taken:
+            raise FileExistsError(f"{self._output_dir!r} already holds a run ({taken}). "
+                                  "Delete it, or use another output_dir.")
         self._host = None
 
         # Particle arrays -- built incrementally by add_particles()
@@ -118,11 +167,15 @@ class Sim(_ParticleView):
         self._cached_self_pot = None # (n_snap, N)    kpc^2/Gyr^2
   
         self._times = None           # (n_snap,) Gyr
+        self._steps = None           # (n_snap,) step of each output
+        self._run_settings = None    # the settings of the run that made the outputs
         self._has_run = False
         self._self_gravity_force = NullSelfGravity()
         self._conserv_ext_force = _CompositeConservative([]) # conservative external forces
         self._base_ext_force = _CompositePlain([]) # non-conservative external forces
+        self._loaded = False # made by Sim.load: can't run
         self._hooks = [] # (Hook, Cadence) pairs run during integration
+        self._auto_monitor = None # the ConservationMonitor the last run attached itself
 
     def _ti(self, t, vectorized=True):
         """
@@ -271,6 +324,7 @@ class Sim(_ParticleView):
         self._positions = self._init_pos.reshape(1, N, 3)
         self._velocities = self._init_vel.reshape(1, N, 3)
         self._times = np.array([0.0])
+        self._steps = np.array([0])
 
     def _set_eps(self, sl, eps):
         """Set the softening of the particles in *sl*; a previous run's outputs are cleared."""
@@ -283,12 +337,20 @@ class Sim(_ParticleView):
     def _clear_outputs(self):
         """Back to the initial conditions, as before ``run()``."""
         N = self._mass.shape[0]
+        if self._init_pos is None:      # i.e., use the first output in a loaded Sim
+            self._init_pos, self._init_vel = self._positions[0], self._velocities[0]
         self._positions = self._init_pos.reshape(1, N, 3)
         self._velocities = self._init_vel.reshape(1, N, 3)
         self._times = np.array([0.0])
+        self._steps = np.array([0])
         self._cached_self_acc = None
         self._cached_self_pot = None
+        self._run_settings = None
         self._has_run = False
+
+    def _run_in_output_dir(self):
+        """The first of a run's files in this Sim's output_dir, or None."""
+        return None if self._output_dir is None else existing_run(self._output_dir)
 
     def add_external_force(self, force: Force):
         '''
@@ -423,9 +485,6 @@ class Sim(_ParticleView):
         """
         Run the simulation to *t_end* [Gyr].
 
-        Running again starts from the initial conditions, replaces the previous
-        run's outputs, and resets every hook's records (see ``Hook.reset``).
-
         Parameters
         ----------
         t_end : float
@@ -455,8 +514,9 @@ class Sim(_ParticleView):
             :class:`~tambora.dynamics.hooks.ConservationMonitor`. ``'auto'``
             (default) picks a sensible set (currently ``('energy',)``). Pass a
             name or sequence of names (e.g. ``('energy',)``) to choose
-            explicitly, or ``False`` to attach none. Ignored if you already
-            added your own ``ConservationMonitor``; read the results from
+            explicitly, or ``False`` to attach none. Each run replaces the
+            monitor the previous run attached. Ignored if you already added
+            your own ``ConservationMonitor``; read the results from
             ``sim.monitor``.
         **kwargs
             Additional keyword arguments to pass to the gravity method. For 'falcON':
@@ -465,7 +525,23 @@ class Sim(_ParticleView):
             - kernel (int, optional): Softening kernel: 0=Plummer, 1=default (~r^-7), 2,3=faster decay.
 
             The softening comes from the particles: see ``add_particles`` and ``eps``.
+
+        Notes
+        -----
+        - Running again starts from the initial conditions, replaces the previous
+          run's outputs, and resets every hook's records (see ``Hook.reset``).
+
+        - If the run stops early (Ctrl-C, or an error in a hook or a force), the outputs
+          recorded up to then are kept and the error is raised again. falcON aborting the
+          whole process (e.g. on NaN positions) can't be caught, so nothing is kept then.
+
+        - A Sim made with ``output_dir`` runs once. A Sim from ``Sim.load`` can't run.
+
+        - A run that stops before its first output leaves nothing in the directory.
         """
+        if self._loaded:
+            raise RuntimeError(f"This Sim was loaded from {self._output_dir!r} and can't run. "
+                               "Make a new Sim to run again.")
         supported = sorted(m for m in SELF_GRAVITY_METHODS if m is not None)
         if method not in SELF_GRAVITY_METHODS:
             raise ValueError(
@@ -485,23 +561,58 @@ class Sim(_ParticleView):
                 raise ValueError(
                     f"Softening isn't set for {', '.join(repr(n) for n in unset)}: give it with "
                     f"add_particles(..., eps=...) or sim.<component>.eps = ..., or run with method=None.")
-        self._self_gravity_force = solver_cls(**kwargs)
+        _check_dt_dt_out(dt, dt_out, t0, t_end)
+        t0, t_end, dt, dt_out = float(t0), float(t_end), float(dt), float(dt_out)
+        cache_self_gravity_acc, cache_self_gravity_pot = bool(cache_self_gravity_acc), bool(cache_self_gravity_pot)
+        if integration_method not in INTEGRATORS:
+            raise ValueError(f"Unknown integration_method {integration_method!r}. "
+                             f"Supported: {sorted(INTEGRATORS)}.")
+        solver = solver_cls(**kwargs)
         # Outside state (e.g. Agama's global units) can invalidate a wrapped
         # potential after it was added; each backend checks for that here.
         for force in self._conserv_ext_force.members + self._base_ext_force.members:
             check = getattr(force, "check_still_valid", None)
             if check is not None:
                 check()
-        self._add_default_monitors(monitors)
+        monitors = _check_monitors(monitors)
+        monitor = self._default_monitor(monitors)
+        taken = self._run_in_output_dir()
+        if taken:
+            raise FileExistsError(f"{self._output_dir!r} already holds a run ({taken}), which this run "
+                                  "would overwrite. Make a new Sim with another output_dir, or delete the old run.")
+        n_steps, _, steps_per_output = _count_steps(dt, dt_out, t0, t_end)
+        run_settings = {
+            't0': t0, 't_end': t_end, 'dt': dt, 'dt_out': dt_out,
+            'n_steps': n_steps, 'steps_per_output': steps_per_output,
+            'integration_method': integration_method,
+            'self_gravity': {'method': method, **{name: getattr(solver, name) for name in sorted(valid)}},
+            'cache_self_gravity_acc': cache_self_gravity_acc,
+            'cache_self_gravity_pot': cache_self_gravity_pot,
+            'monitors': monitors,
+            'forces': [_force_label(force) for force in
+                       self._conserv_ext_force.members + self._base_ext_force.members],
+        }
+
+        # Every check passed: only now change the Sim.
+        self._self_gravity_force = solver
+        self._hooks[:] = [(h, c) for h, c in self._hooks if h is not self._auto_monitor]
+        self._auto_monitor = monitor
+        if monitor is not None:
+            self._hooks.append((monitor, monitor.default_cadence))
+        run_settings['hooks'] = {'names': [type(h).__name__ for h, _ in self._hooks],
+                                 'cadences': [_cadence_label(c) for _, c in self._hooks]}
         from ..dynamics.hooks import Hook
         for hook, _ in self._hooks:
             if isinstance(hook, Hook):
                 hook.reset()
         integrator = INTEGRATORS[integration_method]()
 
-        (self._positions, self._velocities, 
-         self._times, self._cached_self_acc, 
-         self._cached_self_pot) = _runner(
+        if self._output_dir is None:
+            recorder = _MemoryRecorder()
+        else:
+            recorder = _FileRecorder(self._output_dir, settings=self._settings(run_settings))
+        try:
+            _runner(
                     self._init_pos, self._init_vel, self._mass,
                     integrator,
                     self._self_gravity_force,
@@ -517,8 +628,44 @@ class Sim(_ParticleView):
                     hooks = self._hooks,
                     progress = progress,
                     eps = self._eps if np.isnan(self._eps).any() else self._softening(everyone=True),
+                    recorder = recorder,
                 )
+        except BaseException:
+            if recorder.n:
+                self._keep_outputs(recorder, run_settings)
+                try:
+                    warnings.warn(f"The run stopped early: the {recorder.n} outputs up to "
+                                  f"t = {self._times[-1]:g} Gyr are kept.", stacklevel=2)
+                except Exception:   # warnings made errors must not replace the real one
+                    pass
+            else:
+                recorder.abandon()
+            raise
+        self._keep_outputs(recorder, run_settings)
+
+    def _keep_outputs(self, recorder, run_settings):
+        """Take the outputs *recorder* holds, and the settings of the run that made them, as this Sim's."""
+        (self._positions, self._velocities, self._times,
+         self._cached_self_acc, self._cached_self_pot) = recorder.outputs()
+        self._steps = np.array(recorder.steps[:len(self._times)], dtype=np.int64)
+        self._run_settings = run_settings
         self._has_run = True
+
+    def _settings(self, run_settings):
+        """``run.h5``'s settings: the components, the particles' mass and softening, and the run's settings.
+
+        The run's settings list its external forces and hooks as ``repr(sim)`` does. The initial
+        positions and velocities are the first output's.
+        """
+        return {
+            'components': {
+                'names': np.array(list(self._slices)),
+                'start': np.array([sl.start for sl in self._slices.values()], dtype=np.int64),
+                'stop': np.array([sl.stop for sl in self._slices.values()], dtype=np.int64),
+            },
+            'particles': {'mass': self._mass, 'eps': self._eps},
+            'run': run_settings,
+        }
 
     # --- Hooks -----------------------------------------------------------------------------------
 
@@ -576,26 +723,25 @@ class Sim(_ParticleView):
                             f"{type(cadence).__name__!r}.")
         self._hooks.append((hook, cadence))
 
-    def _add_default_monitors(self, monitors):
-        '''Attach this run's default ``ConservationMonitor`` (called from ``run``).
+    def _default_monitor(self, monitors):
+        '''This run's default ``ConservationMonitor``, or None (called from ``run``).
 
         ``monitors`` is ``'auto'`` (default is currently ``('energy',)``),
         ``False``/``None`` to disable, or an explicit quantity name / sequence of
-        names. Skipped entirely if a ``ConservationMonitor`` is already
-        registered, so a monitor you added yourself always wins over the default.
+        names. None if you added a ``ConservationMonitor`` yourself, so yours
+        always wins over the default.
         '''
         from ..dynamics.hooks import ConservationMonitor
         if monitors is False or monitors is None:
-            return
-        if any(isinstance(hook, ConservationMonitor) for hook, _ in self._hooks):
-            return
+            return None
+        if any(isinstance(hook, ConservationMonitor) and hook is not self._auto_monitor
+               for hook, _ in self._hooks):
+            return None
         if isinstance(monitors, str):
             track = ('energy',) if monitors == 'auto' else (monitors,)
         else:
             track = tuple(monitors)
-        if not track:
-            return
-        self.add_hook(ConservationMonitor(track=track))
+        return ConservationMonitor(track=track) if track else None
 
     @property
     def hooks(self):
@@ -1259,11 +1405,121 @@ class Sim(_ParticleView):
 
     # --- I/O ------------------------------------------------------------------------------
 
-    def save(self):
-        raise NotImplementedError("Saving and loading simulations is not yet supported.")
-    
-    def load(self):
-        raise NotImplementedError("Saving and loading simulations is not yet supported.")
+    def save(self, path):
+        """
+        Write this Sim's run to the directory *path*, as ``Sim(output_dir=path)`` would have.
+
+        ``Sim.load(path)`` reads it back.
+
+        Parameters
+        ----------
+        path : str or path
+            The directory to write to. It's made if it doesn't exist.
+
+        Raises
+        ------
+        RuntimeError
+            If the Sim hasn't run.
+        FileExistsError
+            If *path* holds a run.
+        NotADirectoryError
+            If *path* is a file.
+
+        Notes
+        -----
+        - A Sim with an ``output_dir``, or a loaded one, is copied.
+        - External forces and hooks aren't saved. Their labels are.
+        - If saving stops partway (an error, Ctrl-C), the files written are removed.
+        """
+        if not self._has_run:
+            raise RuntimeError("This Sim hasn't run. There's nothing to save.")
+        directory = _check_output_dir(path, name='path')
+        run, acc, pot = self._run_settings, self._cached_self_acc, self._cached_self_pot
+        recorder = _FileRecorder(directory, settings=self._settings(run))
+        recorder.begin(run['n_steps'] // run['steps_per_output'] + 1, self._mass.shape[0],
+                       acc is not None, pot is not None)
+        try:
+            for i, (step, t) in enumerate(zip(self._steps, self._times)):
+                recorder.record(int(step), float(t), self._positions[i], self._velocities[i],
+                                None if acc is None else acc[i], None if pot is None else pot[i])
+        except BaseException:
+            for name in [snapshot_name(i) for i in range(recorder.n)] + [RUN_FILE]:
+                with contextlib.suppress(OSError):
+                    os.remove(os.path.join(directory, name))
+            raise
+
+    @classmethod
+    def load(cls, path):
+        """
+        The Sim whose run was written to *path* by ``Sim(output_dir=path)`` or ``sim.save(path)``.
+
+        Parameters
+        ----------
+        path : str or path
+            The run's directory.
+
+        Returns
+        -------
+        Sim
+
+        Raises
+        ------
+        FileNotFoundError
+            If *path* holds no run.
+        NotADirectoryError
+            If *path* is a file, e.g. ``run.h5`` itself.
+        ValueError
+            If the run can't be read (e.g., another format, no outputs, or snapshot files
+            that don't match ``run.h5``).
+
+        Warns
+        -----
+        UserWarning
+            If the run used external forces that couldn't be loaded, naming them.
+        UserWarning
+            If the run made fewer outputs than planned: it stopped early, or is still
+            running.
+
+        Notes
+        -----
+        - Snapshots are read from their files when an accessor asks for them.
+        - The run's external forces aren't saved. Add them again with ``add_external_pot`` or
+          ``add_external_force`` before computing anything that needs them. They're left out
+          until then.
+        - Hooks and their records aren't saved either.
+        - A loaded Sim can't run again.
+        """
+        directory = os.path.abspath(os.path.expanduser(os.fspath(path)))
+        run = read_run(directory)
+        settings, n = run['settings'], run['n_outputs']
+        if n == 0:
+            raise ValueError(f"{directory!r} holds no outputs.")
+        steps = np.arange(n, dtype=np.int64) * settings['run']['steps_per_output']
+        times = _time_at(settings['run']['t0'], settings['run']['dt'], steps)
+        if run['last'] != (int(steps[-1]), float(times[-1])):
+            raise ValueError(f"{snapshot_name(n - 1)} in {directory!r} has step {run['last'][0]} at "
+                             f"t = {run['last'][1]!r} Gyr, but {RUN_FILE} puts output {n - 1} at step "
+                             f"{steps[-1]}, t = {float(times[-1])!r} Gyr.")
+        sim = cls()
+        components = settings['components']
+        sim._slices = {str(name): slice(int(start), int(stop)) for name, start, stop
+                       in zip(components['names'], components['start'], components['stop'])}
+        sim._mass = np.asarray(settings['particles']['mass'], dtype=np.float64)
+        sim._eps = np.asarray(settings['particles']['eps'], dtype=np.float64)
+        sim._positions, sim._velocities, sim._cached_self_acc, sim._cached_self_pot = _snapshot_arrays(
+            directory, n, run['n_particles'], run['keep_self_acc'], run['keep_self_pot'])
+        sim._times, sim._steps = times, steps
+        sim._run_settings = settings['run']
+        sim._has_run = sim._loaded = True
+        sim._output_dir = directory
+        if settings['run']['forces']:
+            warnings.warn(f"{', '.join(settings['run']['forces'])} couldn't be loaded. Add them again with add_external_pot "
+                          "or add_external_force before computing anything that needs them. Until then, "
+                          "they're left out.", stacklevel=2)
+        if n < run['expected_outputs']:
+            warnings.warn(f"{directory!r} holds {n} of the {run['expected_outputs']} outputs its run "
+                          "was to make. The run stopped early, or is still running.", stacklevel=2)
+        return sim
 
     # --- Output to external formats -------------------------------------------------------
 
