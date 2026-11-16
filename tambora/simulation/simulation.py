@@ -18,6 +18,7 @@ from ..ic import ParticleSet
 from ..dynamics.integration import StepState
 from ..dynamics.integration.recorder import _MemoryRecorder
 from ..dynamics.integration.integrate import _check_dt_dt_out, _count_steps, _time_at
+from ..interop._registry import potential_backend_named
 from ..io.run_files import RUN_FILE, _FileRecorder, _snapshot_arrays, existing_run, read_run, snapshot_name
 import inspect
 import keyword
@@ -1549,7 +1550,8 @@ class Sim(_ParticleView):
         Warns
         -----
         UserWarning
-            If the run used external forces that couldn't be loaded, naming them.
+            If the run used external forces that couldn't be loaded, naming them, with the
+            reason for a saved potential that couldn't.
         UserWarning
             If the run made fewer outputs than planned: it stopped early, or is still
             running.
@@ -1557,10 +1559,12 @@ class Sim(_ParticleView):
         Notes
         -----
         - Snapshots are read from their files when an accessor asks for them.
-        - The run's external forces aren't saved. Add them again with ``add_external_pot`` or
-          ``add_external_force`` before computing anything that needs them. They're left out
-          until then.
-        - Hooks and their records aren't saved either.
+        - The run's potentials from supported packages are added again, as the run used them.
+          Other external forces, and potentials added with ``save_with_run=False``, aren't
+          saved. Add them again with ``add_external_pot`` or ``add_external_force`` before
+          computing anything that needs them. They're left out until then.
+        - Only load runs you trust. Loading a saved potential runs code its run file names.
+        - Hooks and their records aren't saved.
         - A loaded Sim can't run again.
         """
         directory = os.path.abspath(os.path.expanduser(os.fspath(path)))
@@ -1586,8 +1590,18 @@ class Sim(_ParticleView):
         sim._run_settings, sim._run_forces = settings['run'], run['forces']
         sim._has_run = sim._loaded = True
         sim._output_dir = directory
-        if settings['run']['forces']:
-            warnings.warn(f"{', '.join(settings['run']['forces'])} couldn't be loaded. Add them again with add_external_pot "
+        not_loaded = []
+        for record in run['forces']:
+            if not record['saved']:
+                not_loaded.append(record['label'])
+                continue
+            try:
+                backend = potential_backend_named(record['backend']).load(record['record'])
+                sim._add_external_force(ExternalPotential._from_backend(backend))
+            except Exception as e:
+                not_loaded.append(f"{record['label']} ({type(e).__name__}: {e})")
+        if not_loaded:
+            warnings.warn(f"{', '.join(not_loaded)} couldn't be loaded. Add them again with add_external_pot "
                           "or add_external_force before computing anything that needs them. Until then, "
                           "they're left out.", stacklevel=2)
         if n < run['expected_outputs']:

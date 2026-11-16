@@ -25,7 +25,17 @@ class ExternalPotential(ExternalConservativeForce):
     """
 
     def __init__(self, potential, save_with_run=True):
-        self._backend = potential_backend_for(potential)
+        self._attach(potential_backend_for(potential), save_with_run)
+
+    @classmethod
+    def _from_backend(cls, backend, save_with_run=True):
+        """The force of an already-made backend, e.g. one loaded from a run file."""
+        force = cls.__new__(cls)
+        force._attach(backend, save_with_run)
+        return force
+
+    def _attach(self, backend, save_with_run):
+        self._backend = backend
         self.save_with_run = bool(save_with_run)
         key = self._backend.dedup_key()
         self._key = None if key is None else (type(self), self._backend.name, key)

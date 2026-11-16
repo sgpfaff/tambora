@@ -85,14 +85,15 @@ def test_a_saved_run_that_stopped_early_loads_with_the_warning(tmp_path):
     _assert_same_run(loaded, sim)
 
 
-def test_a_saved_run_lists_its_forces(tmp_path):
+def test_a_saved_run_keeps_its_potential_and_names_its_other_forces(tmp_path):
     sim = _sim()
     sim.add_external_force(_Drag())
     sim.add_external_pot(gp.NFWPotential(ro=8, vo=220))
     sim.run(**RUN)
     sim.save(tmp_path / 'saved')
-    with pytest.warns(UserWarning, match=r"ExternalPotential\(NFWPotential\), _Drag couldn't be loaded"):
-        Sim.load(tmp_path / 'saved')
+    with pytest.warns(UserWarning, match=r"^_Drag couldn't be loaded"):
+        loaded = Sim.load(tmp_path / 'saved')
+    assert [repr(f) for f in loaded._conserv_ext_force.members] == ['ExternalPotential(galpy: NFWPotential)']
 
 
 # --- what save refuses, and a save that stops partway -------------------------------- #

@@ -157,3 +157,86 @@ def test_bytes_in_a_settings_dict_come_back_as_written(data):
         _write_settings(f.create_group('s'), {'data': data, 'nested': {'data': data}})
     with h5py.File(buffer, 'r') as f:
         assert _read_settings(f['s']) == {'data': data, 'nested': {'data': data}}
+
+
+# --- Sim.load adds the saved potentials again ------------------------------------------- #
+
+def _run_with_potentials(directory):
+    sim = _sim(output_dir=directory)
+    sim.add_external_pot(_nfw())
+    sim.add_external_pot(gp.MiyamotoNagaiPotential(ro=8., vo=220.))
+    sim.add_external_force(_Drag())
+    sim.run(**RUN)
+    return sim
+
+
+def test_a_loaded_sim_has_the_runs_potentials_in_order_and_computes_as_the_run_did(tmp_path):
+    run = _run_with_potentials(tmp_path / 'run')
+    with pytest.warns(UserWarning, match=r"^_Drag couldn't be loaded"):
+        sim = Sim.load(tmp_path / 'run')
+    assert [repr(f) for f in sim._conserv_ext_force.members] == [repr(f) for f in run._conserv_ext_force.members]
+    for t in (0., 0.1):
+        np.testing.assert_array_equal(sim._conserv_ext_force.acc(POS, None, t), run._conserv_ext_force.acc(POS, None, t))
+    assert all(f.save_with_run for f in sim._conserv_ext_force.members)
+
+
+def test_adding_a_reloaded_potential_again_is_refused_as_a_duplicate(tmp_path):
+    _run_with_potentials(tmp_path / 'run')
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        sim = Sim.load(tmp_path / 'run')
+    with pytest.raises(ValueError, match="already added"):
+        sim.add_external_pot(_nfw())
+
+
+def _loading_with(monkeypatch, change):
+    """Sim.load reading run.h5's forces after *change* changed the first one's record."""
+    import tambora.simulation.simulation as simulation_module
+    read = simulation_module.read_run
+
+    def changed(directory):
+        run = read(directory)
+        change(run['forces'][0])
+        return run
+    monkeypatch.setattr(simulation_module, 'read_run', changed)
+
+
+@pytest.mark.parametrize("change, reason", [
+    (lambda f: f['record'].update(data=b'not a pickle'), r"\(UnpicklingError: "),
+    (lambda f: f.update(backend='agama'), r"\(ValueError: This tambora has no 'agama' potential backend.\)"),
+], ids=['damaged', 'unknown backend'])
+def test_a_potential_that_cant_be_loaded_is_named_with_why_and_the_rest_loads(tmp_path, monkeypatch, change, reason):
+    run = _run_with_potentials(tmp_path / 'run')
+    _loading_with(monkeypatch, change)
+    with pytest.warns(UserWarning, match=r"^ExternalPotential\(NFWPotential\) " + reason) as caught:
+        sim = Sim.load(tmp_path / 'run')
+    assert len(caught) == 1 and caught[0].message.args[0].count("couldn't be loaded") == 1
+    assert ", _Drag couldn't be loaded" in str(caught[0].message)
+    assert [repr(f) for f in sim._conserv_ext_force.members] == [repr(run._conserv_ext_force.members[1])]
+
+
+def test_a_potential_from_another_galpy_warns_from_your_line_and_loads(tmp_path, monkeypatch):
+    run = _run_with_potentials(tmp_path / 'run')
+    _loading_with(monkeypatch, lambda f: f['record'].update(galpy_version='0.1'))
+    with pytest.warns(UserWarning) as caught:
+        sim = Sim.load(tmp_path / 'run')
+    version = [w for w in caught if 'saved with galpy 0.1' in str(w.message)]
+    assert len(version) == 1 and version[0].filename == __file__
+    assert [repr(f) for f in sim._conserv_ext_force.members] == [repr(f) for f in run._conserv_ext_force.members]
+
+
+def test_a_potential_saved_without_its_package_installed_is_named(tmp_path, monkeypatch):
+    from tambora.interop import _registry
+    _run_with_potentials(tmp_path / 'run')
+    monkeypatch.setattr(_registry, '_POTENTIAL_BACKENDS', (_registry._Entry('galpy', 'no_such_package_xyz', '', ''),))
+    with pytest.warns(UserWarning, match=r"\(ImportError: no_such_package_xyz isn't installed.\)") as caught:
+        sim = Sim.load(tmp_path / 'run')
+    assert len(caught) == 1 and sim._conserv_ext_force.members == []
+
+
+def test_a_potential_that_wasnt_saved_is_named_without_a_reason(tmp_path):
+    sim = _sim(output_dir=tmp_path / 'run')
+    sim.add_external_pot(_nfw(), save_with_run=False)
+    sim.run(**RUN)
+    with pytest.warns(UserWarning, match=r"^ExternalPotential\(NFWPotential\) couldn't be loaded"):
+        Sim.load(tmp_path / 'run')

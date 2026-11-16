@@ -1,6 +1,7 @@
 """galpy potentials as a :class:`~tambora.interop.PotentialBackend`."""
 
 import pickle
+import warnings
 import weakref
 
 import galpy
@@ -112,6 +113,9 @@ class GalpyPotential(PotentialBackend):
 
     @classmethod
     def load(cls, record):
+        if record['galpy_version'] != galpy.__version__:
+            warnings.warn(f"A potential was saved with galpy {record['galpy_version']}, and this is galpy "
+                          f"{galpy.__version__}. It may not load, or may give other forces.", stacklevel=3)
         components, units = pickle.loads(record['data'])
         for p, (ro, vo) in zip(components, units):
             if _units(p) != (ro, vo):       # changed after it was added

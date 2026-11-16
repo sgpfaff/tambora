@@ -57,11 +57,9 @@ def test_a_run_without_softening_loads(tmp_path):
     disk, memory = test_particles(output_dir=tmp_path / 'run'), test_particles()
     disk.run(**{**RUN, 'method': None})
     memory.run(**{**RUN, 'method': None})
-    with pytest.warns(UserWarning, match=r"ExternalPotential\(NFWPotential\)\ couldn't be loaded."):
-        sim = Sim.load(tmp_path / 'run')
+    sim = _load(tmp_path / 'run')
     assert np.isnan(sim._eps).all()
     _assert_same_run(sim, memory)
-    sim.add_external_pot(gp.NFWPotential(ro=8, vo=220))
     np.testing.assert_array_equal(sim.external_acc(t=2), memory.external_acc(t=2))
 
 
@@ -98,15 +96,18 @@ def _with_forces(sim):
     return sim
 
 
-FORCES_NOT_LOADED = (r"ExternalPotential\(NFWPotential\+MiyamotoNagaiPotential\), _Drag\ couldn't be loaded. Add them again "
+FORCES_NOT_LOADED = (r"^_Drag couldn't be loaded. Add them again "
                      r"with add_external_pot or add_external_force before computing anything that needs them")
 
 
-def test_loading_a_run_with_external_forces_warns_naming_them(tmp_path):
-    _with_forces(_sim(output_dir=tmp_path / 'run')).run(**RUN)
+def test_loading_a_run_adds_its_potential_again_and_names_the_forces_it_cant(tmp_path):
+    run = _with_forces(_sim(output_dir=tmp_path / 'run'))
+    run.run(**RUN)
     with pytest.warns(UserWarning, match=FORCES_NOT_LOADED) as caught:
-        Sim.load(tmp_path / 'run')
+        sim = Sim.load(tmp_path / 'run')
     assert len(caught) == 1
+    assert [repr(f) for f in sim._conserv_ext_force.members] == [repr(f) for f in run._conserv_ext_force.members]
+    assert sim._base_ext_force.members == []
 
 
 @pytest.mark.parametrize("compute", [
@@ -115,12 +116,13 @@ def test_loading_a_run_with_external_forces_warns_naming_them(tmp_path):
     lambda sim: sim.system_energy(), lambda sim: sim.b.energy(t=0), lambda sim: sim.virial_ratio(t=1),
 ], ids=['compute_external_pot', 'external_acc', 'component external_acc', 'energy', 'PE', 'system_energy',
         'component energy', 'virial_ratio'])
-def test_with_its_forces_added_again_a_loaded_run_gives_what_the_run_gave(tmp_path, compute):
+def test_with_the_forces_it_couldnt_load_added_again_a_loaded_run_gives_what_the_run_gave(tmp_path, compute):
     _with_forces(_sim(output_dir=tmp_path / 'run')).run(**RUN)
     memory = _with_forces(_sim())
     memory.run(**RUN)
     with pytest.warns(UserWarning, match=FORCES_NOT_LOADED):
-        sim = _with_forces(Sim.load(tmp_path / 'run'))
+        sim = Sim.load(tmp_path / 'run')
+    sim.add_external_force(_Drag())
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')     # on-the-fly external potential
         np.testing.assert_array_equal(compute(sim), compute(memory))

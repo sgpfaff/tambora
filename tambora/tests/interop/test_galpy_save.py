@@ -162,3 +162,26 @@ def test_a_backend_that_doesnt_save_gives_no_record_and_cant_load():
     assert _Unsaved(None).save() is None
     with pytest.raises(NotImplementedError, match="unsaved potentials can't be loaded"):
         _Unsaved.load({})
+
+
+ANOTHER_GALPY = rf"^A potential was saved with galpy 0.1, and this is galpy {galpy.__version__}. It may not load"
+
+
+def test_a_damaged_record_raises_its_own_error():
+    record = {**GalpyPotential(_nfw()).save(), 'data': b'not a pickle'}
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        with pytest.raises(pickle.UnpicklingError):
+            GalpyPotential.load(record)
+
+
+def test_a_record_from_another_galpy_warns_and_is_used_if_it_loads():
+    backend = GalpyPotential(_nfw())
+    with pytest.warns(UserWarning, match=ANOTHER_GALPY):
+        _assert_same_forces(GalpyPotential.load({**backend.save(), 'galpy_version': '0.1'}), backend)
+
+
+def test_a_record_from_another_galpy_that_doesnt_load_raises_its_own_error():
+    record = {**GalpyPotential(_nfw()).save(), 'data': b'not a pickle', 'galpy_version': '0.1'}
+    with pytest.warns(UserWarning, match=ANOTHER_GALPY), pytest.raises(pickle.UnpicklingError):
+        GalpyPotential.load(record)
