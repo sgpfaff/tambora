@@ -37,7 +37,7 @@ class Force(ABC):
         return self.acc(pos, vel, mass, t)
 
     def _dedup_key(self):
-        """Identity used by ``Sim.add_external_force`` to reject duplicates.
+        """Identity used by ``Sim.add_force`` to reject duplicates.
 
         Return a hashable/comparable key built from the force's meaningful
         configuration; two forces with equal, non-``None`` keys are treated as

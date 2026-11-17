@@ -421,43 +421,10 @@ class Sim(_ParticleView):
         '''
         if not isinstance(force, Force):
             force = ExternalPotential(force)
-        self._add_external_force(force)
+        self._add_force(force)
         self._warn_if_not_savable(force, stacklevel=2)
 
-    def add_external_force(self, force: Force):
-        '''
-        Add an external force to the simulation.
-
-        Parameters
-        ----------
-        force : Force
-            An instance of an ExternalForce subclass (Conservative or not)
-            representing an external force.
-
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        TypeError
-            If force is an instance of SelfGravityForce. Only accepts external
-            forces.
-        ValueError
-            If this exact force instance is already added, or an equivalently
-            configured force is already added (see the force's ``_dedup_key``).
-            Adding a duplicate would double-count the field.
-
-        Warns
-        -----
-        UserWarning
-            For a Sim with an ``output_dir``, if a potential can't be saved with the run
-            (e.g. it holds a lambda). It's kept by its label.
-        '''
-        self._add_external_force(force)
-        self._warn_if_not_savable(force, stacklevel=2)
-
-    def _add_external_force(self, force):
+    def _add_force(self, force):
         def _assign_force(_force):
             if isinstance(_force, SelfGravityForce):
                 raise TypeError("The provided force is a self-gravity force, "
@@ -498,45 +465,6 @@ class Sim(_ParticleView):
             if why and _force.save_with_run:
                 _warn_not_saved(_force_label(_force), why, stacklevel=stacklevel + 1)
             
-    def add_external_pot(self, potential, save_with_run=True):
-        '''
-        Add an external potential from a supported package.
-
-        Shorthand for ``add_external_force(ExternalPotential(potential, save_with_run))``.
-
-        Parameters
-        ----------
-        potential : object
-            A potential from a supported package, e.g. a galpy ``Potential``,
-            a galpy ``CompositePotential``, or a list of galpy potentials.
-        save_with_run : bool, optional
-            Whether a run written to disk (``output_dir`` or ``save``) keeps the potential,
-            so ``Sim.load`` can add it again. Default True. False keeps only its label,
-            e.g. for a large potential many runs share.
-
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        TypeError
-            If no installed backend can use ``potential``.
-        ValueError
-            If the same potential (or an equivalently configured one) is already added.
-
-        Warnings
-        --------
-        UserWarning
-            If the provided galpy potential has physical outputs turned off.
-        UserWarning
-            For a Sim with an ``output_dir``, if the potential can't be saved with the run
-            (e.g. it holds a lambda). It's kept by its label.
-        '''
-        force = ExternalPotential(potential, save_with_run)
-        self._add_external_force(force)
-        self._warn_if_not_savable(force, stacklevel=2)
-
     def add_subhalos(self, pos, vel, mass):
         '''
         Add Plummer sphere subhalos as a component to the simulation. 
@@ -1603,8 +1531,8 @@ class Sim(_ParticleView):
         - Snapshots are read from their files when an accessor asks for them.
         - The run's potentials from supported packages are added again, as the run used them.
           Other external forces, and potentials added with ``save_with_run=False``, aren't
-          saved. Add them again with ``add_external_pot`` or ``add_external_force`` before
-          computing anything that needs them. They're left out until then.
+          saved. Add them again with ``add_force`` before computing anything that needs
+          them. They're left out until then.
         - Only load runs you trust. Loading a saved potential runs code its run file names.
         - Hooks and their records aren't saved.
         - A loaded Sim can't run again.
@@ -1639,13 +1567,13 @@ class Sim(_ParticleView):
                 continue
             try:
                 backend = potential_backend_named(record['backend']).load(record['record'])
-                sim._add_external_force(ExternalPotential._from_backend(backend))
+                sim._add_force(ExternalPotential._from_backend(backend))
             except Exception as e:
                 not_loaded.append(f"{record['label']} ({type(e).__name__}: {e})")
         if not_loaded:
-            warnings.warn(f"{', '.join(not_loaded)} couldn't be loaded. Add them again with add_external_pot "
-                          "or add_external_force before computing anything that needs them. Until then, "
-                          "they're left out.", stacklevel=2)
+            warnings.warn(f"{', '.join(not_loaded)} couldn't be loaded. Add them again with add_force "
+                          "before computing anything that needs them. Until then, they're left out.",
+                          stacklevel=2)
         if n < run['expected_outputs']:
             warnings.warn(f"{directory!r} holds {n} of the {run['expected_outputs']} outputs its run "
                           "was to make. The run stopped early, or is still running.", stacklevel=2)

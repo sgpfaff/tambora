@@ -97,7 +97,7 @@ def _with_forces(sim):
 
 
 FORCES_NOT_LOADED = (r"^_Drag couldn't be loaded. Add them again "
-                     r"with add_external_pot or add_external_force before computing anything that needs them")
+                     r"with add_force before computing anything that needs them")
 
 
 def test_loading_a_run_adds_its_potential_again_and_names_the_forces_it_cant(tmp_path):

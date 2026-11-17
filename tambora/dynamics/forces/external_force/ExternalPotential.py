@@ -9,7 +9,7 @@ class ExternalPotential(ExternalConservativeForce):
 
     The package is detected from the object, so the same class wraps any backend::
 
-        sim.add_external_force(ExternalPotential(MWPotential2014))    # galpy
+        sim.add_force(ExternalPotential(MWPotential2014))    # galpy
 
     Combine with other forces via ``+``.
 
