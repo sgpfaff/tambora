@@ -111,7 +111,7 @@ def test_the_sim_summary_labels_the_potential_by_its_components():
 def _one_particle_sim(force):
     sim = Sim()
     sim.add_particles(pos=[[8., 0., 0.]], vel=[[0., 200., 0.]], mass=[1.])
-    sim.add_external_force(force)
+    sim.add_force(force)
     return sim
 
 
@@ -128,7 +128,7 @@ def test_run_works_with_an_external_force_that_has_no_validity_check():
     # run() checks only the forces that have check_still_valid; calling it on every
     # external force would break forces users write themselves.
     sim = _one_particle_sim(_UniformField())
-    sim.add_external_pot(_plummer())
+    sim.add_force(_plummer())
     sim.run(t_end=0.01, dt=0.01, dt_out=0.01, method=None, progress=False, monitors=False)
     assert sim.times[-1] == pytest.approx(0.01)
 
@@ -173,7 +173,7 @@ def test_different_potential_types_are_not_duplicates():
 
 
 def test_dedup_key_is_hashable_and_names_the_type_and_backend():
-    # add_hook/add_external_force compare and store these, so they must be usable
+    # add_hook/add_force compare and store these, so they must be usable
     # as dict/set members, and must not collide across force classes or backends.
     key = ExternalPotential(_plummer())._dedup_key()
     hash(key)
@@ -202,7 +202,7 @@ def test_a_copy_added_after_a_run_is_still_a_duplicate():
     sim = _one_particle_sim(ExternalPotential(_triaxial()))
     sim.run(t_end=0.01, dt=0.01, dt_out=0.01, method=None, progress=False, monitors=False)
     with pytest.raises(ValueError, match="equivalently-configured"):
-        sim.add_external_pot(_triaxial())
+        sim.add_force(_triaxial())
 
 
 def test_the_same_object_re_added_after_a_run_is_still_a_duplicate():
@@ -213,7 +213,7 @@ def test_the_same_object_re_added_after_a_run_is_still_a_duplicate():
     sim = _one_particle_sim(ExternalPotential(halo))
     sim.run(t_end=0.01, dt=0.01, dt_out=0.01, method=None, progress=False, monitors=False)
     with pytest.raises(ValueError, match="equivalently-configured"):
-        sim.add_external_pot(halo)
+        sim.add_force(halo)
 
 
 # --- _dedup_key: the unpicklable fallback -------------------------------------
@@ -234,7 +234,7 @@ def test_the_unpicklable_potential_is_genuinely_unpicklable():
 
 def test_an_unpicklable_potential_falls_back_to_object_identity():
     # Without the fallback, constructing the force would be fine but
-    # *registering* it would raise PicklingError from inside add_external_force.
+    # *registering* it would raise PicklingError from inside add_force.
     p = _unpicklable_plummer()
     assert ExternalPotential(p)._dedup_key() == (ExternalPotential, 'galpy', (id(p),))
 

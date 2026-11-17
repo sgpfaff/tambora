@@ -386,7 +386,7 @@ def sim_ext():
         vel=np.random.rand(10, 3) * 100,
         mass=np.random.rand(10) * 1e6,
     )
-    s.add_external_pot(gp.PlummerPotential())
+    s.add_force(gp.PlummerPotential())
     return s
 
 

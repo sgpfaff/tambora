@@ -52,7 +52,7 @@ def test_a_run_without_softening_loads(tmp_path):
         rng = np.random.default_rng(1)
         sim = Sim(**kwargs)
         sim.add_particles(rng.normal(size=(10, 3)) + 8, rng.normal(size=(10, 3)) * 200, np.zeros(10), name='stars')
-        sim.add_external_pot(gp.NFWPotential(ro=8, vo=220))
+        sim.add_force(gp.NFWPotential(ro=8, vo=220))
         return sim
     disk, memory = test_particles(output_dir=tmp_path / 'run'), test_particles()
     disk.run(**{**RUN, 'method': None})
@@ -91,8 +91,8 @@ def monitor_reads(monkeypatch):
 
 
 def _with_forces(sim):
-    sim.add_external_force(_Drag())
-    sim.add_external_pot([gp.NFWPotential(ro=8, vo=220), gp.MiyamotoNagaiPotential(ro=8, vo=220)])
+    sim.add_force(_Drag())
+    sim.add_force([gp.NFWPotential(ro=8, vo=220), gp.MiyamotoNagaiPotential(ro=8, vo=220)])
     return sim
 
 
@@ -122,7 +122,7 @@ def test_with_the_forces_it_couldnt_load_added_again_a_loaded_run_gives_what_the
     memory.run(**RUN)
     with pytest.warns(UserWarning, match=FORCES_NOT_LOADED):
         sim = Sim.load(tmp_path / 'run')
-    sim.add_external_force(_Drag())
+    sim.add_force(_Drag())
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')     # on-the-fly external potential
         np.testing.assert_array_equal(compute(sim), compute(memory))

@@ -271,7 +271,7 @@ def _sim(**kwargs):
     sim = Sim(**kwargs)
     sim.add_particles(rng.normal(size=(30, 3)) + 5, rng.normal(size=(30, 3)) * 20, np.full(30, 1e5), name='a', eps=0.05)
     sim.add_particles(rng.normal(size=(20, 3)) - 5, rng.normal(size=(20, 3)) * 20, np.full(20, 2e5), name='b', eps=0.1)
-    sim.add_external_force(_Halo())
+    sim.add_force(_Halo())
     return sim
 
 

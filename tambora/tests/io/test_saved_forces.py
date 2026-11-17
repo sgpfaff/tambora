@@ -31,9 +31,9 @@ def _ramp():
 
 def test_a_run_file_keeps_each_force_in_order(tmp_path):
     sim = _sim(output_dir=tmp_path / 'run')
-    sim.add_external_force(_Drag())
-    sim.add_external_pot(_nfw())
-    sim.add_external_pot(gp.MWPotential2014)
+    sim.add_force(_Drag())
+    sim.add_force(_nfw())
+    sim.add_force(gp.MWPotential2014)
     sim.run(**RUN)
     run = read_run(tmp_path / 'run')
     assert [f['label'] for f in run['forces']] == run['settings']['run']['forces']
@@ -48,9 +48,9 @@ def test_a_run_file_keeps_each_force_in_order(tmp_path):
 
 def test_a_saved_run_keeps_the_records_a_streamed_run_does(tmp_path):
     for sim in (_sim(output_dir=tmp_path / 'streamed'), _sim()):
-        sim.add_external_pot(_nfw())
-        sim.add_external_pot(gp.MWPotential2014)
-        sim.add_external_force(_Drag())
+        sim.add_force(_nfw())
+        sim.add_force(gp.MWPotential2014)
+        sim.add_force(_Drag())
         sim.run(**RUN)
     sim.save(tmp_path / 'saved')
     Sim.load(tmp_path / 'streamed').save(tmp_path / 'copy of loaded')
@@ -62,7 +62,7 @@ def test_a_saved_run_keeps_the_records_a_streamed_run_does(tmp_path):
 def test_a_potential_is_kept_as_it_was_when_the_run_started(tmp_path):
     nfw = _nfw()
     sim = _sim()
-    sim.add_external_pot(nfw)
+    sim.add_force(nfw)
     sim.run(**RUN)
     during = sim._conserv_ext_force.members[0].acc(POS, 0.1)
     nfw._amp *= 2.
@@ -73,15 +73,11 @@ def test_a_potential_is_kept_as_it_was_when_the_run_started(tmp_path):
     np.testing.assert_allclose(GalpyPotential.load(sim._run_forces[0]['record']).acc(POS, 0.1), 2. * during)
 
 
-@pytest.mark.parametrize("add", ['add_external_pot', 'add_external_force'])
-def test_save_with_run_false_keeps_only_the_label_without_a_word(tmp_path, add):
+def test_save_with_run_false_keeps_only_the_label_without_a_word(tmp_path):
     for sim, where in ((_sim(output_dir=tmp_path / 'streamed'), None), (_sim(), tmp_path / 'saved')):
         with warnings.catch_warnings():
             warnings.simplefilter('error')
-            if add == 'add_external_pot':
-                sim.add_external_pot(_ramp(), save_with_run=False)
-            else:
-                sim.add_external_force(ExternalPotential(_ramp(), save_with_run=False))
+            sim.add_force(ExternalPotential(_ramp(), save_with_run=False))
             sim.run(**RUN)
             if where is not None:
                 sim.save(where)
@@ -91,16 +87,16 @@ def test_save_with_run_false_keeps_only_the_label_without_a_word(tmp_path, add):
              'saved': False, 'error': None}]
 
 
-@pytest.mark.parametrize("add", ['add_external_pot', 'add_external_force', 'a sum of forces'])
+@pytest.mark.parametrize("add", ['a potential', 'a force', 'a sum of forces'])
 def test_a_streamed_sim_warns_when_a_potential_that_cant_be_saved_is_added(tmp_path, add):
     sim = _sim(output_dir=tmp_path / 'run')
     with pytest.warns(UserWarning, match=NOT_SAVED) as caught:
-        if add == 'add_external_pot':
-            sim.add_external_pot(_ramp())
-        elif add == 'add_external_force':
-            sim.add_external_force(ExternalPotential(_ramp()))
+        if add == 'a potential':
+            sim.add_force(_ramp())
+        elif add == 'a force':
+            sim.add_force(ExternalPotential(_ramp()))
         else:
-            sim.add_external_force(ExternalPotential(_nfw()) + ExternalPotential(_ramp()))
+            sim.add_force(ExternalPotential(_nfw()) + ExternalPotential(_ramp()))
     assert len(caught) == 1 and caught[0].filename == __file__      # points at your line
     with warnings.catch_warnings():
         warnings.simplefilter('error')      # not again when it runs
@@ -114,7 +110,7 @@ def test_an_in_memory_sim_warns_when_it_is_saved(tmp_path):
     sim = _sim()
     with warnings.catch_warnings():
         warnings.simplefilter('error')
-        sim.add_external_pot(_ramp())
+        sim.add_force(_ramp())
         sim.run(**RUN)
     with pytest.warns(UserWarning, match=NOT_SAVED) as caught:
         sim.save(tmp_path / 'saved')
@@ -127,7 +123,7 @@ def test_a_potential_that_stops_pickling_after_it_was_added_is_warned_about_when
     sim = _sim(output_dir=tmp_path / 'run')
     with warnings.catch_warnings():
         warnings.simplefilter('error')
-        sim.add_external_pot(nfw)
+        sim.add_force(nfw)
     nfw.hook = lambda: None
     with pytest.warns(UserWarning, match=NOT_SAVED):
         sim.run(**RUN)
@@ -136,7 +132,7 @@ def test_a_potential_that_stops_pickling_after_it_was_added_is_warned_about_when
 
 def test_a_loaded_sim_doesnt_warn_and_its_copy_says_why_the_potential_wasnt_saved(tmp_path):
     sim = _sim()
-    sim.add_external_pot(_ramp())
+    sim.add_force(_ramp())
     sim.run(**RUN)
     with pytest.warns(UserWarning, match=NOT_SAVED):
         sim.save(tmp_path / 'saved')
@@ -145,7 +141,7 @@ def test_a_loaded_sim_doesnt_warn_and_its_copy_says_why_the_potential_wasnt_save
         loaded = Sim.load(tmp_path / 'saved')
     with warnings.catch_warnings():
         warnings.simplefilter('error')
-        loaded.add_external_pot(_ramp())    # it can't run, so nothing would be written
+        loaded.add_force(_ramp())    # it can't run, so nothing would be written
         loaded.save(tmp_path / 'copy')
     assert _same(read_run(tmp_path / 'copy')['forces'], read_run(tmp_path / 'saved')['forces'])
 
@@ -163,9 +159,9 @@ def test_bytes_in_a_settings_dict_come_back_as_written(data):
 
 def _run_with_potentials(directory):
     sim = _sim(output_dir=directory)
-    sim.add_external_pot(_nfw())
-    sim.add_external_pot(gp.MiyamotoNagaiPotential(ro=8., vo=220.))
-    sim.add_external_force(_Drag())
+    sim.add_force(_nfw())
+    sim.add_force(gp.MiyamotoNagaiPotential(ro=8., vo=220.))
+    sim.add_force(_Drag())
     sim.run(**RUN)
     return sim
 
@@ -186,7 +182,7 @@ def test_adding_a_reloaded_potential_again_is_refused_as_a_duplicate(tmp_path):
         warnings.simplefilter('ignore')
         sim = Sim.load(tmp_path / 'run')
     with pytest.raises(ValueError, match="already added"):
-        sim.add_external_pot(_nfw())
+        sim.add_force(_nfw())
 
 
 def _loading_with(monkeypatch, change):
@@ -236,7 +232,7 @@ def test_a_potential_saved_without_its_package_installed_is_named(tmp_path, monk
 
 def test_a_potential_that_wasnt_saved_is_named_without_a_reason(tmp_path):
     sim = _sim(output_dir=tmp_path / 'run')
-    sim.add_external_pot(_nfw(), save_with_run=False)
+    sim.add_force(ExternalPotential(_nfw(), save_with_run=False))
     sim.run(**RUN)
     with pytest.warns(UserWarning, match=r"^ExternalPotential\(NFWPotential\) couldn't be loaded"):
         Sim.load(tmp_path / 'run')

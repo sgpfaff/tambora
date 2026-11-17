@@ -607,21 +607,11 @@ def test_add_force_rejects_a_non_force_inside_a_sum():
     with pytest.raises(TypeError, match="Expected a Force"):
         sim.add_force(CustomBaseForce() + 1.)
 
-# --- .add_external_force() ---------------------------------------------------------------------- #
-
-def test_add_external_force_rejects_non_force():
-    class Test:
-        ...
-    testInstance = Test()
-    sim = Sim()
-    with pytest.raises(TypeError, match="Expected a Force"):
-        sim.add_external_force(testInstance)
-
-def test_add_external_force_rejects_self_gravity():
+def test_add_force_rejects_self_gravity():
     sim = Sim()
     force = DirectSummationGravity(eps=0.1)
     with pytest.raises(TypeError, match="not an external force"):
-        sim.add_external_force(force)
+        sim.add_force(force)
 
 from tambora.dynamics import Force
 from tambora.units import KMS_TO_KPCGYR
@@ -633,16 +623,16 @@ class CustomBaseForce(Force):
     def _eval_acc(self, pos, vel, mass, t):
         return self.acc(pos, vel, mass, t)
     
-def test_add_external_force_adds_BaseForce_to_base_ext_force():
+def test_add_force_adds_BaseForce_to_base_ext_force():
     sim = Sim()
     ex_custom_base_force = CustomBaseForce()
-    sim.add_external_force(ex_custom_base_force)
+    sim.add_force(ex_custom_base_force)
     assert ex_custom_base_force in sim._base_ext_force.members
     
 def test_external_BaseForce_contributes_to_acc():
     sim = Sim()
     ex_custom_base_force = CustomBaseForce()
-    sim.add_external_force(ex_custom_base_force)
+    sim.add_force(ex_custom_base_force)
     pos=np.random.normal(size=(100, 3))
     vel=np.random.normal(size=(100, 3))
     mass=np.random.normal(size=(100,))
@@ -663,16 +653,16 @@ class CustomConservForce(ExternalConservativeForce):
     def potential(self, pos, t):
         return np.linalg.norm(pos, axis=1)**2 + t**2
     
-def test_add_external_force_adds_ConservativeForce_to_conserv_ext_force():
+def test_add_force_adds_ConservativeForce_to_conserv_ext_force():
     sim = Sim()
     ex_custom_conserv_force = CustomConservForce()
-    sim.add_external_force(ex_custom_conserv_force)
+    sim.add_force(ex_custom_conserv_force)
     assert ex_custom_conserv_force in sim._conserv_ext_force.members
     
 def test_external_ConservativeForce_contributes_to_acc():
     sim = Sim()
     ex_custom_conserv_force = CustomConservForce()
-    sim.add_external_force(ex_custom_conserv_force)
+    sim.add_force(ex_custom_conserv_force)
     pos=np.random.normal(size=(100, 3))
     vel=np.random.normal(size=(100, 3))
     mass=np.random.normal(size=(100,))
@@ -687,7 +677,7 @@ def test_external_ConservativeForce_contributes_to_acc():
 def test_external_ConservativeForce_contributes_to_potential():
     sim = Sim()
     ex_custom_conserv_force = CustomConservForce()
-    sim.add_external_force(ex_custom_conserv_force)
+    sim.add_force(ex_custom_conserv_force)
     pos=np.random.normal(size=(100, 3))
     vel=np.random.normal(size=(100, 3))
     mass=np.random.normal(size=(100,))
@@ -700,21 +690,14 @@ def test_external_ConservativeForce_contributes_to_potential():
     ground_truth_pot = ex_custom_conserv_force.potential(pos, t) * mass
     np.testing.assert_allclose(sim.compute_external_pot(t=t, return_internal=True), ground_truth_pot)
 
-def test_add_external_force_assigns_mixed_composite_correctly():
+def test_add_force_assigns_mixed_composite_correctly():
     ex_custom_base_force = CustomBaseForce()
     ex_custom_conserv_force = CustomConservForce()
     ex_composite_force = ex_custom_base_force + ex_custom_conserv_force
     sim = Sim()
-    sim.add_external_force(ex_composite_force)
+    sim.add_force(ex_composite_force)
     assert ex_custom_conserv_force in sim._conserv_ext_force.members
     assert ex_custom_base_force in sim._base_ext_force.members
-
-# --- .add_external_pot() ------------------------------------------------------------------------ #
-
-def test_add_external_pot_rejection():
-    sim = Sim()
-    with pytest.raises(TypeError, match="Can't use a function as an external potential"):
-        sim.add_external_pot(lambda pos, t: pos)
 
 # --- duplicate external forces / potentials --------------------------------------------------- #
 
@@ -725,25 +708,25 @@ def _kepler_pot(amp=1e9):
     return p
 
 
-def test_add_external_pot_rejects_same_object_twice():
-    # add_external_pot builds a fresh wrapper each call, so the two forces are
+def test_add_force_rejects_same_potential_twice():
+    # add_force builds a fresh wrapper each call, so the two forces are
     # distinct instances -- caught by the value key (they wrap the same pot).
     sim = Sim()
     pot = _kepler_pot()
-    sim.add_external_pot(pot)
+    sim.add_force(pot)
     with pytest.raises(ValueError, match="double-count"):
-        sim.add_external_pot(pot)
+        sim.add_force(pot)
 
 
-def test_add_external_pot_rejects_value_equal_potential():
+def test_add_force_rejects_value_equal_potential():
     # Distinct objects, identical physics -> pickle-equal key -> duplicate.
     sim = Sim()
-    sim.add_external_pot(_kepler_pot(1e9))
+    sim.add_force(_kepler_pot(1e9))
     with pytest.raises(ValueError, match="double-count"):
-        sim.add_external_pot(_kepler_pot(1e9))
+        sim.add_force(_kepler_pot(1e9))
 
 
-def test_add_external_pot_allows_different_parameters():
+def test_add_force_allows_different_parameters():
     # Same type and amplitude, different scale length: a genuinely different
     # field, so both are kept (pickle captures every parameter).
     from galpy.potential import NFWPotential
@@ -754,30 +737,30 @@ def test_add_external_pot_allows_different_parameters():
         return p
 
     sim = Sim()
-    sim.add_external_pot(nfw(20))
-    sim.add_external_pot(nfw(10))
+    sim.add_force(nfw(20))
+    sim.add_force(nfw(10))
     assert len(sim._conserv_ext_force.members) == 2
 
 
-def test_add_external_force_rejects_same_instance():
+def test_add_force_rejects_same_instance():
     # Custom forces opt out of the value key, but the same-instance guard still
     # catches adding one object twice.
     sim = Sim()
     f = CustomBaseForce()
-    sim.add_external_force(f)
+    sim.add_force(f)
     with pytest.raises(ValueError, match="instance is already added"):
-        sim.add_external_force(f)
+        sim.add_force(f)
 
 
-def test_add_external_force_allows_distinct_custom_instances():
+def test_add_force_allows_distinct_custom_instances():
     # _dedup_key -> None (opt out) for custom forces, so distinct instances pass.
     sim = Sim()
-    sim.add_external_force(CustomBaseForce())
-    sim.add_external_force(CustomBaseForce())
+    sim.add_force(CustomBaseForce())
+    sim.add_force(CustomBaseForce())
     assert len(sim._base_ext_force.members) == 2
 
 
-def test_add_external_force_rejects_duplicate_within_composite():
+def test_add_force_rejects_duplicate_within_composite():
     # Two distinct wrappers of the same pot combined into one composite: the
     # per-member rescan catches the intra-composite duplicate.
     from tambora.dynamics import ExternalPotential
@@ -785,7 +768,7 @@ def test_add_external_force_rejects_duplicate_within_composite():
     composite = ExternalPotential(pot) + ExternalPotential(pot)
     sim = Sim()
     with pytest.raises(ValueError, match="double-count"):
-        sim.add_external_force(composite)
+        sim.add_force(composite)
 
 
 def test_add_force_wraps_a_potential_and_keeps_a_force_as_given():
@@ -828,7 +811,7 @@ def test_external_acc_zero_without_pot():
 KEPLER_SIM = Sim()
 from galpy.potential import KeplerPotential
 kepler_pot = KeplerPotential(amp=1e9*u.Msun)
-KEPLER_SIM.add_external_pot(kepler_pot)
+KEPLER_SIM.add_force(kepler_pot)
 KEPLER_SIM.add_particles(name='a', pos=np.array([[0.1, 0.2, 0.3]]), vel=np.array([[0, 0.0, 0]]), mass=np.array([1e8]))
 KEPLER_ACC = -G_INTERNAL * 1e9 * np.array([[0.1, 0.2, 0.3]]) / (0.1**2 + 0.2**2 + 0.3**2)**(3/2)
 KEPLER_POT = -G_INTERNAL * 1e8 * 1e9 / np.sqrt(0.1**2 + 0.2**2 + 0.3**2)
@@ -898,7 +881,7 @@ def test_PE_against_direct():
     mass = np.array([1e8, 1e10])
     sim = Sim()
     sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
-    sim.add_external_pot(kepler_pot)
+    sim.add_force(kepler_pot)
     self_pot_direct = DirectSummationGravity(eps=0.0).potential(pos, mass)
     ext_pot_direct = ([-G_INTERNAL * mass[0] * 1e9 / np.linalg.norm(pos[0]), 
                        -G_INTERNAL * mass[1] * 1e9 / np.linalg.norm(pos[1])])
@@ -922,7 +905,7 @@ def test_PE_is_sum_of_self_and_external():
     mass = np.array([1e8, 1e10])
     sim = Sim()
     sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
-    sim.add_external_pot(kepler_pot)
+    sim.add_force(kepler_pot)
     self_pot = sim.self_potential(t=0, method='direct', eps=0.0, return_internal=True)
     ext_pot = sim.compute_external_pot(t=0, return_internal=True)
     total_pot = sim.PE(t=0, method='direct', eps=0.0, return_internal=True)
@@ -945,7 +928,7 @@ def test_energy_is_sum_of_KE_and_PE():
     mass = np.array([1e8, 1e10])
     sim = Sim()
     sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
-    sim.add_external_pot(kepler_pot)
+    sim.add_force(kepler_pot)
     KE = sim.KE(t=0, return_internal=True)
     PE = sim.PE(t=0, method='direct', eps=0.0, return_internal=True)
     energy = sim.energy(t=0, method='direct', eps=0.0, return_internal=True)
@@ -967,7 +950,7 @@ def test_energy_is_sum_of_KE_and_PE_after_run():
     mass = np.array([1e8, 1e10])
     sim = Sim()
     sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
-    sim.add_external_pot(kepler_pot)
+    sim.add_force(kepler_pot)
     sim.eps = 0.0
     sim.run(t_end=0.5, dt=0.25, dt_out=0.25, method='direct')
     np.testing.assert_allclose(sim.energy(t=0.5, method='direct', eps=0.0, return_internal=True), 
@@ -994,7 +977,7 @@ def test_system_energy_is_sum_of_energies():
     mass = np.array([1e8, 1e10])
     sim = Sim()
     sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
-    sim.add_external_pot(kepler_pot)
+    sim.add_force(kepler_pot)
     KE = np.sum(sim.KE(t=0, return_internal=True))
     PE = 0.5 * np.sum(sim.self_potential(t=0, method='direct', eps=0.0, return_internal=True)) + np.sum(sim.compute_external_pot(t=0, return_internal=True))
     system_energy = sim.system_energy(t=0, method='direct', eps=0.0, return_internal=True)
@@ -1006,7 +989,7 @@ def test_system_energy_is_sum_of_energies_after_run():
     mass = np.array([1e8, 1e10])
     sim = Sim()
     sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
-    sim.add_external_pot(kepler_pot)
+    sim.add_force(kepler_pot)
     sim.eps = 0.0
     sim.run(t_end=0.5, dt=0.25, dt_out=0.25, method='direct')
     KE = np.sum(sim.KE(t=0.5, return_internal=True))
@@ -1063,7 +1046,7 @@ def _energy_sim(with_ext_pot=False):
     sim.add_particles(name='pair', pos=E_POS.copy(), vel=E_VEL.copy(), mass=E_MASS.copy())
     if with_ext_pot:
         kep = KeplerPotential(amp=E_KEPLER_MASS * u.Msun)
-        sim.add_external_pot(kep)
+        sim.add_force(kep)
     sim.eps = E_EPS
     sim.run(t_end=0.5, dt=0.25, dt_out=0.25, method='direct')
     return sim
@@ -2180,7 +2163,7 @@ def ext_pot_component_sim():
                       vel=np.zeros((1, 3)),
                       mass=np.array([1e7]))
     kepler = KeplerPotential(amp=1e9*u.Msun)
-    sim.add_external_pot(kepler)
+    sim.add_force(kepler)
     sim.eps = 0.05
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct')
     return sim
@@ -2325,7 +2308,7 @@ def test_compute_external_pot_uses_physical_time():
     )
 
     sim = Sim()
-    sim.add_external_pot(smooth_pot)
+    sim.add_force(smooth_pot)
     pos = np.array([[8.0, 0.0, 0.0]])
     vel = np.array([[0.0, 220.0 * KMS_TO_KPCGYR, 0.0]])
     mass = np.array([1e5])
@@ -2360,7 +2343,7 @@ def test_external_acc_uses_physical_time():
     )
 
     sim = Sim()
-    sim.add_external_pot(smooth_pot)
+    sim.add_force(smooth_pot)
     pos = np.array([[8.0, 0.0, 0.0]])
     vel = np.array([[0.0, 220.0 * KMS_TO_KPCGYR, 0.0]])
     mass = np.array([1e5])
@@ -2565,7 +2548,7 @@ def test_a_rejected_run_leaves_the_sim_as_the_last_run_left_it(bad, error, match
     sim = Sim(output_dir=tmp_path / 'run') if streamed else Sim()
     sim.add_particles(name='c', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS, eps=0.1)
     force = _CanBeInvalidated()
-    sim.add_external_force(force)
+    sim.add_force(force)
     hook = _ResetCountingHook()
     sim.add_hook(hook)
     run = dict(t_end=0.2, dt=0.1, dt_out=0.1, method='direct', progress=False)
@@ -2816,7 +2799,7 @@ class TestSimRepr:
         # The forces/hooks tables name what's attached (not just counts).
         sim = Sim()
         sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='a')
-        sim.add_external_force(CustomBaseForce())
+        sim.add_force(CustomBaseForce())
         sim.add_hook(ConservationMonitor())
         r = repr(sim)
         assert "External forces" in r and "CustomBaseForce" in r

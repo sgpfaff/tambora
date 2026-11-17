@@ -39,7 +39,7 @@ def _sim(external=False):
     s.add_particles(rng.random((N_C, 3)) + 8.0, np.zeros((N_C, 3)), np.ones(N_C), name='c')
     s.add_particles(rng.random((N_D, 3)) + 8.0, np.zeros((N_D, 3)), np.ones(N_D), name='d')
     if external:
-        s.add_external_force(ExternalPotential(MWPotential2014))
+        s.add_force(ExternalPotential(MWPotential2014))
     s.run(t_end=0.2, dt=0.1, dt_out=0.1, method=None, progress=False)
     return s
 
@@ -145,7 +145,7 @@ class _GrowingField(ExternalConservativeForce):
 
 def test_the_field_is_evaluated_at_each_snapshots_time():
     s = Sim()
-    s.add_external_force(_GrowingField())
+    s.add_force(_GrowingField())
     s.add_particles(np.ones((N_C, 3)), np.zeros((N_C, 3)), np.ones(N_C), name='c')
     s.run(t_end=0.2, dt=0.1, dt_out=0.1, method=None, progress=False, monitors=False)
     expected = s.times[:, None, None] * np.array([1., 2., 3.])
@@ -172,7 +172,7 @@ def test_step_state_agrees_with_sim_at_the_same_time(external):
     s.add_particles(rng.random((N_C, 3)) + 8.0, np.zeros((N_C, 3)), np.ones(N_C), name='c')
     s.add_particles(rng.random((N_D, 3)) + 8.0, np.zeros((N_D, 3)), np.ones(N_D), name='d')
     if external:
-        s.add_external_force(ExternalPotential(MWPotential2014))
+        s.add_force(ExternalPotential(MWPotential2014))
     seen = {}
     s.add_hook(lambda st: seen.setdefault(
         st.t, (st.external_acc().copy(), st.c.external_acc().copy())))
@@ -190,7 +190,7 @@ def _run_capturing_external_acc(t_end=0.2, external=True):
     s = Sim()
     s.add_particles(rng.random((N_C, 3)) + 8.0, np.zeros((N_C, 3)), np.ones(N_C), name='c')
     if external:
-        s.add_external_force(ExternalPotential(MWPotential2014))
+        s.add_force(ExternalPotential(MWPotential2014))
     seen = {}
     s.add_hook(lambda st: seen.setdefault(st.t, st.external_acc().copy()))
     s.run(t_end=t_end, dt=0.1, dt_out=0.1, method=None, progress=False)
