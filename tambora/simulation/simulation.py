@@ -143,7 +143,7 @@ def _force_records(forces, not_saved=()):
 
 
 def _warn_not_saved(label, error, stacklevel):
-    warnings.warn(f"{label} can't be saved with the run ({error}). Sim.load will ask you to add it again. "
+    warnings.warn(f"{label} can't be saved with the run ({error}). Sim.load will ask for it again. "
                   "Pass save_with_run=False to skip saving it.", stacklevel=stacklevel + 1)
 
 
@@ -1504,7 +1504,7 @@ class Sim(_ParticleView):
             raise
 
     @classmethod
-    def load(cls, path):
+    def load(cls, path, forces=None):
         """
         The Sim whose run was written to *path* by ``Sim(output_dir=path)`` or ``sim.save(path)``.
 
@@ -1512,6 +1512,9 @@ class Sim(_ParticleView):
         ----------
         path : str or path
             The run's directory.
+        forces : list of Force or potential, optional
+            The run's external forces that weren't saved with it, each as given to
+            ``add_force``.
 
         Returns
         -------
@@ -1526,12 +1529,16 @@ class Sim(_ParticleView):
         ValueError
             If the run can't be read (e.g., another format, no outputs, or snapshot files
             that don't match ``run.h5``).
+        ValueError
+            If one of ``forces`` duplicates another, or a potential loaded from the run.
+        TypeError
+            If one of ``forces`` is neither a force nor a potential an installed backend can use.
 
         Warns
         -----
         UserWarning
-            If the run used external forces that couldn't be loaded, naming them, with the
-            reason for a saved potential that couldn't.
+            If the run used external forces that couldn't be loaded and aren't in ``forces``,
+            naming them, with the reason for a saved potential that couldn't.
         UserWarning
             If the run made fewer outputs than planned: it stopped early, or is still
             running.
@@ -1541,8 +1548,8 @@ class Sim(_ParticleView):
         - Snapshots are read from their files when an accessor asks for them.
         - The run's potentials from supported packages are added again, as the run used them.
           Other external forces, and potentials added with ``save_with_run=False``, aren't
-          saved. Add them again with ``add_force`` before computing anything that needs
-          them. They're left out until then.
+          saved. Give them again as ``forces``. They're left out otherwise. A force in
+          ``forces`` stands for one the run names when their labels match.
         - Only load runs you trust. Loading a saved potential runs code its run file names.
         - Hooks and their records aren't saved.
         - A loaded Sim can't run again.
@@ -1570,20 +1577,26 @@ class Sim(_ParticleView):
         sim._run_settings, sim._run_forces = settings['run'], run['forces']
         sim._has_run = sim._loaded = True
         sim._output_dir = directory
-        not_loaded = []
+        not_loaded = []     # (label, what the warning calls it)
         for record in run['forces']:
             if not record['saved']:
-                not_loaded.append(record['label'])
+                not_loaded.append((record['label'], record['label']))
                 continue
             try:
                 backend = potential_backend_named(record['backend']).load(record['record'])
                 sim._add_force(ExternalPotential._from_backend(backend))
             except Exception as e:
-                not_loaded.append(f"{record['label']} ({type(e).__name__}: {e})")
+                not_loaded.append((record['label'], f"{record['label']} ({type(e).__name__}: {e})"))
+        given = []
+        for force in ([] if forces is None else forces if isinstance(forces, (list, tuple)) else [forces]):
+            if not isinstance(force, Force):
+                force = ExternalPotential(force)
+            sim._add_force(force)
+            given += [_force_label(f) for f in getattr(force, 'members', [force])]
+        not_loaded = [text for label, text in not_loaded if label not in given]
         if not_loaded:
-            warnings.warn(f"{', '.join(not_loaded)} couldn't be loaded. Add them again with add_force "
-                          "before computing anything that needs them. Until then, they're left out.",
-                          stacklevel=2)
+            warnings.warn(f"{', '.join(not_loaded)} couldn't be loaded. Load again with forces=[...] to "
+                          "give them back. Until then, they're left out.", stacklevel=2)
         if n < run['expected_outputs']:
             warnings.warn(f"{directory!r} holds {n} of the {run['expected_outputs']} outputs its run "
                           "was to make. The run stopped early, or is still running.", stacklevel=2)

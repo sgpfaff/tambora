@@ -198,6 +198,12 @@ def test_adding_a_reloaded_potential_again_is_refused_as_a_duplicate(tmp_path):
         sim.add_force(_nfw())
 
 
+def test_giving_load_a_potential_the_run_saved_is_refused_as_a_duplicate(tmp_path):
+    _run_with_potentials(tmp_path / 'run')
+    with pytest.raises(ValueError, match="already added"):
+        Sim.load(tmp_path / 'run', forces=[_nfw()])
+
+
 def _loading_with(monkeypatch, change):
     """Sim.load reading run.h5's forces after *change* changed the first one's record."""
     import tambora.simulation.simulation as simulation_module

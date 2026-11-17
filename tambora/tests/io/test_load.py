@@ -96,8 +96,7 @@ def _with_forces(sim):
     return sim
 
 
-FORCES_NOT_LOADED = (r"^_Drag couldn't be loaded. Add them again "
-                     r"with add_force before computing anything that needs them")
+FORCES_NOT_LOADED = r"^_Drag couldn't be loaded. Load again with forces=\[...\] to give them back"
 
 
 def test_loading_a_run_adds_its_potential_again_and_names_the_forces_it_cant(tmp_path):
@@ -108,6 +107,32 @@ def test_loading_a_run_adds_its_potential_again_and_names_the_forces_it_cant(tmp
     assert len(caught) == 1
     assert [repr(f) for f in sim._conserv_ext_force.members] == [repr(f) for f in run._conserv_ext_force.members]
     assert sim._base_ext_force.members == []
+
+
+@pytest.mark.parametrize("forces", [[_Drag()], (_Drag(),), _Drag()], ids=['a list', 'a tuple', 'one force'])
+def test_a_force_given_to_load_is_added_and_isnt_named_as_missing(tmp_path, forces):
+    run = _with_forces(_sim(output_dir=tmp_path / 'run'))
+    run.run(**RUN)
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        sim = Sim.load(tmp_path / 'run', forces=forces)
+    assert [repr(f) for f in sim._conserv_ext_force.members] == [repr(f) for f in run._conserv_ext_force.members]
+    assert [type(f) for f in sim._base_ext_force.members] == [_Drag]
+
+
+@pytest.mark.parametrize("give, still_missing", [
+    (lambda: _Drag(), r"^ExternalPotential\(NFWPotential\) couldn't be loaded"),
+    (lambda: gp.NFWPotential(ro=8, vo=220), r"^_Drag couldn't be loaded"),
+], ids=['a force', 'a potential'])
+def test_load_names_only_the_forces_it_wasnt_given(tmp_path, give, still_missing):
+    run = _sim(output_dir=tmp_path / 'run')
+    run.add_force(_Drag())
+    run.add_force(gp.NFWPotential(ro=8, vo=220), save_with_run=False)
+    run.run(**RUN)
+    with pytest.warns(UserWarning, match=still_missing) as caught:
+        sim = Sim.load(tmp_path / 'run', forces=[give()])
+    assert len(caught) == 1
+    assert len(sim._conserv_ext_force.members + sim._base_ext_force.members) == 1
 
 
 @pytest.mark.parametrize("compute", [
