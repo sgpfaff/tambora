@@ -382,6 +382,48 @@ class Sim(_ParticleView):
         """The first of a run's files in this Sim's output_dir, or None."""
         return None if self._output_dir is None else existing_run(self._output_dir)
 
+    def add_force(self, force):
+        '''
+        Add an external force to the simulation.
+
+        Parameters
+        ----------
+        force : Force or potential
+            An external force (conservative or not), or a potential from a supported
+            package, e.g. a galpy ``Potential``, a galpy ``CompositePotential``, or a list
+            of galpy potentials. A potential is wrapped in
+            :class:`~tambora.dynamics.ExternalPotential`. Wrap it yourself to set
+            ``save_with_run``::
+
+                sim.add_force(ExternalPotential(pot, save_with_run=False))
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        TypeError
+            If ``force`` is a self-gravity force, or is neither a force nor a potential
+            an installed backend can use.
+        ValueError
+            If this exact force instance is already added, or an equivalently
+            configured force is already added (see the force's ``_dedup_key``).
+            Adding a duplicate would double-count the field.
+
+        Warns
+        -----
+        UserWarning
+            If a galpy potential has physical outputs turned off.
+        UserWarning
+            For a Sim with an ``output_dir``, if a potential can't be saved with the run
+            (e.g. it holds a lambda). It's kept by its label.
+        '''
+        if not isinstance(force, Force):
+            force = ExternalPotential(force)
+        self._add_external_force(force)
+        self._warn_if_not_savable(force, stacklevel=2)
+
     def add_external_force(self, force: Force):
         '''
         Add an external force to the simulation.

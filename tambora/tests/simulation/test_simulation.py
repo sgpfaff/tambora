@@ -593,6 +593,20 @@ def test_softening_can_only_be_set_once_there_are_particles():
         sim.eps = 0.1
 
 
+# --- .add_force() ------------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("not_a_force, what", [(type('Test', (), {})(), 'Test'), (lambda pos, t: pos, 'function')],
+                         ids=['an object', 'a function'])
+def test_add_force_rejects_what_is_neither_a_force_nor_a_potential(not_a_force, what):
+    sim = Sim()
+    with pytest.raises(TypeError, match=f"Can't use a {what} as an external potential"):
+        sim.add_force(not_a_force)
+
+def test_add_force_rejects_a_non_force_inside_a_sum():
+    sim = Sim()
+    with pytest.raises(TypeError, match="Expected a Force"):
+        sim.add_force(CustomBaseForce() + 1.)
+
 # --- .add_external_force() ---------------------------------------------------------------------- #
 
 def test_add_external_force_rejects_non_force():
@@ -772,6 +786,19 @@ def test_add_external_force_rejects_duplicate_within_composite():
     sim = Sim()
     with pytest.raises(ValueError, match="double-count"):
         sim.add_external_force(composite)
+
+
+def test_add_force_wraps_a_potential_and_keeps_a_force_as_given():
+    from tambora.dynamics import ExternalPotential
+    pos = np.array([[0.1, 0.2, 0.3]])
+    bare, wrapped = Sim(), Sim()
+    bare.add_force(_kepler_pot())
+    force = ExternalPotential(_kepler_pot(), save_with_run=False)
+    wrapped.add_force(force)
+    added, = bare._conserv_ext_force.members
+    assert isinstance(added, ExternalPotential) and added.save_with_run
+    assert wrapped._conserv_ext_force.members == [force] and not force.save_with_run
+    np.testing.assert_array_equal(added.acc(pos, 0.), force.acc(pos, 0.))
 
 # --- self-gravity acceleration accessors ------------------------------------------------------------------------ #
 
