@@ -73,11 +73,12 @@ def test_a_potential_is_kept_as_it_was_when_the_run_started(tmp_path):
     np.testing.assert_allclose(GalpyPotential.load(sim._run_forces[0]['record']).acc(POS, 0.1), 2. * during)
 
 
-def test_save_with_run_false_keeps_only_the_label_without_a_word(tmp_path):
+@pytest.mark.parametrize("wrap", [lambda pot: pot, ExternalPotential], ids=['a potential', 'a force'])
+def test_save_with_run_false_keeps_only_the_label_without_a_word(tmp_path, wrap):
     for sim, where in ((_sim(output_dir=tmp_path / 'streamed'), None), (_sim(), tmp_path / 'saved')):
         with warnings.catch_warnings():
             warnings.simplefilter('error')
-            sim.add_force(ExternalPotential(_ramp(), save_with_run=False))
+            sim.add_force(wrap(_ramp()), save_with_run=False)
             sim.run(**RUN)
             if where is not None:
                 sim.save(where)
@@ -85,6 +86,18 @@ def test_save_with_run_false_keeps_only_the_label_without_a_word(tmp_path):
         assert read_run(tmp_path / where)['forces'] == [
             {'label': 'ExternalPotential(_TimeDependentAmplitudeWrapperPotential)', 'backend': 'galpy',
              'saved': False, 'error': None}]
+
+
+def test_save_with_run_false_holds_for_each_force_in_a_sum_and_only_for_them(tmp_path):
+    sim = _sim(output_dir=tmp_path / 'run')
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        sim.add_force(ExternalPotential(_ramp()) + _Drag() + ExternalPotential(_nfw()), save_with_run=False)
+    sim.add_force(gp.MiyamotoNagaiPotential(ro=8., vo=220.))
+    sim.run(**RUN)
+    assert [(f['label'], f['saved']) for f in read_run(tmp_path / 'run')['forces']] == [
+        ('ExternalPotential(_TimeDependentAmplitudeWrapperPotential)', False), ('ExternalPotential(NFWPotential)', False),
+        ('ExternalPotential(MiyamotoNagaiPotential)', True), ('_Drag', False)]
 
 
 @pytest.mark.parametrize("add", ['a potential', 'a force', 'a sum of forces'])
@@ -173,7 +186,7 @@ def test_a_loaded_sim_has_the_runs_potentials_in_order_and_computes_as_the_run_d
     assert [repr(f) for f in sim._conserv_ext_force.members] == [repr(f) for f in run._conserv_ext_force.members]
     for t in (0., 0.1):
         np.testing.assert_array_equal(sim._conserv_ext_force.acc(POS, None, t), run._conserv_ext_force.acc(POS, None, t))
-    assert all(f.save_with_run for f in sim._conserv_ext_force.members)
+    assert sim._not_saved == []
 
 
 def test_adding_a_reloaded_potential_again_is_refused_as_a_duplicate(tmp_path):
@@ -232,7 +245,7 @@ def test_a_potential_saved_without_its_package_installed_is_named(tmp_path, monk
 
 def test_a_potential_that_wasnt_saved_is_named_without_a_reason(tmp_path):
     sim = _sim(output_dir=tmp_path / 'run')
-    sim.add_force(ExternalPotential(_nfw(), save_with_run=False))
+    sim.add_force(_nfw(), save_with_run=False)
     sim.run(**RUN)
     with pytest.warns(UserWarning, match=r"^ExternalPotential\(NFWPotential\) couldn't be loaded"):
         Sim.load(tmp_path / 'run')

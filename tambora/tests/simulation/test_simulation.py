@@ -776,11 +776,11 @@ def test_add_force_wraps_a_potential_and_keeps_a_force_as_given():
     pos = np.array([[0.1, 0.2, 0.3]])
     bare, wrapped = Sim(), Sim()
     bare.add_force(_kepler_pot())
-    force = ExternalPotential(_kepler_pot(), save_with_run=False)
+    force = ExternalPotential(_kepler_pot())
     wrapped.add_force(force)
     added, = bare._conserv_ext_force.members
-    assert isinstance(added, ExternalPotential) and added.save_with_run
-    assert wrapped._conserv_ext_force.members == [force] and not force.save_with_run
+    assert isinstance(added, ExternalPotential)
+    assert wrapped._conserv_ext_force.members == [force]
     np.testing.assert_array_equal(added.acc(pos, 0.), force.acc(pos, 0.))
 
 # --- self-gravity acceleration accessors ------------------------------------------------------------------------ #

@@ -119,17 +119,18 @@ def _force_label(force):
     return f"{name}({inner})"
 
 
-def _force_records(forces):
+def _force_records(forces, not_saved=()):
     """Each of *forces* as a run file keeps it (its label and, for a potential saved with the run, its record).
 
-    A potential that couldn't be saved gets the error saving it raised.
+    A potential that couldn't be saved gets the error saving it raised. Those in *not_saved*
+    keep only their label.
     """
     records = []
     for force in forces:
         record = {'label': _force_label(force), 'backend': None, 'saved': False, 'error': None}
         if isinstance(force, ExternalPotential):
             record['backend'] = force.backend.name
-            if force.save_with_run:
+            if not any(force is f for f in not_saved):
                 try:
                     saved = force.backend.save()
                 except Exception as e:
@@ -202,6 +203,7 @@ class Sim(_ParticleView):
         self._self_gravity_force = NullSelfGravity()
         self._conserv_ext_force = _CompositeConservative([]) # conservative external forces
         self._base_ext_force = _CompositePlain([]) # non-conservative external forces
+        self._not_saved = [] # external forces added with save_with_run=False
         self._loaded = False # made by Sim.load: can't run
         self._hooks = [] # (Hook, Cadence) pairs run during integration
         self._auto_monitor = None # the ConservationMonitor the last run attached itself
@@ -382,7 +384,7 @@ class Sim(_ParticleView):
         """The first of a run's files in this Sim's output_dir, or None."""
         return None if self._output_dir is None else existing_run(self._output_dir)
 
-    def add_force(self, force):
+    def add_force(self, force, *, save_with_run=True):
         '''
         Add an external force to the simulation.
 
@@ -392,10 +394,11 @@ class Sim(_ParticleView):
             An external force (conservative or not), or a potential from a supported
             package, e.g. a galpy ``Potential``, a galpy ``CompositePotential``, or a list
             of galpy potentials. A potential is wrapped in
-            :class:`~tambora.dynamics.ExternalPotential`. Wrap it yourself to set
-            ``save_with_run``::
-
-                sim.add_force(ExternalPotential(pot, save_with_run=False))
+            :class:`~tambora.dynamics.ExternalPotential`.
+        save_with_run : bool, optional
+            Whether a run written to disk keeps the force, so ``Sim.load`` can add it again. 
+            Default True. False keeps only its label, e.g. for a large potential many runs share. 
+            Only potentials from supported packages can be saved. Other forces are kept by their labels either way.
 
         Returns
         -------
@@ -422,7 +425,10 @@ class Sim(_ParticleView):
         if not isinstance(force, Force):
             force = ExternalPotential(force)
         self._add_force(force)
-        self._warn_if_not_savable(force, stacklevel=2)
+        if save_with_run:
+            self._warn_if_not_savable(force, stacklevel=2)
+        else:
+            self._not_saved += getattr(force, 'members', [force])
 
     def _add_force(self, force):
         def _assign_force(_force):
@@ -462,7 +468,7 @@ class Sim(_ParticleView):
             return
         for _force in getattr(force, 'members', [force]):
             why = _force.backend.save_problem() if isinstance(_force, ExternalPotential) else None
-            if why and _force.save_with_run:
+            if why:
                 _warn_not_saved(_force_label(_force), why, stacklevel=stacklevel + 1)
             
     def add_subhalos(self, pos, vel, mass):
@@ -610,7 +616,7 @@ class Sim(_ParticleView):
                                   "would overwrite. Make a new Sim with another output_dir, or delete the old run.")
         n_steps, _, steps_per_output = _count_steps(dt, dt_out, t0, t_end)
         forces = self._conserv_ext_force.members + self._base_ext_force.members
-        force_records = _force_records(forces)
+        force_records = _force_records(forces, self._not_saved)
         if self._output_dir is not None:    # warned when added, unless it changed since
             for force, record in zip(forces, force_records):
                 if record['error'] and not force.backend.save_problem():
