@@ -109,6 +109,16 @@ def test_loading_a_run_adds_its_potential_again_and_names_the_forces_it_cant(tmp
     assert sim._base_ext_force.members == []
 
 
+@pytest.mark.parametrize("force", [lambda: _Drag(), lambda: gp.PlummerPotential(ro=8, vo=220)],
+                         ids=['a force', 'a potential'])
+def test_a_loaded_sim_refuses_a_force_added_afterwards(tmp_path, force):
+    _with_forces(_sim(output_dir=tmp_path / 'run')).run(**RUN)
+    sim = Sim.load(tmp_path / 'run', forces=[_Drag()])
+    with pytest.raises(RuntimeError, match=r"Cannot add forces to a loaded Sim. Pass them to Sim.load as forces="):
+        sim.add_force(force())
+    assert len(sim._conserv_ext_force.members + sim._base_ext_force.members) == 2
+
+
 @pytest.mark.parametrize("forces", [[_Drag()], (_Drag(),), _Drag()], ids=['a list', 'a tuple', 'one force'])
 def test_a_force_given_to_load_is_added_and_isnt_named_as_missing(tmp_path, forces):
     run = _with_forces(_sim(output_dir=tmp_path / 'run'))
@@ -141,13 +151,11 @@ def test_load_names_only_the_forces_it_wasnt_given(tmp_path, give, still_missing
     lambda sim: sim.system_energy(), lambda sim: sim.b.energy(t=0), lambda sim: sim.virial_ratio(t=1),
 ], ids=['compute_external_pot', 'external_acc', 'component external_acc', 'energy', 'PE', 'system_energy',
         'component energy', 'virial_ratio'])
-def test_with_the_forces_it_couldnt_load_added_again_a_loaded_run_gives_what_the_run_gave(tmp_path, compute):
+def test_with_the_forces_it_couldnt_load_given_again_a_loaded_run_gives_what_the_run_gave(tmp_path, compute):
     _with_forces(_sim(output_dir=tmp_path / 'run')).run(**RUN)
     memory = _with_forces(_sim())
     memory.run(**RUN)
-    with pytest.warns(UserWarning, match=FORCES_NOT_LOADED):
-        sim = Sim.load(tmp_path / 'run')
-    sim.add_force(_Drag())
+    sim = Sim.load(tmp_path / 'run', forces=[_Drag()])
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')     # on-the-fly external potential
         np.testing.assert_array_equal(compute(sim), compute(memory))

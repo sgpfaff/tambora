@@ -150,11 +150,8 @@ def test_a_loaded_sim_doesnt_warn_and_its_copy_says_why_the_potential_wasnt_save
     with pytest.warns(UserWarning, match=NOT_SAVED):
         sim.save(tmp_path / 'saved')
     with warnings.catch_warnings():
-        warnings.simplefilter('ignore')     # the forces that couldn't be loaded
-        loaded = Sim.load(tmp_path / 'saved')
-    with warnings.catch_warnings():
         warnings.simplefilter('error')
-        loaded.add_force(_ramp())    # it can't run, so nothing would be written
+        loaded = Sim.load(tmp_path / 'saved', forces=[_ramp()])     # it can't run, so nothing would be written
         loaded.save(tmp_path / 'copy')
     assert _same(read_run(tmp_path / 'copy')['forces'], read_run(tmp_path / 'saved')['forces'])
 
@@ -187,15 +184,6 @@ def test_a_loaded_sim_has_the_runs_potentials_in_order_and_computes_as_the_run_d
     for t in (0., 0.1):
         np.testing.assert_array_equal(sim._conserv_ext_force.acc(POS, None, t), run._conserv_ext_force.acc(POS, None, t))
     assert sim._not_saved == []
-
-
-def test_adding_a_reloaded_potential_again_is_refused_as_a_duplicate(tmp_path):
-    _run_with_potentials(tmp_path / 'run')
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
-        sim = Sim.load(tmp_path / 'run')
-    with pytest.raises(ValueError, match="already added"):
-        sim.add_force(_nfw())
 
 
 def test_giving_load_a_potential_the_run_saved_is_refused_as_a_duplicate(tmp_path):

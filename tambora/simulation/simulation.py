@@ -407,7 +407,7 @@ class Sim(_ParticleView):
         Raises
         ------
         RuntimeError
-            If the simulation has already been run.
+            If the simulation has already been run, or was made by ``Sim.load``.
         TypeError
             If ``force`` is a self-gravity force, or is neither a force nor a potential
             an installed backend can use.
@@ -424,7 +424,9 @@ class Sim(_ParticleView):
             For a Sim with an ``output_dir``, if a potential can't be saved with the run
             (e.g. it holds a lambda). It's kept by its label.
         '''
-        if self._has_run and not self._loaded:
+        if self._loaded:
+            raise RuntimeError("Cannot add forces to a loaded Sim. Pass them to Sim.load as forces=[...].")
+        if self._has_run:
             raise RuntimeError("Cannot add forces after run().")
         if not isinstance(force, Force):
             force = ExternalPotential(force)
@@ -468,7 +470,7 @@ class Sim(_ParticleView):
 
     def _warn_if_not_savable(self, force, stacklevel):
         """For a Sim whose run will be written, warn now about a potential in *force* that can't be saved."""
-        if self._output_dir is None or self._loaded:
+        if self._output_dir is None:
             return
         for _force in getattr(force, 'members', [force]):
             why = _force.backend.save_problem() if isinstance(_force, ExternalPotential) else None
@@ -1552,7 +1554,7 @@ class Sim(_ParticleView):
           ``forces`` stands for one the run names when their labels match.
         - Only load runs you trust. Loading a saved potential runs code its run file names.
         - Hooks and their records aren't saved.
-        - A loaded Sim can't run again.
+        - A loaded Sim can't run again, and nothing can be added to it.
         """
         directory = os.path.abspath(os.path.expanduser(os.fspath(path)))
         run = read_run(directory)
