@@ -406,6 +406,8 @@ class Sim(_ParticleView):
 
         Raises
         ------
+        RuntimeError
+            If the simulation has already been run.
         TypeError
             If ``force`` is a self-gravity force, or is neither a force nor a potential
             an installed backend can use.
@@ -422,6 +424,8 @@ class Sim(_ParticleView):
             For a Sim with an ``output_dir``, if a potential can't be saved with the run
             (e.g. it holds a lambda). It's kept by its label.
         '''
+        if self._has_run and not self._loaded:
+            raise RuntimeError("Cannot add forces after run().")
         if not isinstance(force, Force):
             force = ExternalPotential(force)
         self._add_force(force)

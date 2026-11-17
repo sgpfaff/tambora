@@ -783,6 +783,18 @@ def test_add_force_wraps_a_potential_and_keeps_a_force_as_given():
     assert wrapped._conserv_ext_force.members == [force]
     np.testing.assert_array_equal(added.acc(pos, 0.), force.acc(pos, 0.))
 
+
+@pytest.mark.parametrize("force", [lambda: _kepler_pot(), lambda: CustomConservForce(), lambda: CustomBaseForce()],
+                         ids=['a potential', 'a conservative force', 'a non-conservative force'])
+def test_add_force_after_run_is_refused(force):
+    sim = _two_components(eps_a=0.1, eps_b=0.1)
+    _quick_run(sim)
+    energy = sim.system_energy(t=-1)
+    with pytest.raises(RuntimeError, match=r"Cannot add forces after run\(\)"):
+        sim.add_force(force())
+    assert sim._conserv_ext_force.members == [] and sim._base_ext_force.members == []
+    assert sim.system_energy(t=-1) == energy
+
 # --- self-gravity acceleration accessors ------------------------------------------------------------------------ #
 
 def test_acc_matches_direct():

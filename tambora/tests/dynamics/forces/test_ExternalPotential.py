@@ -180,7 +180,7 @@ def test_dedup_key_is_hashable_and_names_the_type_and_backend():
     assert key[:2] == (ExternalPotential, 'galpy')
 
 
-# --- _dedup_key: unchanged by a run --------------------------------------------
+# --- _dedup_key: unchanged by evaluating the potential -------------------------
 
 def _triaxial():
     return TriaxialNFWPotential(a=2., b=0.8, c=0.6, ro=8., vo=220.)
@@ -195,23 +195,25 @@ def test_the_triaxial_halo_really_caches_when_evaluated():
     assert pickle.dumps(p) != before
 
 
-def test_a_copy_added_after_a_run_is_still_a_duplicate():
-    # A notebook cell that adds a potential, re-run after sim.run(). The first halo
-    # has cached results in itself during the run, so it no longer pickles like the
-    # fresh copy; the key it took when its force was created still matches.
+def test_a_copy_added_after_the_first_was_evaluated_is_still_a_duplicate():
+    # A notebook cell that adds a potential, re-run after the Sim evaluated it. The first
+    # halo has cached results in itself, so it no longer pickles like the fresh copy; the
+    # key it took when its force was created still matches.
     sim = _one_particle_sim(ExternalPotential(_triaxial()))
-    sim.run(t_end=0.01, dt=0.01, dt_out=0.01, method=None, progress=False, monitors=False)
+    sim.external_acc(t=0)
     with pytest.raises(ValueError, match="equivalently-configured"):
         sim.add_force(_triaxial())
 
 
-def test_the_same_object_re_added_after_a_run_is_still_a_duplicate():
-    # A notebook cell that adds a potential built in an earlier cell, re-run after
-    # sim.run(). The halo has cached results in itself during the run; its key must not
-    # change, or the field would be counted twice.
+def test_the_same_object_re_added_after_it_was_evaluated_is_still_a_duplicate():
+    # A notebook cell that adds a potential built in an earlier cell, re-run after the
+    # Sim evaluated it. The halo has cached results in itself; its key must not change,
+    # or the field would be counted twice.
     halo = _triaxial()
+    before = pickle.dumps(halo)
     sim = _one_particle_sim(ExternalPotential(halo))
-    sim.run(t_end=0.01, dt=0.01, dt_out=0.01, method=None, progress=False, monitors=False)
+    sim.external_acc(t=0)
+    assert pickle.dumps(halo) != before
     with pytest.raises(ValueError, match="equivalently-configured"):
         sim.add_force(halo)
 
