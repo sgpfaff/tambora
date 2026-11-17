@@ -95,7 +95,7 @@ jobs:
           python -c "
           from tambora.simulation import Sim
           try:
-              Sim().add_external_pot(None)
+              Sim().add_force(None)
           except TypeError as e:
               assert 'installed: none' in str(e), f'unexpected message: {e}'
               print('Helpful TypeError raised as expected')
