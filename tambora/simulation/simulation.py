@@ -11,6 +11,7 @@ from ._view import _ParticleView
 from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, NullSelfGravity, Conservative, ExternalPotential,
                         SELF_GRAVITY_METHODS, INTEGRATORS)
 
+from ..dynamics import forces as _forces
 from ..dynamics.forces.CompositeForce import _CompositeConservative, _CompositePlain
 from ..units import unit_handler, KMS_TO_KPCGYR
 from ..dynamics import diagnostics
@@ -18,7 +19,6 @@ from ..ic import ParticleSet
 from ..dynamics.integration import StepState
 from ..dynamics.integration.recorder import _MemoryRecorder
 from ..dynamics.integration.integrate import _check_dt_dt_out, _count_steps, _time_at
-from ..interop._registry import potential_backend_named
 from ..io.run_files import RUN_FILE, _FileRecorder, _snapshot_arrays, existing_run, read_run, snapshot_name
 import inspect
 import keyword
@@ -139,6 +139,16 @@ def _force_records(forces, not_saved=()):
                     record.update({'saved': True, 'class': type(force).__name__, 'record': saved})
         records.append(record)
     return records
+
+
+def _load_force(record):
+    """The force a run file's *record* was saved from, through its class in ``tambora.dynamics.forces``."""
+    if 'class' not in record:       # written before forces saved themselves: a potential
+        return ExternalPotential.load({'backend': record['backend'], **record['record']})
+    cls = getattr(_forces, record['class'], None)
+    if not (isinstance(cls, type) and issubclass(cls, Force)):
+        raise ValueError(f"This tambora has no {record['class']!r} force.")
+    return cls.load(record['record'])
 
 
 def _warn_not_saved(label, error, stacklevel):
@@ -1547,10 +1557,11 @@ class Sim(_ParticleView):
         Notes
         -----
         - Snapshots are read from their files when an accessor asks for them.
-        - The run's potentials from supported packages are added again, as the run used them.
-          Other external forces, and potentials added with ``save_with_run=False``, aren't
-          saved. Give them again as ``forces``. They're left out otherwise. A force in
-          ``forces`` stands for one the run names when their labels match.
+        - The run's saved forces are added again, as the run used them, each through its
+          class's ``load``. Only tambora's own force classes are found. Other forces, and
+          those added with ``save_with_run=False``, are left out. Give them again as
+          ``forces``. A force in ``forces`` stands for one the run names when their labels
+          match.
         - Only load runs you trust. Loading a saved potential runs code its run file names.
         - Hooks and their records aren't saved.
         - A loaded Sim can't run again, and nothing can be added to it.
@@ -1579,15 +1590,18 @@ class Sim(_ParticleView):
         sim._has_run = sim._loaded = True
         sim._output_dir = directory
         not_loaded = []     # (label, what the warning calls it)
-        for record in run['forces']:
-            if not record['saved']:
-                not_loaded.append((record['label'], record['label']))
-                continue
-            try:
-                backend = potential_backend_named(record['backend']).load(record['record'])
-                sim._add_force(ExternalPotential._from_backend(backend))
-            except Exception as e:
-                not_loaded.append((record['label'], f"{record['label']} ({type(e).__name__}: {e})"))
+        with warnings.catch_warnings(record=True) as from_loading:
+            warnings.simplefilter('always')
+            for record in run['forces']:
+                if not record['saved']:
+                    not_loaded.append((record['label'], record['label']))
+                    continue
+                try:
+                    sim._add_force(_load_force(record))
+                except Exception as e:
+                    not_loaded.append((record['label'], f"{record['label']} ({type(e).__name__}: {e})"))
+        for w in from_loading:      # again, so they point at the caller's line
+            warnings.warn(w.message, w.category, stacklevel=2)
         given = []
         for force in ([] if forces is None else forces if isinstance(forces, (list, tuple)) else [forces]):
             if not isinstance(force, Force):

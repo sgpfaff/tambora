@@ -275,8 +275,11 @@ def _loading_with(monkeypatch, change):
 
 @pytest.mark.parametrize("change, reason", [
     (lambda f: f['record'].update(data=b'not a pickle'), r"\(UnpicklingError: "),
-    (lambda f: f.update(backend='agama'), r"\(ValueError: This tambora has no 'agama' potential backend.\)"),
-], ids=['damaged', 'unknown backend'])
+    (lambda f: f['record'].update(backend='agama'), r"\(ValueError: This tambora has no 'agama' potential backend.\)"),
+    (lambda f: f.update({'class': 'NoSuchForce'}), r"\(ValueError: This tambora has no 'NoSuchForce' force.\)"),
+    (lambda f: f.update({'class': 'Conservative'}), r"\(ValueError: This tambora has no 'Conservative' force.\)"),
+    (lambda f: f.update({'class': 'NullForce'}), r"\(NotImplementedError: NullForce forces can't be loaded.\)"),
+], ids=['damaged', 'unknown backend', 'unknown class', 'a class that is not a force', 'a class with no load'])
 def test_a_potential_that_cant_be_loaded_is_named_with_why_and_the_rest_loads(tmp_path, monkeypatch, change, reason):
     run = _run_with_potentials(tmp_path / 'run')
     _loading_with(monkeypatch, change)
@@ -285,6 +288,57 @@ def test_a_potential_that_cant_be_loaded_is_named_with_why_and_the_rest_loads(tm
     assert len(caught) == 1 and caught[0].message.args[0].count("couldn't be loaded") == 1
     assert ", _Drag couldn't be loaded" in str(caught[0].message)
     assert [repr(f) for f in sim._conserv_ext_force.members] == [repr(run._conserv_ext_force.members[1])]
+
+
+def _as_written_before_forces_saved_themselves(record):
+    del record['class'], record['record']['backend']
+
+
+def test_a_run_written_before_forces_saved_themselves_loads_its_potentials(tmp_path, monkeypatch):
+    run = _run_with_potentials(tmp_path / 'run')
+    _loading_with(monkeypatch, _as_written_before_forces_saved_themselves)
+    with pytest.warns(UserWarning, match=r"^_Drag couldn't be loaded") as caught:
+        sim = Sim.load(tmp_path / 'run')
+    assert len(caught) == 1
+    assert [repr(f) for f in sim._conserv_ext_force.members] == [repr(f) for f in run._conserv_ext_force.members]
+    np.testing.assert_array_equal(sim._conserv_ext_force.acc(POS, None, 0.1), run._conserv_ext_force.acc(POS, None, 0.1))
+
+
+def test_such_a_run_names_a_backend_this_tambora_doesnt_have(tmp_path, monkeypatch):
+    _run_with_potentials(tmp_path / 'run')
+    _loading_with(monkeypatch, lambda f: (_as_written_before_forces_saved_themselves(f), f.update(backend='agama')))
+    with pytest.warns(UserWarning, match=r"^ExternalPotential\(NFWPotential\) \(ValueError: This tambora has no 'agama'"):
+        Sim.load(tmp_path / 'run')
+
+
+def _run_with_a_saved_drag(directory):
+    sim = _sim(output_dir=directory)
+    sim.add_force(_SavedDrag(0.5))
+    sim.run(**RUN)
+    return sim
+
+
+def test_a_saved_force_of_one_of_tamboras_classes_is_loaded_through_its_load(tmp_path, monkeypatch):
+    import tambora.dynamics.forces as forces_module
+    _run_with_a_saved_drag(tmp_path / 'run')
+    monkeypatch.setattr(forces_module, '_SavedDrag', _SavedDrag, raising=False)
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        sim = Sim.load(tmp_path / 'run')
+    loaded, = sim._base_ext_force.members
+    assert type(loaded) is _SavedDrag and loaded.k == 0.5
+
+
+def test_a_saved_force_of_a_class_tambora_doesnt_have_is_named_and_can_be_given_again(tmp_path):
+    _run_with_a_saved_drag(tmp_path / 'run')
+    with pytest.warns(UserWarning, match=r"^_SavedDrag \(ValueError: This tambora has no '_SavedDrag' force.\) "
+                                         r"couldn't be loaded") as caught:
+        sim = Sim.load(tmp_path / 'run')
+    assert len(caught) == 1 and sim._base_ext_force.members == []
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        sim = Sim.load(tmp_path / 'run', forces=[_SavedDrag(0.5)])
+    assert [type(f) for f in sim._base_ext_force.members] == [_SavedDrag]
 
 
 def test_a_potential_from_another_galpy_warns_from_your_line_and_loads(tmp_path, monkeypatch):
