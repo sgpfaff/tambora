@@ -8,8 +8,8 @@ import numpy as np
 import warnings
 from .component import Component
 from ._view import _ParticleView
-from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, NullSelfGravity, Conservative, ExternalPotential,
-                        SELF_GRAVITY_METHODS, INTEGRATORS)
+from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, FalcON, NullSelfGravity, Conservative,
+                        ExternalPotential, SELF_GRAVITY_METHODS, INTEGRATORS)
 
 from ..dynamics import forces as _forces
 from ..dynamics.forces.CompositeForce import _CompositeConservative, _CompositePlain
@@ -24,6 +24,29 @@ import inspect
 import keyword
 from typing import Optional
 from ._decorators import _USE_CACHED_DEFAULT, _resolve_use_cached, _resolve_t
+
+
+_UNSET = object()   # an argument the caller didn't give
+
+
+def _check_solver(solver):
+    """The self-gravity solver a Sim is given; ``FalcON()`` when not given, none for None."""
+    if solver is _UNSET:
+        return FalcON()
+    if solver is None:
+        return NullSelfGravity()
+    if not isinstance(solver, SelfGravityForce):
+        raise TypeError(f"solver must be a self-gravity solver, e.g. FalcON(), or None. Got {type(solver).__name__!r}.")
+    if solver.eps is not None:
+        raise ValueError("The Sim's solver can't have its own softening. Give the softening to the particles.")
+    return solver
+
+
+def _solver_settings(solver):
+    """*solver* as a run's settings keep it: its method name and what it was made with."""
+    method = next((name for name, cls in SELF_GRAVITY_METHODS.items() if type(solver) is cls), type(solver).__name__)
+    made_with = set(inspect.signature(type(solver).__init__).parameters) - {'self', 'eps'}  # the particles' softening
+    return {'method': method, **{name: getattr(solver, name) for name in sorted(made_with)}}
 
 
 def _check_eps(eps, n):
@@ -169,6 +192,10 @@ class Sim(_ParticleView):
 
     Parameters
     ----------
+    solver : SelfGravityForce or None, optional
+        What computes the particles' gravity on each other, in the run and in analysis. 
+        None for no self-gravity.
+        Default: ``FalcON()``.
     output_dir : str or path, optional
         Directory to write the run to, one file per output, instead of keeping it
         in memory; the accessors then read the files. It must not hold a run
@@ -182,7 +209,8 @@ class Sim(_ParticleView):
     def _sim(self):
         return self
 
-    def __init__(self, *, output_dir=None):
+    def __init__(self, *, solver=_UNSET, output_dir=None):
+        solver = _check_solver(solver)
         self._output_dir = None if output_dir is None else _check_output_dir(output_dir)
         taken = self._run_in_output_dir()
         if taken:
@@ -209,7 +237,7 @@ class Sim(_ParticleView):
         self._run_settings = None    # the settings of the run that made the outputs
         self._run_forces = None      # that run's external forces, as _force_records gave them
         self._has_run = False
-        self._self_gravity_force = NullSelfGravity()
+        self._self_gravity_force = solver
         self._conserv_ext_force = _CompositeConservative([]) # conservative external forces
         self._base_ext_force = _CompositePlain([]) # non-conservative external forces
         self._not_saved = [] # external forces added with save_with_run=False
@@ -527,7 +555,7 @@ class Sim(_ParticleView):
     # --- Running the Simulation ------------------------------------------------------------------------------------------
 
     def run(self, t_end: float, dt: float, dt_out: float, t0: float=0.0,
-            method: Optional[str] = 'falcON', integration_method: str = 'leapfrog',
+            method: Optional[str] = _UNSET, integration_method: str = 'leapfrog',
             cache_self_gravity_acc: bool = True, cache_self_gravity_pot: bool = True,
             progress: bool = True, monitors='auto',
             **kwargs):
@@ -546,8 +574,9 @@ class Sim(_ParticleView):
             Output interval. Must be a multiple of dt.
             Units: `Gyr`
         method : str or None, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON' (default): fast multipole method implemented in falcON.
+            Method to use for computing self-gravity, instead of the Sim's solver.
+            Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
             - 'direct': direct summation.
             - None: no self-gravity.
         integration_method: str, optional
@@ -591,20 +620,25 @@ class Sim(_ParticleView):
         if self._loaded:
             raise RuntimeError(f"This Sim was loaded from {self._output_dir!r} and can't run. "
                                "Make a new Sim to run again.")
-        supported = sorted(m for m in SELF_GRAVITY_METHODS if m is not None)
-        if method not in SELF_GRAVITY_METHODS:
-            raise ValueError(
-                f"Unknown method {method!r} for self-gravity. "
-                f"Supported methods: {supported} (or None to disable self-gravity).")
-        solver_cls = SELF_GRAVITY_METHODS[method]
-        valid = set(inspect.signature(solver_cls.__init__).parameters) - {'self', 'eps'}  # the particles' softening
-        invalid = set(kwargs) - valid
-        if invalid:
-            raise ValueError(
-                f"{invalid} is (are) invalid kwarg(s) for {method!r} self-gravity method. "
-                "Only kwargs for self-gravity methods are allowed."
-            )
-        if method is not None:
+        if method is _UNSET and not kwargs:
+            solver = self._self_gravity_force
+        else:
+            method = 'falcON' if method is _UNSET else method
+            supported = sorted(m for m in SELF_GRAVITY_METHODS if m is not None)
+            if method not in SELF_GRAVITY_METHODS:
+                raise ValueError(
+                    f"Unknown method {method!r} for self-gravity. "
+                    f"Supported methods: {supported} (or None to disable self-gravity).")
+            solver_cls = SELF_GRAVITY_METHODS[method]
+            valid = set(inspect.signature(solver_cls.__init__).parameters) - {'self', 'eps'}  # the particles' softening
+            invalid = set(kwargs) - valid
+            if invalid:
+                raise ValueError(
+                    f"{invalid} is (are) invalid kwarg(s) for {method!r} self-gravity method. "
+                    "Only kwargs for self-gravity methods are allowed."
+                )
+            solver = solver_cls(**kwargs)
+        if not isinstance(solver, NullSelfGravity):
             unset = [name for name, sl in self._slices.items() if np.isnan(self._eps[sl]).any()]
             if unset:
                 raise ValueError(
@@ -616,7 +650,6 @@ class Sim(_ParticleView):
         if integration_method not in INTEGRATORS:
             raise ValueError(f"Unknown integration_method {integration_method!r}. "
                              f"Supported: {sorted(INTEGRATORS)}.")
-        solver = solver_cls(**kwargs)
         # Outside state (e.g. Agama's global units) can invalidate a wrapped
         # potential after it was added; each backend checks for that here.
         for force in self._conserv_ext_force.members + self._base_ext_force.members:
@@ -640,7 +673,7 @@ class Sim(_ParticleView):
             't0': t0, 't_end': t_end, 'dt': dt, 'dt_out': dt_out,
             'n_steps': n_steps, 'steps_per_output': steps_per_output,
             'integration_method': integration_method,
-            'self_gravity': {'method': method, **{name: getattr(solver, name) for name in sorted(valid)}},
+            'self_gravity': _solver_settings(solver),
             'cache_self_gravity_acc': cache_self_gravity_acc,
             'cache_self_gravity_pot': cache_self_gravity_pot,
             'monitors': monitors,

@@ -10,7 +10,7 @@ from tambora.ic import ParticleSet
 import numpy as np
 from tambora.units import G_INTERNAL
 from tambora.units import KMS_TO_KPCGYR
-from tambora.dynamics import DirectSum, FalcON
+from tambora.dynamics import DirectSum, FalcON, NullSelfGravity
 from tambora.dynamics.diagnostics import bound_mask
 from tambora.dynamics.hooks import (Hook, ConservationMonitor, BoundednessHook,
                                     EveryOutput, EveryStep, EveryNSteps, EveryNOutputs)
@@ -407,6 +407,72 @@ def test_self_gravity_method_gives_nonzero_acc():
     sim.run(t_end=2, dt=1, dt_out=2, method='direct')
     acc = sim.self_gravity()
     assert not np.all(np.isclose(acc, 0, atol=1e-10))
+
+# --- Sim(solver=...) ------------------------------------------------------------------------ #
+
+def _run_with_solver(**sim_kwargs):
+    sim = Sim(**sim_kwargs)
+    sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS * 1e6, name='a', eps=0.1)
+    sim.run(t_end=0.01, dt=0.01, dt_out=0.01, progress=False, monitors=False)
+    return sim
+
+
+def test_a_sim_uses_falcon_unless_told_otherwise():
+    solver = Sim()._self_gravity_force
+    assert type(solver) is FalcON and (solver.theta, solver.kernel, solver.eps) == (0.6, 1, None)
+
+
+def test_a_sim_keeps_the_solver_it_is_given_and_none_means_no_self_gravity():
+    solver = DirectSum()
+    assert Sim(solver=solver)._self_gravity_force is solver
+    assert type(Sim(solver=None)._self_gravity_force) is NullSelfGravity
+
+
+@pytest.mark.parametrize("solver, error, message", [
+    ('falcON', TypeError, "solver must be a self-gravity solver, e.g. FalcON\\(\\), or None. Got 'str'"),
+    (FalcON, TypeError, "Got 'ABCMeta'"),
+    (type('Drag', (), {})(), TypeError, "Got 'Drag'"),
+    (DirectSum(eps=0.1), ValueError, "The Sim's solver can't have its own softening. Give the softening to the particles."),
+], ids=['a method name', 'a solver class', 'another object', 'a solver with its own softening'])
+def test_a_sim_refuses_what_is_not_a_solver_it_can_use(solver, error, message):
+    with pytest.raises(error, match=message):
+        Sim(solver=solver)
+
+
+@pytest.mark.parametrize("solver, settings", [
+    (DirectSum(), {'method': 'direct', 'use_C': True}),
+    (DirectSum(use_C=False), {'method': 'direct', 'use_C': False}),
+    (FalcON(theta=0.3), {'method': 'falcON', 'theta': 0.3, 'kernel': 1}),
+], ids=['DirectSum', 'DirectSum in Python', 'FalcON'])
+def test_run_uses_the_sims_solver_and_records_it(solver, settings):
+    sim = _run_with_solver(solver=solver)
+    assert sim._self_gravity_force is solver and sim._run_settings['self_gravity'] == settings
+    pos = sim.pos(t=0, return_internal=True)
+    np.testing.assert_array_equal(sim.self_gravity(t=0, return_internal=True), solver.acc(pos, sim.mass, 0.1))
+
+
+def test_run_without_a_solver_has_no_self_gravity_and_needs_no_softening():
+    sim = Sim(solver=None)
+    sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS * 1e6, name='a')
+    sim.run(t_end=0.01, dt=0.01, dt_out=0.01, progress=False, monitors=False)
+    assert sim._run_settings['self_gravity'] == {'method': None}
+    np.testing.assert_array_equal(sim.self_gravity(return_internal=True), 0.)
+
+
+def test_run_with_the_default_solver_is_what_run_with_falcon_was():
+    default, named = _run_with_solver(), Sim()
+    named.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS * 1e6, name='a', eps=0.1)
+    named.run(t_end=0.01, dt=0.01, dt_out=0.01, method='falcON', progress=False, monitors=False)
+    assert default._run_settings['self_gravity'] == named._run_settings['self_gravity']
+    np.testing.assert_array_equal(default.pos(), named.pos())
+
+
+def test_a_sim_with_a_solver_needs_softening_to_run():
+    sim = Sim(solver=DirectSum())
+    sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS * 1e6, name='a')
+    with pytest.raises(ValueError, match="Softening isn't set for 'a'"):
+        sim.run(t_end=0.01, dt=0.01, dt_out=0.01, progress=False, monitors=False)
+
 
 # --- softening ------------------------------------------------------------------------------ #
 
