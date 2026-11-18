@@ -2,6 +2,7 @@ import numpy as np
 
 from .ExternalConservativeForce import ExternalConservativeForce
 from ....interop import potential_backend_for
+from ....interop._registry import potential_backend_named
 
 
 class ExternalPotential(ExternalConservativeForce):
@@ -49,6 +50,18 @@ class ExternalPotential(ExternalConservativeForce):
     def check_still_valid(self) -> None:
         """Raise if outside state has invalidated the wrapped potential (see the backend)."""
         self._backend.check_still_valid()
+
+    def save_problem(self):
+        return self._backend.save_problem()
+
+    def save(self):
+        """The backend's record with the backend's name, or None if the backend doesn't save."""
+        saved = self._backend.save()
+        return None if saved is None else {'backend': self._backend.name, **saved}
+
+    @classmethod
+    def load(cls, record):
+        return cls._from_backend(potential_backend_named(record['backend']).load(record))
 
     def _dedup_key(self):
         """Key for ``Sim``'s duplicate check: the backend's key, tagged with this class and
