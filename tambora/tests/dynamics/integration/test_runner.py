@@ -8,7 +8,7 @@ from tambora.dynamics.integration import _runner, StepState
 from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
 from tambora.interop._galpy.bridge import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
 from tambora.simulation import Sim
-from tambora.dynamics import ExternalPotential, DirectSummationGravity, NullForce, NullSelfGravity
+from tambora.dynamics import ExternalPotential, DirectSum, NullForce, NullSelfGravity
 from tambora.dynamics.forces.CompositeForce import _CompositeConservative
 from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
 from tambora.dynamics.integration.integrate import _count_steps, _warn_uneven_end, _whole_steps
@@ -75,7 +75,7 @@ class TestReturnOptions:
         pot = NFWPotential(amp=1e13*u.Msun, a=20*u.kpc)
         pot.turn_physical_on()
         cls.integrator = integrator
-        cls.self_gravity = DirectSummationGravity(eps=0.0)
+        cls.self_gravity = DirectSum(eps=0.0)
         cls.ext_force = _CompositeConservative([]) + ExternalPotential(pot)
         cls.pos = np.array([[8., 0., 0.], [8., 0., 0.]])
         vel = np.array([[0.1, 220.0, 0.5], [0.2, 220.0, 0.5]])
@@ -694,7 +694,7 @@ class _LoggingRecorder(_MemoryRecorder):
 
 def test_runner_hands_each_output_to_the_recorder():
     rec = _LoggingRecorder()
-    out = _runner(np.zeros((2, 3)), np.ones((2, 3)), np.ones(2), LeapfrogIntegrator(), DirectSummationGravity(),
+    out = _runner(np.zeros((2, 3)), np.ones((2, 3)), np.ones(2), LeapfrogIntegrator(), DirectSum(),
                   _CompositeConservative([]), NullForce(), t0=0.0, t_end=1.0, dt=0.1, dt_out=0.2,
                   return_self_gravity_pot=False, progress=False, eps=0.1, recorder=rec)
     assert rec.calls[0] == ('begin', 6, 2, True, False)

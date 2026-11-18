@@ -6,7 +6,7 @@ the solver was built with its own.
 import numpy as np
 import pytest
 
-from tambora.dynamics import DirectSummationGravity, FalcONGravity, NullSelfGravity
+from tambora.dynamics import DirectSum, FalcON, NullSelfGravity
 
 _rng = np.random.default_rng(2)
 POS = _rng.normal(size=(40, 3))
@@ -14,8 +14,8 @@ MASS = _rng.uniform(1e5, 1e6, size=40)
 EPS = _rng.uniform(0.05, 0.2, size=40)
 
 SOLVERS = [
-    pytest.param(lambda **kw: DirectSummationGravity(**kw), id='direct'),
-    pytest.param(lambda **kw: FalcONGravity(theta=0.5, **kw), id='falcON'),
+    pytest.param(lambda **kw: DirectSum(**kw), id='direct'),
+    pytest.param(lambda **kw: FalcON(theta=0.5, **kw), id='falcON'),
 ]
 
 
@@ -42,7 +42,7 @@ def test_without_any_softening_a_solver_refuses(make):
         make().acc(POS, MASS)
 
 
-@pytest.mark.parametrize("cls", [DirectSummationGravity, FalcONGravity])
+@pytest.mark.parametrize("cls", [DirectSum, FalcON])
 def test_a_solvers_arguments_must_be_named(cls):
     with pytest.raises(TypeError):
         cls(0.1)

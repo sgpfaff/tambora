@@ -1,7 +1,7 @@
-from .SelfGravity import FalcONGravity, DirectSummationGravity, NullSelfGravity
+from .SelfGravity import FalcON, DirectSum, NullSelfGravity
 
 SELF_GRAVITY_METHODS = {
-    'falcON': FalcONGravity,
-    'direct': DirectSummationGravity,
+    'falcON': FalcON,
+    'direct': DirectSum,
     None: NullSelfGravity
 }

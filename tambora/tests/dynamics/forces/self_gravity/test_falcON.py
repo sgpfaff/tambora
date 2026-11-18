@@ -4,13 +4,13 @@
 
 import pytest
 import numpy as np
-from tambora.dynamics import FalcONGravity, DirectSummationGravity
+from tambora.dynamics import FalcON, DirectSum
 from tambora.dynamics.forces.self_gravity.falcON.falcON import _falcON_gravity
 from tambora.units import G_INTERNAL
 
 np.random.seed(42)
-falcON_gravity = FalcONGravity(eps=0.0, theta=0.5, kernel=0)
-direct_gravity = DirectSummationGravity(eps=0.0)
+falcON_gravity = FalcON(eps=0.0, theta=0.5, kernel=0)
+direct_gravity = DirectSum(eps=0.0)
 
 def test_newtons_third_law():
     '''
@@ -68,7 +68,7 @@ def test_acceleration_with_scalar_softening_length():
     pos = np.random.normal(size=(2,3))
     mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
     eps = 2.0
-    softened_falcON = FalcONGravity(eps=eps, kernel=0)
+    softened_falcON = FalcON(eps=eps, kernel=0)
     acc = softened_falcON.acc(pos, mass)
     acc_analytical_0 = G_INTERNAL * mass[1] * (pos[1] - pos[0]) / (np.linalg.norm(pos[1] - pos[0])**2 + eps**2)**1.5
     acc_analytical_1 = G_INTERNAL * mass[0] * (pos[0] - pos[1]) / (np.linalg.norm(pos[0] - pos[1])**2 + eps**2)**1.5
@@ -83,7 +83,7 @@ def test_acceleration_with_vector_softening_length():
     mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
     eps = np.array([2.0, 0.0])
     mean_eps = np.mean(eps)
-    softened_falcON = FalcONGravity(eps=eps, kernel=0)
+    softened_falcON = FalcON(eps=eps, kernel=0)
     acc = softened_falcON.acc(pos, mass)
     acc_analytical_0 = G_INTERNAL * mass[1] * (pos[1] - pos[0]) / (np.linalg.norm(pos[1] - pos[0])**2 + mean_eps**2)**1.5
     acc_analytical_1 = G_INTERNAL * mass[0] * (pos[0] - pos[1]) / (np.linalg.norm(pos[0] - pos[1])**2 + mean_eps**2)**1.5
@@ -97,7 +97,7 @@ def test_potential_with_scalar_softening_length():
     pos = np.random.normal(size=(2,3))
     mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
     eps = 2.0
-    softened_falcON = FalcONGravity(eps=eps, kernel=0)
+    softened_falcON = FalcON(eps=eps, kernel=0)
     pot = softened_falcON.potential(pos, mass)
     pot_analytical_0 = - G_INTERNAL * mass[1] / np.sqrt(np.linalg.norm(pos[1] - pos[0])**2 + eps**2)
     pot_analytical_1 = - G_INTERNAL * mass[0] / np.sqrt(np.linalg.norm(pos[0] - pos[1])**2 + eps**2)
@@ -112,7 +112,7 @@ def test_potential_with_vector_softening_length():
     mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
     eps = np.array([2.0, 0.0])
     mean_eps = np.mean(eps)
-    softened_falcON = FalcONGravity(eps=eps, kernel=0)
+    softened_falcON = FalcON(eps=eps, kernel=0)
     pot = softened_falcON.potential(pos, mass)
     pot_analytic_0 = - G_INTERNAL * mass[1] / (np.linalg.norm(pos[1] - pos[0])**2 + mean_eps**2)**0.5
     pot_analytic_1 = - G_INTERNAL * mass[0] / (np.linalg.norm(pos[0] - pos[1])**2 + mean_eps**2)**0.5

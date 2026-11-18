@@ -187,7 +187,7 @@ class StepState:
         solver : SelfGravityForce, optional
             Configured self-gravity solver to compute with. If None (default),
             the run's own solver, in which case the value is read from the step's precomputed acceleration. Pass a solver
-            instance (e.g. ``DirectSummationGravity(eps=...)``) to use a different
+            instance (e.g. ``DirectSum(eps=...)``) to use a different
             method/softening than the integration did.
 
         Notes
@@ -228,7 +228,7 @@ class StepState:
         solver : SelfGravityForce, optional
             Configured self-gravity solver to compute with. If None (default),
             the run's own solver, in which case the value is read from the step's precomputed potential. Pass a solver
-            instance (e.g. ``DirectSummationGravity(eps=...)``) to use a different
+            instance (e.g. ``DirectSum(eps=...)``) to use a different
             method/softening than the integration did.
 
         Notes

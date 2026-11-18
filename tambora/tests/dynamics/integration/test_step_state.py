@@ -299,13 +299,13 @@ def test_self_potential_custom_solver_computed_once_and_shared():
 
 
 def test_self_potential_isolated_uses_only_component_particles():
-    from tambora.dynamics.forces.self_gravity import DirectSummationGravity
-    solver = DirectSummationGravity(eps=0.1)
-    _, full = DirectSummationGravity(eps=0.1).acc_and_potential(POS, MASS)
+    from tambora.dynamics.forces.self_gravity import DirectSum
+    solver = DirectSum(eps=0.1)
+    _, full = DirectSum(eps=0.1).acc_and_potential(POS, MASS)
     st = make_state(self_pot=full, sg=solver)
 
     iso = st.a.self_potential(include_all_components=False)
-    _, phi_a = DirectSummationGravity(eps=0.1).acc_and_potential(POS[0:3], MASS[0:3])
+    _, phi_a = DirectSum(eps=0.1).acc_and_potential(POS[0:3], MASS[0:3])
     np.testing.assert_allclose(iso, MASS[0:3] * phi_a)
     # Isolated (a's own gravity) differs from a's slice of the whole-system field.
     assert not np.allclose(iso, st.a.self_potential(include_all_components=True))
@@ -354,13 +354,13 @@ def test_self_gravity_custom_solver_computed_once_and_shared():
 
 
 def test_self_gravity_isolated_uses_only_component_particles():
-    from tambora.dynamics.forces.self_gravity import DirectSummationGravity
-    solver = DirectSummationGravity(eps=0.1)
-    full_acc, full_pot = DirectSummationGravity(eps=0.1).acc_and_potential(POS, MASS)
+    from tambora.dynamics.forces.self_gravity import DirectSum
+    solver = DirectSum(eps=0.1)
+    full_acc, full_pot = DirectSum(eps=0.1).acc_and_potential(POS, MASS)
     st = make_state(self_acc=full_acc, self_pot=full_pot, sg=solver)
 
     iso = st.a.self_gravity(include_all_components=False)
-    acc_a, _ = DirectSummationGravity(eps=0.1).acc_and_potential(POS[0:3], MASS[0:3])
+    acc_a, _ = DirectSum(eps=0.1).acc_and_potential(POS[0:3], MASS[0:3])
     np.testing.assert_allclose(iso, acc_a)
     # Isolated (a's own gravity) differs from a's slice of the whole-system field.
     assert not np.allclose(iso, st.a.self_gravity(include_all_components=True))
@@ -386,9 +386,9 @@ def test_external_pot_computed_once_and_shared():
 
 
 def test_PE_and_energy_forward_self_potential_options():
-    from tambora.dynamics.forces.self_gravity import DirectSummationGravity
-    solver = DirectSummationGravity(eps=0.1)
-    _, full = DirectSummationGravity(eps=0.1).acc_and_potential(POS, MASS)
+    from tambora.dynamics.forces.self_gravity import DirectSum
+    solver = DirectSum(eps=0.1)
+    _, full = DirectSum(eps=0.1).acc_and_potential(POS, MASS)
     st = make_state(self_pot=full, sg=solver, ext=SpyExternal(phi=-2.0))
     a = st.a
 

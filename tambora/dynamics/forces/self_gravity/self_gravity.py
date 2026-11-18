@@ -1,12 +1,12 @@
 """Procedural self-gravity API.
 
-Thin wrapper around the :class:`FalcONGravity` / :class:`DirectSummationGravity`
+Thin wrapper around the :class:`FalcON` / :class:`DirectSum`
 solver classes for one-shot use (e.g. recomputing energy with a different
 solver after a run). The integrator uses the solver classes directly.
 """
 
 import numpy as np
-from .SelfGravity import FalcONGravity, DirectSummationGravity
+from .SelfGravity import FalcON, DirectSum
 
 
 SELF_GRAVITY_METHODS = ['direct', 'direct_C', 'falcON']
@@ -49,7 +49,7 @@ def _make_self_gravity(method: str, mass, **kwargs):
             )
         eps = kwargs['eps']
         _check_eps_array_length(eps, mass)
-        return FalcONGravity(
+        return FalcON(
             eps=eps,
             theta=kwargs.get('theta', 0.6),
             kernel=kwargs.get('kernel', 1),
@@ -70,7 +70,7 @@ def _make_self_gravity(method: str, mass, **kwargs):
         )
     eps = kwargs['eps']
     _check_eps_array_length(eps, mass)
-    return DirectSummationGravity(eps=eps, use_C=(method == 'direct_C'))
+    return DirectSum(eps=eps, use_C=(method == 'direct_C'))
 
 
 def self_gravity(pos, mass, method='falcON', return_potential=True, **kwargs):

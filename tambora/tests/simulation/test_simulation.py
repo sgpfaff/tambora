@@ -10,7 +10,7 @@ from tambora.ic import ParticleSet
 import numpy as np
 from tambora.units import G_INTERNAL
 from tambora.units import KMS_TO_KPCGYR
-from tambora.dynamics import DirectSummationGravity, FalcONGravity
+from tambora.dynamics import DirectSum, FalcON
 from tambora.dynamics.diagnostics import bound_mask
 from tambora.dynamics.hooks import (Hook, ConservationMonitor, BoundednessHook,
                                     EveryOutput, EveryStep, EveryNSteps, EveryNOutputs)
@@ -428,7 +428,7 @@ def test_each_component_keeps_its_own_softening_and_the_run_uses_it():
     np.testing.assert_array_equal(sim.b.eps, eps_b)
     np.testing.assert_array_equal(sim.eps, np.concatenate([np.full(COMP1_NPTS, 0.1), eps_b]))
     _quick_run(sim)
-    expected = DirectSummationGravity(eps=sim.eps).acc(sim.pos(t=0, return_internal=True), sim.mass)
+    expected = DirectSum(eps=sim.eps).acc(sim.pos(t=0, return_internal=True), sim.mass)
     np.testing.assert_allclose(sim.self_gravity(t=0, return_internal=True), expected, rtol=1e-12)
 
 
@@ -437,7 +437,7 @@ def test_a_softening_shared_by_every_particle_reaches_the_solver_as_one_number()
     # equal values; one number keeps such runs exactly as they were.
     sim = _two_components(eps_a=0.1, eps_b=0.1)
     _quick_run(sim, method='falcON')
-    expected = FalcONGravity(eps=0.1).acc(sim.pos(t=0, return_internal=True), sim.mass)
+    expected = FalcON(eps=0.1).acc(sim.pos(t=0, return_internal=True), sim.mass)
     np.testing.assert_array_equal(sim.self_gravity(t=0, return_internal=True), expected)
 
 
@@ -448,7 +448,7 @@ def test_a_hook_gets_a_components_own_gravity_with_its_own_softening(method):
     seen = {}
     sim.add_hook(lambda state: seen.setdefault('acc', state.b.self_gravity(include_all_components=False)))
     _quick_run(sim, method=method)
-    solver = DirectSummationGravity() if method == 'direct' else FalcONGravity()
+    solver = DirectSum() if method == 'direct' else FalcON()
     expected = solver.acc(COMP2_POS, COMP2_MASS * 1e6, eps=sim.b.eps)
     np.testing.assert_array_equal(seen['acc'], expected)
 
@@ -460,7 +460,7 @@ def test_gravity_computed_again_uses_the_particles_softening_unless_given_one(ac
     _quick_run(sim)
     pos, mass = sim.pos(t=0, return_internal=True), sim.mass
     def expected(eps, sl=slice(None), everyone=True):
-        acc, phi = DirectSummationGravity(eps=eps).acc_and_potential(pos if everyone else pos[sl],
+        acc, phi = DirectSum(eps=eps).acc_and_potential(pos if everyone else pos[sl],
                                                                     mass if everyone else mass[sl])
         out = acc if accessor == 'self_gravity' else (mass if everyone else mass[sl]) * phi
         return out[sl] if everyone else out
@@ -491,17 +491,17 @@ def test_in_a_hook_gravity_computed_again_needs_a_softening_unless_the_solver_ha
             return
         for view, everyone in [(state.b, False), (state, True)]:
             with pytest.raises(ValueError, match="Softening isn't set"):
-                view.self_gravity(include_all_components=everyone, solver=DirectSummationGravity())
-        seen['a'] = state.a.self_gravity(include_all_components=False, solver=DirectSummationGravity())
-        seen['b'] = state.b.self_gravity(include_all_components=False, solver=DirectSummationGravity(eps=0.3))
-        seen['all'] = state.self_gravity(include_all_components=True, solver=DirectSummationGravity(eps=0.3))
+                view.self_gravity(include_all_components=everyone, solver=DirectSum())
+        seen['a'] = state.a.self_gravity(include_all_components=False, solver=DirectSum())
+        seen['b'] = state.b.self_gravity(include_all_components=False, solver=DirectSum(eps=0.3))
+        seen['all'] = state.self_gravity(include_all_components=True, solver=DirectSum(eps=0.3))
     sim.add_hook(hook)
     _quick_run(sim, method=None)
     pos, mass = sim.pos(t=0, return_internal=True), sim.mass
     a, b = sim._slices['a'], sim._slices['b']
-    np.testing.assert_array_equal(seen['a'], DirectSummationGravity(eps=0.1).acc(pos[a], mass[a]))
-    np.testing.assert_array_equal(seen['b'], DirectSummationGravity(eps=0.3).acc(pos[b], mass[b]))
-    np.testing.assert_array_equal(seen['all'], DirectSummationGravity(eps=0.3).acc(pos, mass))
+    np.testing.assert_array_equal(seen['a'], DirectSum(eps=0.1).acc(pos[a], mass[a]))
+    np.testing.assert_array_equal(seen['b'], DirectSum(eps=0.3).acc(pos[b], mass[b]))
+    np.testing.assert_array_equal(seen['all'], DirectSum(eps=0.3).acc(pos, mass))
 
 
 def test_hooks_get_the_particles_softening_and_unbind_with_it(monkeypatch):
@@ -576,7 +576,7 @@ def test_setting_the_softening_after_a_run_clears_the_run():
     assert not sim._has_run and len(sim.times) == 1
     np.testing.assert_array_equal(sim.pos(-1), COMP1_POS.tolist() + COMP2_POS.tolist())
     _quick_run(sim)
-    expected = DirectSummationGravity(eps=sim.eps).acc(sim.pos(t=0, return_internal=True), sim.mass)
+    expected = DirectSum(eps=sim.eps).acc(sim.pos(t=0, return_internal=True), sim.mass)
     np.testing.assert_allclose(sim.self_gravity(t=0, return_internal=True), expected, rtol=1e-12)
 
 
@@ -609,7 +609,7 @@ def test_add_force_rejects_a_non_force_inside_a_sum():
 
 def test_add_force_rejects_self_gravity():
     sim = Sim()
-    force = DirectSummationGravity(eps=0.1)
+    force = DirectSum(eps=0.1)
     with pytest.raises(TypeError, match="not an external force"):
         sim.add_force(force)
 
@@ -808,7 +808,7 @@ def test_acc_matches_direct():
     sim = Sim()
     sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     acc = sim.self_gravity(t=0, method='direct', eps=0.0, return_internal=True)
-    acc_direct= DirectSummationGravity(eps=0.0).acc(pos, mass)
+    acc_direct= DirectSum(eps=0.0).acc(pos, mass)
     np.testing.assert_allclose(acc, acc_direct, rtol=1e-10)
 
 # --- external acceleration accessors -------------------------------------------------------- #
@@ -860,20 +860,20 @@ def test_external_pot_against_direct():
 
 def test_self_potential_against_direct():
     '''
-    Aim: Verify self_potential() equals mass * DirectSummationGravity().potential()
+    Aim: Verify self_potential() equals mass * DirectSum().potential()
     potential. This tests that the Sim accessor correctly multiplies by mass
     on top of the raw solver output. Uses non-unit masses [1e8, 1e10].
 
     If this fails: self_potential is not multiplying by mass, or is
     calling self_gravity incorrectly (wrong method, wrong kwargs).
-    Relies on: DirectSummationGravity being correct (test_direct_summation.py).
+    Relies on: DirectSum being correct (test_direct_summation.py).
     '''
     pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
     vel = np.zeros_like(pos)
     mass = np.array([1e8, 1e10])
     sim = Sim()
     sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
-    pot_direct = DirectSummationGravity(eps=0.0).potential(pos, mass)
+    pot_direct = DirectSum(eps=0.0).potential(pos, mass)
     pot_sim = sim.self_potential(t=0, method='direct', eps=0.0, return_internal=True)
     np.testing.assert_allclose(pot_sim[0], mass[0] * pot_direct[0], rtol=1e-15)
     np.testing.assert_allclose(pot_sim[1], mass[1] * pot_direct[1], rtol=1e-15)
@@ -894,7 +894,7 @@ def test_PE_against_direct():
     sim = Sim()
     sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.add_force(kepler_pot)
-    self_pot_direct = DirectSummationGravity(eps=0.0).potential(pos, mass)
+    self_pot_direct = DirectSum(eps=0.0).potential(pos, mass)
     ext_pot_direct = ([-G_INTERNAL * mass[0] * 1e9 / np.linalg.norm(pos[0]), 
                        -G_INTERNAL * mass[1] * 1e9 / np.linalg.norm(pos[1])])
     pot_direct = mass * self_pot_direct + ext_pot_direct
@@ -1090,8 +1090,8 @@ def test_self_potential_is_mass_weighted():
     Uses non-unit masses so m*phi ≠ phi.
 
     If this fails: compute_self_potential is returning bare phi without
-    the mass multiplication, or DirectSummationGravity potential is wrong.
-    Relies on: DirectSummationGravity being correct (test_direct_summation.py).
+    the mass multiplication, or DirectSum potential is wrong.
+    Relies on: DirectSum being correct (test_direct_summation.py).
     '''
     sim = _energy_sim()
     pe = sim.self_potential(t=0, method='direct',eps=E_EPS, return_internal=True)
@@ -1195,7 +1195,7 @@ def test_system_energy_analytical():
 
     If this fails: system_energy has a wrong coefficient (e.g. missing 0.5
     on self-PE), a missing mass factor on any term, or wrong signs.
-    Relies on: DirectSummationGravity  being correct, galpy bridge being correct.
+    Relies on: DirectSum  being correct, galpy bridge being correct.
     This is the strongest energy test — independent of all other accessors.
     '''
     sim = _energy_sim(with_ext_pot=True)

@@ -6,12 +6,12 @@ exactly: a binary, and a ring of particles around a point mass.
 import numpy as np
 import pytest
 
-from tambora.dynamics import DirectSummationGravity, ExternalConservativeForce
+from tambora.dynamics import DirectSum, ExternalConservativeForce
 from tambora.simulation import Sim
 from tambora.units import G_INTERNAL, KMS_TO_KPCGYR
 
 M = 1e9  # Msun
-_DIRECT = DirectSummationGravity(eps=0.)
+_DIRECT = DirectSum(eps=0.)
 
 
 def _run(sim, t_end=0.01, dt=0.01, dt_out=0.01):

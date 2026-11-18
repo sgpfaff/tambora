@@ -2,10 +2,10 @@ import pytest
 import numpy as np
 from tambora.simulation import Sim, Component
 from tambora.units import G_INTERNAL
-from tambora.dynamics import DirectSummationGravity
+from tambora.dynamics import DirectSum
 
 np.random.seed(42)
-direct_gravity = DirectSummationGravity(eps=0.0)
+direct_gravity = DirectSum(eps=0.0)
 
 COMP1_NPTS = 50
 COMP1_POS = np.random.rand(COMP1_NPTS, 3)

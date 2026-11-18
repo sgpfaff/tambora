@@ -10,7 +10,7 @@ import h5py
 import numpy as np
 import pytest
 
-from tambora.dynamics import DirectSummationGravity, NullForce, NullSelfGravity
+from tambora.dynamics import DirectSum, NullForce, NullSelfGravity
 from tambora.dynamics.forces.CompositeForce import _CompositeConservative
 from tambora.dynamics.forces.external_force import ExternalConservativeForce
 from tambora.dynamics.integration import _runner
@@ -26,7 +26,7 @@ N, NSNAPS = 50, 11
 def _run(recorder):
     rng = np.random.default_rng(0)
     pos, vel, mass = rng.normal(size=(N, 3)), rng.normal(size=(N, 3)) * 10, np.full(N, 1e5)
-    return _runner(pos, vel, mass, LeapfrogIntegrator(), DirectSummationGravity(), _CompositeConservative([]),
+    return _runner(pos, vel, mass, LeapfrogIntegrator(), DirectSum(), _CompositeConservative([]),
                    NullForce(), t0=0.0, t_end=1.0, dt=0.01, dt_out=0.1, progress=False, eps=np.full(N, 0.05),
                    recorder=recorder)
 

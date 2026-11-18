@@ -52,7 +52,7 @@ class SelfGravityForce(Force, Conservative):
         return self.acc_and_potential(pos, mass)
     
 
-class FalcONGravity(SelfGravityForce):
+class FalcON(SelfGravityForce):
     """Self-gravity via the falcON fast-multipole tree.
 
     Parameters
@@ -88,7 +88,7 @@ class FalcONGravity(SelfGravityForce):
         return self.acc_and_potential(pos, mass, eps)[1]
 
 
-class DirectSummationGravity(SelfGravityForce):
+class DirectSum(SelfGravityForce):
     """Self-gravity via direct O(N^2) pair summation.
 
     Parameters
