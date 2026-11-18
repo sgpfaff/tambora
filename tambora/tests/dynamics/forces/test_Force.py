@@ -46,6 +46,26 @@ def test_dedup_key_defaults_to_none_so_forces_opt_out():
     assert _Constant()._dedup_key() is None
 
 
+def test_a_force_isnt_saved_unless_its_class_says_how():
+    f = _Constant()
+    assert f.save() is None and f.save_problem() is None
+    with pytest.raises(NotImplementedError, match="_Constant forces can't be loaded"):
+        _Constant.load({})
+
+
+def test_a_force_class_can_say_how_it_is_saved_and_loaded():
+    class Saved(_Constant):
+        def save(self):
+            return {'value': self.value}
+
+        @classmethod
+        def load(cls, record):
+            return cls(record['value'])
+
+    loaded = Saved.load(Saved(3.0).save())
+    assert type(loaded) is Saved and loaded.value == 3.0
+
+
 def test_adding_two_forces_makes_a_composite():
     combined = _Constant(1.0) + _Constant(2.0)
     assert isinstance(combined, Force)

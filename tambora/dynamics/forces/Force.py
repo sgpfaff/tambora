@@ -46,6 +46,22 @@ class Force(ABC):
         """
         return None
 
+    def save_problem(self):
+        """Why ``save`` would fail, if that's known without trying, else None."""
+        return None
+
+    def save(self):
+        """This force as a record a saved run can hold, or None if it can't be saved.
+
+        A record is a dict of plain values, arrays and bytes. ``load`` rebuilds the force from it.
+        """
+        return None
+
+    @classmethod
+    def load(cls, record):
+        """The force that ``save`` made *record* from."""
+        raise NotImplementedError(f"{cls.__name__} forces can't be loaded.")
+
     def __add__(self, other: "Force") -> "Force":
         from .CompositeForce import CompositeForce
         return CompositeForce([self, other])
