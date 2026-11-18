@@ -120,24 +120,23 @@ def _force_label(force):
 
 
 def _force_records(forces, not_saved=()):
-    """Each of *forces* as a run file keeps it (its label and, for a potential saved with the run, its record).
+    """Each of *forces* as a run file keeps it (its label and, for a force saved with the run, its class and record).
 
-    A potential that couldn't be saved gets the error saving it raised. Those in *not_saved*
+    A force that couldn't be saved gets the error saving it raised. Those in *not_saved*
     keep only their label.
     """
     records = []
     for force in forces:
-        record = {'label': _force_label(force), 'backend': None, 'saved': False, 'error': None}
-        if isinstance(force, ExternalPotential):
-            record['backend'] = force.backend.name
-            if not any(force is f for f in not_saved):
-                try:
-                    saved = force.backend.save()
-                except Exception as e:
-                    record['error'] = f"{type(e).__name__}: {e}"
-                else:
-                    if saved is not None:
-                        record.update(saved=True, record=saved)
+        record = {'label': _force_label(force), 'backend': getattr(getattr(force, 'backend', None), 'name', None),
+                  'saved': False, 'error': None}
+        if not any(force is f for f in not_saved):
+            try:
+                saved = force.save()
+            except Exception as e:
+                record['error'] = f"{type(e).__name__}: {e}"
+            else:
+                if saved is not None:
+                    record.update({'saved': True, 'class': type(force).__name__, 'record': saved})
         records.append(record)
     return records
 
@@ -398,7 +397,7 @@ class Sim(_ParticleView):
         save_with_run : bool, optional
             Whether a run written to disk keeps the force, so ``Sim.load`` can add it again. 
             Default True. False keeps only its label, e.g. for a large potential many runs share. 
-            Only potentials from supported packages can be saved. Other forces are kept by their labels either way.
+            A force whose class has no ``save`` is kept by its label either way.
 
         Returns
         -------
@@ -469,11 +468,11 @@ class Sim(_ParticleView):
             _assign_force(force)
 
     def _warn_if_not_savable(self, force, stacklevel):
-        """For a Sim whose run will be written, warn now about a potential in *force* that can't be saved."""
+        """For a Sim whose run will be written, warn now about a force in *force* that can't be saved."""
         if self._output_dir is None:
             return
         for _force in getattr(force, 'members', [force]):
-            why = _force.backend.save_problem() if isinstance(_force, ExternalPotential) else None
+            why = _force.save_problem()
             if why:
                 _warn_not_saved(_force_label(_force), why, stacklevel=stacklevel + 1)
             
@@ -625,7 +624,7 @@ class Sim(_ParticleView):
         force_records = _force_records(forces, self._not_saved)
         if self._output_dir is not None:    # warned when added, unless it changed since
             for force, record in zip(forces, force_records):
-                if record['error'] and not force.backend.save_problem():
+                if record['error'] and not force.save_problem():
                     _warn_not_saved(record['label'], record['error'], stacklevel=2)
         run_settings = {
             't0': t0, 't_end': t_end, 'dt': dt, 'dt_out': dt_out,
@@ -1479,9 +1478,9 @@ class Sim(_ParticleView):
         Notes
         -----
         - A Sim with an ``output_dir``, or a loaded one, is copied.
-        - Potentials from supported packages are saved as they were when the run started,
-          unless added with ``save_with_run=False``. Other external forces, and hooks, are
-          kept by their labels only.
+        - A force is saved through its class's ``save``, as it was when the run started,
+          unless added with ``save_with_run=False``. Potentials from supported packages are
+          saved this way. Other external forces, and hooks, are kept by their labels only.
         - If saving stops partway (an error, Ctrl-C), the files written are removed.
         """
         if not self._has_run:

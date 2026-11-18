@@ -24,6 +24,36 @@ def _nfw():
     return gp.NFWPotential(a=2., normalize=0.35, ro=8., vo=220.)
 
 
+class _SavedDrag(_Drag):
+    """A force that isn't a potential and says how it is saved."""
+
+    def __init__(self, k=0.25):
+        self.k = k
+
+    def acc(self, pos, vel, mass, t):
+        return -self.k * vel
+
+    def save(self):
+        return {'k': self.k}
+
+    @classmethod
+    def load(cls, record):
+        return cls(record['k'])
+
+
+class _BrokenDrag(_Drag):
+    """A force whose save fails. With *known*, it says so before anyone tries."""
+
+    def __init__(self, known=False):
+        self.known = known
+
+    def save_problem(self):
+        return "RuntimeError: no" if self.known else None
+
+    def save(self):
+        raise RuntimeError("no")
+
+
 def _ramp():
     """A potential holding a lambda, which pickle can't save."""
     return gp.TimeDependentAmplitudeWrapperPotential(A=lambda t: 1., pot=gp.NFWPotential(ro=8., vo=220.))
@@ -41,9 +71,48 @@ def test_a_run_file_keeps_each_force_in_order(tmp_path):
     assert drag == {'label': '_Drag', 'backend': None, 'saved': False, 'error': None}
     for record, force in zip((nfw, mw), sim._conserv_ext_force.members):
         assert (record['backend'], record['saved'], record['error']) == ('galpy', True, None)
+        assert (record['class'], record['record']['backend']) == ('ExternalPotential', 'galpy')
         assert record['record']['galpy_version'] == galpy.__version__
         loaded = GalpyPotential.load(record['record'])
         np.testing.assert_array_equal(loaded.acc(POS, 0.1), force.acc(POS, 0.1))
+
+
+def test_a_force_that_isnt_a_potential_is_saved_through_its_own_save(tmp_path):
+    for sim, where in ((_sim(output_dir=tmp_path / 'streamed'), None), (_sim(), tmp_path / 'saved')):
+        with warnings.catch_warnings():
+            warnings.simplefilter('error')
+            sim.add_force(_SavedDrag())
+            sim.run(**RUN)
+            if where is not None:
+                sim.save(where)
+    for where in ('streamed', 'saved'):
+        assert read_run(tmp_path / where)['forces'] == [
+            {'label': '_SavedDrag', 'backend': None, 'saved': True, 'error': None, 'class': '_SavedDrag',
+             'record': {'k': 0.25}}]
+
+
+def test_save_with_run_false_never_asks_a_force_to_save_itself(tmp_path):
+    sim = _sim(output_dir=tmp_path / 'run')
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        sim.add_force(_BrokenDrag(known=True), save_with_run=False)
+        sim.run(**RUN)
+    assert read_run(tmp_path / 'run')['forces'] == [
+        {'label': '_BrokenDrag', 'backend': None, 'saved': False, 'error': None}]
+
+
+@pytest.mark.parametrize("known", [True, False], ids=['known when added', 'found when the run starts'])
+def test_a_force_whose_save_fails_is_warned_about_once_and_kept_by_its_label(tmp_path, known):
+    sim = _sim(output_dir=tmp_path / 'run')
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        sim.add_force(_BrokenDrag(known))
+        when_added = [w for w in caught if NOT_SAVED in str(w.message)]
+        sim.run(**RUN)
+        in_all = [w for w in caught if NOT_SAVED in str(w.message)]
+    assert len(when_added) == known and len(in_all) == 1 and in_all[0].filename == __file__
+    assert read_run(tmp_path / 'run')['forces'] == [
+        {'label': '_BrokenDrag', 'backend': None, 'saved': False, 'error': 'RuntimeError: no'}]
 
 
 def test_a_saved_run_keeps_the_records_a_streamed_run_does(tmp_path):
