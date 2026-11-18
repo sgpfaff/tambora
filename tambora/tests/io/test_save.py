@@ -87,8 +87,8 @@ def test_a_saved_run_that_stopped_early_loads_with_the_warning(tmp_path):
 
 def test_a_saved_run_keeps_its_potential_and_names_its_other_forces(tmp_path):
     sim = _sim()
-    sim.add_external_force(_Drag())
-    sim.add_external_pot(gp.NFWPotential(ro=8, vo=220))
+    sim.add_force(_Drag())
+    sim.add_force(gp.NFWPotential(ro=8, vo=220))
     sim.run(**RUN)
     sim.save(tmp_path / 'saved')
     with pytest.warns(UserWarning, match=r"^_Drag couldn't be loaded"):

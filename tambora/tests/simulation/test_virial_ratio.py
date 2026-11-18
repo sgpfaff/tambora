@@ -72,7 +72,7 @@ def _ring_around_a_point_mass():
     pos, mass = _ring()
     host = _PointMass(M)
     sim = Sim()
-    sim.add_external_force(host)
+    sim.add_force(host)
     sim.add_particles(pos, _circular(pos, host.acc(pos, 0.) + _DIRECT.acc(pos, mass)), mass, name='ring')
     return sim
 
@@ -104,7 +104,7 @@ def test_self_gravity_computed_again_gives_the_cached_ratio():
 def test_a_uniform_external_field_leaves_the_ratio_alone():
     # It accelerates every particle alike, so the motion about the center of mass is the same.
     sim = _binary(offset=(8., -3., 1.))
-    sim.add_external_force(_UniformField([-500., 200., 100.]))
+    sim.add_force(_UniformField([-500., 200., 100.]))
     _run(sim)
     assert sim.virial_ratio(t=0) == pytest.approx(1., rel=1e-12)
     assert sim.binary.virial_ratio(t=0) == pytest.approx(1., rel=1e-12)

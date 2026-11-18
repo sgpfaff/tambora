@@ -42,7 +42,7 @@ def test_eval_acc_forwards_the_full_state_to_acc():
 
 
 def test_dedup_key_defaults_to_none_so_forces_opt_out():
-    # None means "never a duplicate": add_external_force allows any number.
+    # None means "never a duplicate": add_force allows any number.
     assert _Constant()._dedup_key() is None
 
 

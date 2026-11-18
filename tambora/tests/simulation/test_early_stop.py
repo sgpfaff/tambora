@@ -32,7 +32,7 @@ def _sim(t_stop=np.inf):
     sim = Sim()
     sim.add_particles(rng.normal(size=(50, 3)), rng.normal(size=(50, 3)) * 10, np.full(50, 1e5),
                       name='c', eps=0.05)
-    sim.add_external_force(_InterruptAfter(t_stop))
+    sim.add_force(_InterruptAfter(t_stop))
     return sim
 
 

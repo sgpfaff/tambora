@@ -163,8 +163,8 @@ def _note(state):
 
 def test_run_h5_lists_the_forces_and_hooks_as_repr_does(tmp_path):
     sim = _sim(output_dir=tmp_path / 'run')
-    sim.add_external_force(_Drag())
-    sim.add_external_pot([gp.NFWPotential(ro=8, vo=220), gp.MiyamotoNagaiPotential(ro=8, vo=220)])
+    sim.add_force(_Drag())
+    sim.add_force([gp.NFWPotential(ro=8, vo=220), gp.MiyamotoNagaiPotential(ro=8, vo=220)])
     sim.add_hook(_note, EveryStep())
     sim.run(**RUN)
     assert _settings(tmp_path / 'run')['run'] == sim._run_settings
