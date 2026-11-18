@@ -11,6 +11,7 @@ from ._view import _ParticleView
 from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, NullSelfGravity, Conservative, ExternalPotential,
                         SELF_GRAVITY_METHODS, INTEGRATORS)
 
+from ..dynamics import forces as _forces
 from ..dynamics.forces.CompositeForce import _CompositeConservative, _CompositePlain
 from ..units import unit_handler, KMS_TO_KPCGYR
 from ..dynamics import diagnostics
@@ -18,7 +19,6 @@ from ..ic import ParticleSet
 from ..dynamics.integration import StepState
 from ..dynamics.integration.recorder import _MemoryRecorder
 from ..dynamics.integration.integrate import _check_dt_dt_out, _count_steps, _time_at
-from ..interop._registry import potential_backend_named
 from ..io.run_files import RUN_FILE, _FileRecorder, _snapshot_arrays, existing_run, read_run, snapshot_name
 import inspect
 import keyword
@@ -120,26 +120,35 @@ def _force_label(force):
 
 
 def _force_records(forces, not_saved=()):
-    """Each of *forces* as a run file keeps it (its label and, for a potential saved with the run, its record).
+    """Each of *forces* as a run file keeps it (its label and, for a force saved with the run, its class and record).
 
-    A potential that couldn't be saved gets the error saving it raised. Those in *not_saved*
+    A force that couldn't be saved gets the error saving it raised. Those in *not_saved*
     keep only their label.
     """
     records = []
     for force in forces:
-        record = {'label': _force_label(force), 'backend': None, 'saved': False, 'error': None}
-        if isinstance(force, ExternalPotential):
-            record['backend'] = force.backend.name
-            if not any(force is f for f in not_saved):
-                try:
-                    saved = force.backend.save()
-                except Exception as e:
-                    record['error'] = f"{type(e).__name__}: {e}"
-                else:
-                    if saved is not None:
-                        record.update(saved=True, record=saved)
+        record = {'label': _force_label(force), 'backend': getattr(getattr(force, 'backend', None), 'name', None),
+                  'saved': False, 'error': None}
+        if not any(force is f for f in not_saved):
+            try:
+                saved = force.save()
+            except Exception as e:
+                record['error'] = f"{type(e).__name__}: {e}"
+            else:
+                if saved is not None:
+                    record.update({'saved': True, 'class': type(force).__name__, 'record': saved})
         records.append(record)
     return records
+
+
+def _load_force(record):
+    """The force a run file's *record* was saved from, through its class in ``tambora.dynamics.forces``."""
+    if 'class' not in record:       # written before forces saved themselves: a potential
+        return ExternalPotential.load({'backend': record['backend'], **record['record']})
+    cls = getattr(_forces, record['class'], None)
+    if not (isinstance(cls, type) and issubclass(cls, Force)):
+        raise ValueError(f"This tambora has no {record['class']!r} force.")
+    return cls.load(record['record'])
 
 
 def _warn_not_saved(label, error, stacklevel):
@@ -398,7 +407,7 @@ class Sim(_ParticleView):
         save_with_run : bool, optional
             Whether a run written to disk keeps the force, so ``Sim.load`` can add it again. 
             Default True. False keeps only its label, e.g. for a large potential many runs share. 
-            Only potentials from supported packages can be saved. Other forces are kept by their labels either way.
+            A force whose class has no ``save`` is kept by its label either way.
 
         Returns
         -------
@@ -469,11 +478,11 @@ class Sim(_ParticleView):
             _assign_force(force)
 
     def _warn_if_not_savable(self, force, stacklevel):
-        """For a Sim whose run will be written, warn now about a potential in *force* that can't be saved."""
+        """For a Sim whose run will be written, warn now about a force in *force* that can't be saved."""
         if self._output_dir is None:
             return
         for _force in getattr(force, 'members', [force]):
-            why = _force.backend.save_problem() if isinstance(_force, ExternalPotential) else None
+            why = _force.save_problem()
             if why:
                 _warn_not_saved(_force_label(_force), why, stacklevel=stacklevel + 1)
             
@@ -625,7 +634,7 @@ class Sim(_ParticleView):
         force_records = _force_records(forces, self._not_saved)
         if self._output_dir is not None:    # warned when added, unless it changed since
             for force, record in zip(forces, force_records):
-                if record['error'] and not force.backend.save_problem():
+                if record['error'] and not force.save_problem():
                     _warn_not_saved(record['label'], record['error'], stacklevel=2)
         run_settings = {
             't0': t0, 't_end': t_end, 'dt': dt, 'dt_out': dt_out,
@@ -1479,9 +1488,9 @@ class Sim(_ParticleView):
         Notes
         -----
         - A Sim with an ``output_dir``, or a loaded one, is copied.
-        - Potentials from supported packages are saved as they were when the run started,
-          unless added with ``save_with_run=False``. Other external forces, and hooks, are
-          kept by their labels only.
+        - A force is saved through its class's ``save``, as it was when the run started,
+          unless added with ``save_with_run=False``. Potentials from supported packages are
+          saved this way. Other external forces, and hooks, are kept by their labels only.
         - If saving stops partway (an error, Ctrl-C), the files written are removed.
         """
         if not self._has_run:
@@ -1548,10 +1557,11 @@ class Sim(_ParticleView):
         Notes
         -----
         - Snapshots are read from their files when an accessor asks for them.
-        - The run's potentials from supported packages are added again, as the run used them.
-          Other external forces, and potentials added with ``save_with_run=False``, aren't
-          saved. Give them again as ``forces``. They're left out otherwise. A force in
-          ``forces`` stands for one the run names when their labels match.
+        - The run's saved forces are added again, as the run used them, each through its
+          class's ``load``. Only tambora's own force classes are found. Other forces, and
+          those added with ``save_with_run=False``, are left out. Give them again as
+          ``forces``. A force in ``forces`` stands for one the run names when their labels
+          match.
         - Only load runs you trust. Loading a saved potential runs code its run file names.
         - Hooks and their records aren't saved.
         - A loaded Sim can't run again, and nothing can be added to it.
@@ -1580,15 +1590,18 @@ class Sim(_ParticleView):
         sim._has_run = sim._loaded = True
         sim._output_dir = directory
         not_loaded = []     # (label, what the warning calls it)
-        for record in run['forces']:
-            if not record['saved']:
-                not_loaded.append((record['label'], record['label']))
-                continue
-            try:
-                backend = potential_backend_named(record['backend']).load(record['record'])
-                sim._add_force(ExternalPotential._from_backend(backend))
-            except Exception as e:
-                not_loaded.append((record['label'], f"{record['label']} ({type(e).__name__}: {e})"))
+        with warnings.catch_warnings(record=True) as from_loading:
+            warnings.simplefilter('always')
+            for record in run['forces']:
+                if not record['saved']:
+                    not_loaded.append((record['label'], record['label']))
+                    continue
+                try:
+                    sim._add_force(_load_force(record))
+                except Exception as e:
+                    not_loaded.append((record['label'], f"{record['label']} ({type(e).__name__}: {e})"))
+        for w in from_loading:      # again, so they point at the caller's line
+            warnings.warn(w.message, w.category, stacklevel=2)
         given = []
         for force in ([] if forces is None else forces if isinstance(forces, (list, tuple)) else [forces]):
             if not isinstance(force, Force):

@@ -218,6 +218,30 @@ def test_the_same_object_re_added_after_it_was_evaluated_is_still_a_duplicate():
         sim.add_force(halo)
 
 
+# --- save and load -------------------------------------------------------------
+
+def test_a_saved_potential_loads_as_the_same_force():
+    pos = np.array([[8., 0., 1.], [3., -2., 0.5]])
+    force = ExternalPotential([_plummer(), NFWPotential(amp=1e12, a=16., ro=8., vo=220.)])
+    record = force.save()
+    assert record['backend'] == 'galpy' and force.save_problem() is None
+    loaded = ExternalPotential.load(record)
+    assert type(loaded) is ExternalPotential and repr(loaded) == repr(force)
+    np.testing.assert_array_equal(loaded.acc(pos, 0.1), force.acc(pos, 0.1))
+    np.testing.assert_array_equal(loaded.potential(pos, 0.1), force.potential(pos, 0.1))
+
+
+def test_a_potential_from_a_backend_that_doesnt_save_isnt_saved(monkeypatch):
+    force = ExternalPotential(_plummer())
+    monkeypatch.setattr(type(force.backend), 'save', lambda self: None)
+    assert force.save() is None
+
+
+def test_loading_names_a_backend_this_tambora_doesnt_have():
+    with pytest.raises(ValueError, match="no 'agama' potential backend"):
+        ExternalPotential.load({'backend': 'agama'})
+
+
 # --- _dedup_key: the unpicklable fallback -------------------------------------
 
 def _unpicklable_plummer():
@@ -232,6 +256,13 @@ def test_the_unpicklable_potential_is_genuinely_unpicklable():
     # silently start exercising the pickle path instead of the fallback.
     with pytest.raises(Exception):
         pickle.dumps(_unpicklable_plummer())
+
+
+def test_an_unpicklable_potential_says_why_and_cant_be_saved():
+    force = ExternalPotential(_unpicklable_plummer())
+    with pytest.raises(Exception) as raised:
+        force.save()
+    assert force.save_problem() == f"{type(raised.value).__name__}: {raised.value}"
 
 
 def test_an_unpicklable_potential_falls_back_to_object_identity():

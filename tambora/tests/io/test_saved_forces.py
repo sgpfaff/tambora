@@ -24,6 +24,36 @@ def _nfw():
     return gp.NFWPotential(a=2., normalize=0.35, ro=8., vo=220.)
 
 
+class _SavedDrag(_Drag):
+    """A force that isn't a potential and says how it is saved."""
+
+    def __init__(self, k=0.25):
+        self.k = k
+
+    def acc(self, pos, vel, mass, t):
+        return -self.k * vel
+
+    def save(self):
+        return {'k': self.k}
+
+    @classmethod
+    def load(cls, record):
+        return cls(record['k'])
+
+
+class _BrokenDrag(_Drag):
+    """A force whose save fails. With *known*, it says so before anyone tries."""
+
+    def __init__(self, known=False):
+        self.known = known
+
+    def save_problem(self):
+        return "RuntimeError: no" if self.known else None
+
+    def save(self):
+        raise RuntimeError("no")
+
+
 def _ramp():
     """A potential holding a lambda, which pickle can't save."""
     return gp.TimeDependentAmplitudeWrapperPotential(A=lambda t: 1., pot=gp.NFWPotential(ro=8., vo=220.))
@@ -41,9 +71,48 @@ def test_a_run_file_keeps_each_force_in_order(tmp_path):
     assert drag == {'label': '_Drag', 'backend': None, 'saved': False, 'error': None}
     for record, force in zip((nfw, mw), sim._conserv_ext_force.members):
         assert (record['backend'], record['saved'], record['error']) == ('galpy', True, None)
+        assert (record['class'], record['record']['backend']) == ('ExternalPotential', 'galpy')
         assert record['record']['galpy_version'] == galpy.__version__
         loaded = GalpyPotential.load(record['record'])
         np.testing.assert_array_equal(loaded.acc(POS, 0.1), force.acc(POS, 0.1))
+
+
+def test_a_force_that_isnt_a_potential_is_saved_through_its_own_save(tmp_path):
+    for sim, where in ((_sim(output_dir=tmp_path / 'streamed'), None), (_sim(), tmp_path / 'saved')):
+        with warnings.catch_warnings():
+            warnings.simplefilter('error')
+            sim.add_force(_SavedDrag())
+            sim.run(**RUN)
+            if where is not None:
+                sim.save(where)
+    for where in ('streamed', 'saved'):
+        assert read_run(tmp_path / where)['forces'] == [
+            {'label': '_SavedDrag', 'backend': None, 'saved': True, 'error': None, 'class': '_SavedDrag',
+             'record': {'k': 0.25}}]
+
+
+def test_save_with_run_false_never_asks_a_force_to_save_itself(tmp_path):
+    sim = _sim(output_dir=tmp_path / 'run')
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        sim.add_force(_BrokenDrag(known=True), save_with_run=False)
+        sim.run(**RUN)
+    assert read_run(tmp_path / 'run')['forces'] == [
+        {'label': '_BrokenDrag', 'backend': None, 'saved': False, 'error': None}]
+
+
+@pytest.mark.parametrize("known", [True, False], ids=['known when added', 'found when the run starts'])
+def test_a_force_whose_save_fails_is_warned_about_once_and_kept_by_its_label(tmp_path, known):
+    sim = _sim(output_dir=tmp_path / 'run')
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        sim.add_force(_BrokenDrag(known))
+        when_added = [w for w in caught if NOT_SAVED in str(w.message)]
+        sim.run(**RUN)
+        in_all = [w for w in caught if NOT_SAVED in str(w.message)]
+    assert len(when_added) == known and len(in_all) == 1 and in_all[0].filename == __file__
+    assert read_run(tmp_path / 'run')['forces'] == [
+        {'label': '_BrokenDrag', 'backend': None, 'saved': False, 'error': 'RuntimeError: no'}]
 
 
 def test_a_saved_run_keeps_the_records_a_streamed_run_does(tmp_path):
@@ -206,8 +275,11 @@ def _loading_with(monkeypatch, change):
 
 @pytest.mark.parametrize("change, reason", [
     (lambda f: f['record'].update(data=b'not a pickle'), r"\(UnpicklingError: "),
-    (lambda f: f.update(backend='agama'), r"\(ValueError: This tambora has no 'agama' potential backend.\)"),
-], ids=['damaged', 'unknown backend'])
+    (lambda f: f['record'].update(backend='agama'), r"\(ValueError: This tambora has no 'agama' potential backend.\)"),
+    (lambda f: f.update({'class': 'NoSuchForce'}), r"\(ValueError: This tambora has no 'NoSuchForce' force.\)"),
+    (lambda f: f.update({'class': 'Conservative'}), r"\(ValueError: This tambora has no 'Conservative' force.\)"),
+    (lambda f: f.update({'class': 'NullForce'}), r"\(NotImplementedError: NullForce forces can't be loaded.\)"),
+], ids=['damaged', 'unknown backend', 'unknown class', 'a class that is not a force', 'a class with no load'])
 def test_a_potential_that_cant_be_loaded_is_named_with_why_and_the_rest_loads(tmp_path, monkeypatch, change, reason):
     run = _run_with_potentials(tmp_path / 'run')
     _loading_with(monkeypatch, change)
@@ -216,6 +288,57 @@ def test_a_potential_that_cant_be_loaded_is_named_with_why_and_the_rest_loads(tm
     assert len(caught) == 1 and caught[0].message.args[0].count("couldn't be loaded") == 1
     assert ", _Drag couldn't be loaded" in str(caught[0].message)
     assert [repr(f) for f in sim._conserv_ext_force.members] == [repr(run._conserv_ext_force.members[1])]
+
+
+def _as_written_before_forces_saved_themselves(record):
+    del record['class'], record['record']['backend']
+
+
+def test_a_run_written_before_forces_saved_themselves_loads_its_potentials(tmp_path, monkeypatch):
+    run = _run_with_potentials(tmp_path / 'run')
+    _loading_with(monkeypatch, _as_written_before_forces_saved_themselves)
+    with pytest.warns(UserWarning, match=r"^_Drag couldn't be loaded") as caught:
+        sim = Sim.load(tmp_path / 'run')
+    assert len(caught) == 1
+    assert [repr(f) for f in sim._conserv_ext_force.members] == [repr(f) for f in run._conserv_ext_force.members]
+    np.testing.assert_array_equal(sim._conserv_ext_force.acc(POS, None, 0.1), run._conserv_ext_force.acc(POS, None, 0.1))
+
+
+def test_such_a_run_names_a_backend_this_tambora_doesnt_have(tmp_path, monkeypatch):
+    _run_with_potentials(tmp_path / 'run')
+    _loading_with(monkeypatch, lambda f: (_as_written_before_forces_saved_themselves(f), f.update(backend='agama')))
+    with pytest.warns(UserWarning, match=r"^ExternalPotential\(NFWPotential\) \(ValueError: This tambora has no 'agama'"):
+        Sim.load(tmp_path / 'run')
+
+
+def _run_with_a_saved_drag(directory):
+    sim = _sim(output_dir=directory)
+    sim.add_force(_SavedDrag(0.5))
+    sim.run(**RUN)
+    return sim
+
+
+def test_a_saved_force_of_one_of_tamboras_classes_is_loaded_through_its_load(tmp_path, monkeypatch):
+    import tambora.dynamics.forces as forces_module
+    _run_with_a_saved_drag(tmp_path / 'run')
+    monkeypatch.setattr(forces_module, '_SavedDrag', _SavedDrag, raising=False)
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        sim = Sim.load(tmp_path / 'run')
+    loaded, = sim._base_ext_force.members
+    assert type(loaded) is _SavedDrag and loaded.k == 0.5
+
+
+def test_a_saved_force_of_a_class_tambora_doesnt_have_is_named_and_can_be_given_again(tmp_path):
+    _run_with_a_saved_drag(tmp_path / 'run')
+    with pytest.warns(UserWarning, match=r"^_SavedDrag \(ValueError: This tambora has no '_SavedDrag' force.\) "
+                                         r"couldn't be loaded") as caught:
+        sim = Sim.load(tmp_path / 'run')
+    assert len(caught) == 1 and sim._base_ext_force.members == []
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        sim = Sim.load(tmp_path / 'run', forces=[_SavedDrag(0.5)])
+    assert [type(f) for f in sim._base_ext_force.members] == [_SavedDrag]
 
 
 def test_a_potential_from_another_galpy_warns_from_your_line_and_loads(tmp_path, monkeypatch):
