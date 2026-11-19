@@ -5,6 +5,7 @@ Tests for ``com_pos`` and ``com_vel`` of ``Sim`` and ``Component``.
 import numpy as np
 import pytest
 
+from tambora.dynamics import DirectSum
 from tambora.simulation import Sim
 from tambora.units import KMS_TO_KPCGYR
 
@@ -16,11 +17,11 @@ DM = dict(pos=_rng.normal(size=(30, 3)) + [5., 0., 0.], vel=_rng.normal(scale=30
 
 
 def _sim():
-    sim = Sim()
+    sim = Sim(solver=DirectSum())
     sim.add_particles(name='stars', **STARS)
     sim.add_particles(name='dm', **DM)
     sim.eps = 0.1
-    sim.run(t_end=0.03, dt=0.01, dt_out=0.01, method='direct', progress=False, monitors=False)
+    sim.run(t_end=0.03, dt=0.01, dt_out=0.01, progress=False, monitors=False)
     return sim
 
 

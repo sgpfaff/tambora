@@ -16,7 +16,7 @@ _DIRECT = DirectSum(eps=0.)
 
 def _run(sim, t_end=0.01, dt=0.01, dt_out=0.01):
     sim.eps = 0.0
-    sim.run(t_end=t_end, dt=dt, dt_out=dt_out, method='direct', progress=False, monitors=False)
+    sim.run(t_end=t_end, dt=dt, dt_out=dt_out, progress=False, monitors=False)
     return sim
 
 
@@ -27,7 +27,7 @@ def _binary(speed=1., offset=(0., 0., 0.), boost=(0., 0., 0.)):
     omega = np.sqrt(G_INTERNAL * mass.sum())
     pos = np.array([[r[0], 0., 0.], [-r[1], 0., 0.]]) + offset
     vel = speed * omega * np.array([[0., r[0], 0.], [0., -r[1], 0.]]) / KMS_TO_KPCGYR + boost
-    sim = Sim()
+    sim = Sim(solver=DirectSum())
     sim.add_particles(pos, vel, mass, name='binary')
     return sim
 
@@ -71,7 +71,7 @@ def _ring_around_a_point_mass():
     """A ring on circular orbits in its own gravity and an external point mass M."""
     pos, mass = _ring()
     host = _PointMass(M)
-    sim = Sim()
+    sim = Sim(solver=DirectSum())
     sim.add_force(host)
     sim.add_particles(pos, _circular(pos, host.acc(pos, 0.) + _DIRECT.acc(pos, mass)), mass, name='ring')
     return sim
@@ -119,7 +119,7 @@ def test_external_forces_count():
 def test_a_components_ratio_counts_the_other_components_unless_told_not_to():
     pos, mass = _ring()
     acc = _DIRECT.acc(np.vstack([pos, np.zeros((1, 3))]), np.append(mass, M))[:-1]
-    sim = Sim()
+    sim = Sim(solver=DirectSum())
     sim.add_particles(pos, _circular(pos, acc), mass, name='ring')
     sim.add_particles(np.zeros((1, 3)), np.zeros((1, 3)), np.array([M]), name='host')
     _run(sim)

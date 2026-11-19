@@ -268,7 +268,7 @@ class _Halo(ExternalConservativeForce):
 
 def _sim(**kwargs):
     rng = np.random.default_rng(1)
-    sim = Sim(**kwargs)
+    sim = Sim(solver=DirectSum(), **kwargs)
     sim.add_particles(rng.normal(size=(30, 3)) + 5, rng.normal(size=(30, 3)) * 20, np.full(30, 1e5), name='a', eps=0.05)
     sim.add_particles(rng.normal(size=(20, 3)) - 5, rng.normal(size=(20, 3)) * 20, np.full(20, 2e5), name='b', eps=0.1)
     sim.add_force(_Halo())
@@ -277,7 +277,7 @@ def _sim(**kwargs):
 
 @pytest.fixture(scope='module')
 def sims(tmp_path_factory):
-    run = dict(t_end=0.5, dt=0.01, dt_out=0.05, method='direct', progress=False)
+    run = dict(t_end=0.5, dt=0.01, dt_out=0.05, progress=False)
     on_disk, in_memory = _sim(output_dir=tmp_path_factory.mktemp('sim_run')), _sim()
     on_disk.run(**run)
     in_memory.run(**run)

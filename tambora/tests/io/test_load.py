@@ -25,12 +25,14 @@ def _load(directory):
 
 @pytest.mark.parametrize("run", [
     {}, dict(cache_self_gravity_acc=False, cache_self_gravity_pot=False), dict(cache_self_gravity_pot=False),
-    dict(method=None), dict(method='falcON', theta=0.4), dict(t_end=-0.2, dt=-0.01, dt_out=-0.05),
+    dict(solver=None), dict(solver=FalcON(theta=0.4)), dict(t_end=-0.2, dt=-0.01, dt_out=-0.05),
     dict(t0=1.5, t_end=1.73), dict(monitors=False),
 ], ids=['default', 'no caches', 'no pot', 'no self-gravity', 'falcON', 'backward', 'later t0, uneven end',
         'no monitor'])
 def test_a_loaded_run_is_the_run_kept_in_memory_bit_for_bit(tmp_path, run):
-    disk, memory = _sim(output_dir=tmp_path / 'run'), _sim()
+    solver = {name: value for name, value in run.items() if name == 'solver'}
+    run = {name: value for name, value in run.items() if name != 'solver'}
+    disk, memory = _sim(output_dir=tmp_path / 'run', **solver), _sim(**solver)
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')     # the uneven end
         disk.run(**{**RUN, **run})
@@ -51,13 +53,13 @@ def test_a_loaded_run_is_the_run_kept_in_memory_bit_for_bit(tmp_path, run):
 def test_a_run_without_softening_loads(tmp_path):
     def test_particles(**kwargs):
         rng = np.random.default_rng(1)
-        sim = Sim(**kwargs)
+        sim = Sim(solver=None, **kwargs)
         sim.add_particles(rng.normal(size=(10, 3)) + 8, rng.normal(size=(10, 3)) * 200, np.zeros(10), name='stars')
         sim.add_force(gp.NFWPotential(ro=8, vo=220))
         return sim
     disk, memory = test_particles(output_dir=tmp_path / 'run'), test_particles()
-    disk.run(**{**RUN, 'method': None})
-    memory.run(**{**RUN, 'method': None})
+    disk.run(**RUN)
+    memory.run(**RUN)
     sim = _load(tmp_path / 'run')
     assert np.isnan(sim._eps).all()
     _assert_same_run(sim, memory)
@@ -164,9 +166,6 @@ def test_with_the_forces_it_couldnt_load_given_again_a_loaded_run_gives_what_the
 
 # --- the run's solver ---------------------------------------------------------------------- #
 
-RUN_WITH_THE_SIMS_SOLVER = {name: value for name, value in RUN.items() if name != 'method'}
-
-
 def _loading_with_solver_settings(monkeypatch, change):
     """Sim.load reading run.h5 after *change* changed its record of the solver."""
     import tambora.simulation.simulation as simulation_module
@@ -188,7 +187,7 @@ SOLVERS = [pytest.param(lambda: FalcON(theta=0.3, kernel=0), id='falcON'),
 @pytest.mark.parametrize("written", ['now', 'before solvers saved themselves'])
 def test_a_loaded_sim_has_the_runs_solver(tmp_path, monkeypatch, solver, written):
     run = _sim(solver=solver(), output_dir=tmp_path / 'run')
-    run.run(**RUN_WITH_THE_SIMS_SOLVER)
+    run.run(**RUN)
     if written != 'now':
         _loading_with_solver_settings(monkeypatch, lambda settings: settings.pop('class'))
     with warnings.catch_warnings():
@@ -207,7 +206,7 @@ def test_a_loaded_sim_has_the_runs_solver(tmp_path, monkeypatch, solver, written
     (lambda s: s.pop('theta'), r"KeyError: 'theta'"),
 ], ids=['unknown class', 'a class that is not a solver', 'unknown method in an older run', 'a missing setting'])
 def test_a_solver_that_cant_be_loaded_is_warned_about_with_why(tmp_path, monkeypatch, change, reason):
-    _sim(output_dir=tmp_path / 'run').run(**RUN_WITH_THE_SIMS_SOLVER)
+    _sim(solver=FalcON(), output_dir=tmp_path / 'run').run(**RUN)
     _loading_with_solver_settings(monkeypatch, change)
     with pytest.warns(UserWarning, match=r"^The run's self-gravity solver couldn't be loaded \(" + reason) as caught:
         sim = Sim.load(tmp_path / 'run')

@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from tambora.simulation import Sim, Component
 from tambora.units import G_INTERNAL
-from tambora.dynamics import DirectSum
+from tambora.dynamics import DirectSum, FalcON
 
 np.random.seed(42)
 direct_gravity = DirectSum(eps=0.0)
@@ -17,7 +17,7 @@ COMP2_POS = np.random.rand(COMP2_NPTS, 3)
 COMP2_VEL = np.random.rand(COMP2_NPTS, 3)
 COMP2_MASS = np.random.rand(COMP2_NPTS)
 
-multicomp = Sim()
+multicomp = Sim(solver=FalcON(theta=0.3))
 multicomp.add_particles(name='comp1',
                     pos=COMP1_POS, 
                     vel=COMP1_VEL, 
@@ -83,7 +83,7 @@ def test_component_mass_is_read_only_property():
 # --- Shapes after run ------------------------------------------------------- #
 
 multicomp.eps = 0.1
-multicomp.run(t_end=1., dt=0.1, dt_out=0.1, theta=0.3)
+multicomp.run(t_end=1., dt=0.1, dt_out=0.1)
 _N_SNAP_MC = 11
 
 def test_component_accessor_shapes_after_run():
@@ -626,13 +626,13 @@ _IAC_COMP2_MASS = np.array([2e9])
 
 def _iac_sim():
     """Two-component sim for include_all_components testing."""
-    sim = Sim()
+    sim = Sim(solver=DirectSum())
     sim.add_particles(name='disk', pos=_IAC_COMP1_POS.copy(),
                       vel=_IAC_COMP1_VEL.copy(), mass=_IAC_COMP1_MASS.copy())
     sim.add_particles(name='sat', pos=_IAC_COMP2_POS.copy(),
                       vel=_IAC_COMP2_VEL.copy(), mass=_IAC_COMP2_MASS.copy())
     sim.eps = 0.0
-    sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct',
+    sim.run(t_end=0.1, dt=0.1, dt_out=0.1, 
             cache_self_gravity_acc=True, cache_self_gravity_pot=True)
     return sim
 

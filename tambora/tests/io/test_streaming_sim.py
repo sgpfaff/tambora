@@ -11,19 +11,20 @@ import pytest
 import tambora.simulation.simulation as simulation_module
 from galpy import potential as gp
 
+from tambora.dynamics import DirectSum, FalcON
 from tambora.dynamics.forces.Force import Force
 from tambora.dynamics.hooks import EveryOutput, EveryStep, Hook
 from tambora.io import run_files
 from tambora.io.run_files import RUN_FILE, _read_settings, _SnapshotArray, snapshot_name
 from tambora.simulation import Sim
 
-RUN = dict(t_end=0.2, dt=0.01, dt_out=0.05, method='direct', progress=False)
+RUN = dict(t_end=0.2, dt=0.01, dt_out=0.05, progress=False)
 OUTPUTS = ('_positions', '_velocities', '_times', '_cached_self_acc', '_cached_self_pot', '_steps')
 
 
 def _sim(**kwargs):
     rng = np.random.default_rng(0)
-    sim = Sim(**kwargs)
+    sim = Sim(**{'solver': DirectSum(), **kwargs})
     sim.add_particles(rng.normal(size=(30, 3)), rng.normal(size=(30, 3)) * 10, np.full(30, 1e5), name='a', eps=0.05)
     sim.add_particles(rng.normal(size=(20, 3)) + 3, rng.normal(size=(20, 3)) * 10, np.full(20, 2e5), name='b', eps=0.1)
     return sim
@@ -74,10 +75,12 @@ class _Steps(Hook):
 
 @pytest.mark.parametrize("run", [
     {}, dict(cache_self_gravity_acc=False, cache_self_gravity_pot=False), dict(cache_self_gravity_pot=False),
-    dict(method=None), dict(method='falcON', theta=0.4), dict(t_end=-0.2, dt=-0.01, dt_out=-0.05),
+    dict(solver=None), dict(solver=FalcON(theta=0.4)), dict(t_end=-0.2, dt=-0.01, dt_out=-0.05),
 ], ids=['default', 'no caches', 'no pot', 'no self-gravity', 'falcON', 'backward'])
 def test_a_streamed_run_is_the_run_kept_in_memory_bit_for_bit(tmp_path, run):
-    disk, memory = _sim(output_dir=tmp_path / 'run'), _sim()
+    solver = {name: value for name, value in run.items() if name == 'solver'}
+    run = {name: value for name, value in run.items() if name != 'solver'}
+    disk, memory = _sim(output_dir=tmp_path / 'run', **solver), _sim(**solver)
     disk.run(**{**RUN, **run})
     memory.run(**{**RUN, **run})
     for name in ('_positions', '_velocities', '_cached_self_acc', '_cached_self_pot'):
@@ -130,8 +133,8 @@ def test_a_run_refused_by_the_writer_leaves_the_other_runs_files(tmp_path, monke
 # --- run.h5 holds what Sim.load needs ------------------------------------------------- #
 
 def test_run_h5_holds_the_components_particles_and_run_settings(tmp_path):
-    sim = _sim(output_dir=tmp_path / 'run')
-    sim.run(t_end=1, dt=0.01, dt_out=0.05, method='falcON', progress=False)
+    sim = _sim(solver=FalcON(), output_dir=tmp_path / 'run')
+    sim.run(t_end=1, dt=0.01, dt_out=0.05, progress=False)
     settings = _settings(tmp_path / 'run')
     assert list(settings) == ['components', 'particles', 'run']
     assert settings['components']['names'].tolist() == ['a', 'b']
@@ -219,16 +222,16 @@ def test_the_times_are_those_the_settings_give(tmp_path):
         assert type(f.attrs['t']) is np.float64
 
 
-@pytest.mark.parametrize("method, kwargs, expected", [
-    ('falcON', {}, {'method': 'falcON', 'class': 'FalcON', 'kernel': 1, 'theta': 0.6}),
-    ('falcON', dict(theta=0.3, kernel=0), {'method': 'falcON', 'class': 'FalcON', 'kernel': 0, 'theta': 0.3}),
-    ('direct', {}, {'method': 'direct', 'class': 'DirectSum', 'use_C': True}),
-    ('direct', dict(use_C=False), {'method': 'direct', 'class': 'DirectSum', 'use_C': False}),
-    (None, {}, {'method': None, 'class': 'NullSelfGravity'}),
-])
-def test_the_solver_is_recorded_with_every_setting(tmp_path, method, kwargs, expected):
-    sim = _sim(output_dir=tmp_path / 'run')
-    sim.run(**{**RUN, 'method': method, **kwargs})
+@pytest.mark.parametrize("solver, expected", [
+    (FalcON(), {'method': 'falcON', 'class': 'FalcON', 'kernel': 1, 'theta': 0.6}),
+    (FalcON(theta=0.3, kernel=0), {'method': 'falcON', 'class': 'FalcON', 'kernel': 0, 'theta': 0.3}),
+    (DirectSum(), {'method': 'direct', 'class': 'DirectSum', 'use_C': True}),
+    (DirectSum(use_C=False), {'method': 'direct', 'class': 'DirectSum', 'use_C': False}),
+    (None, {'method': None, 'class': 'NullSelfGravity'}),
+], ids=['falcON', 'falcON with settings', 'direct', 'direct in Python', 'none'])
+def test_the_solver_is_recorded_with_every_setting(tmp_path, solver, expected):
+    sim = _sim(solver=solver, output_dir=tmp_path / 'run')
+    sim.run(**RUN)
     assert sim._run_settings['self_gravity'] == expected
     assert _settings(tmp_path / 'run')['run']['self_gravity'] == expected
 
@@ -259,9 +262,9 @@ def test_the_cache_flags_are_recorded_as_true_or_false(tmp_path, acc, pot):
 
 
 def test_an_unset_softening_is_recorded_as_nan(tmp_path):
-    sim = Sim(output_dir=tmp_path / 'run')
+    sim = Sim(solver=None, output_dir=tmp_path / 'run')
     sim.add_particles(np.zeros((2, 3)), np.ones((2, 3)), np.ones(2), name='a')
-    sim.run(**{**RUN, 'method': None})
+    sim.run(**RUN)
     assert np.isnan(_settings(tmp_path / 'run')['particles']['eps']).all()
 
 
@@ -279,7 +282,7 @@ def test_each_output_keeps_the_step_that_made_it(tmp_path, streamed):
 
 
 def test_the_steps_and_settings_go_with_the_outputs():
-    sim = Sim()
+    sim = Sim(solver=DirectSum())
     assert sim._steps is None and sim._run_settings is None
     sim.add_particles(np.zeros((2, 3)), np.ones((2, 3)), np.ones(2), name='a', eps=0.1)
     np.testing.assert_array_equal(sim._steps, [0])

@@ -575,11 +575,11 @@ def test_bare_function_hook_fires_during_run_with_step_state():
         seen_shapes.append(state.pos().shape)
         seen_is_state.append(isinstance(state, StepState))
 
-    sim = Sim()
+    sim = Sim(solver=None)
     sim.add_particles(np.zeros((4, 3)), np.zeros((4, 3)), np.ones(4), name='c')
     sim.add_hook(record)                 # bare callable -> EveryOutput cadence
 
-    sim.run(t_end=1.0, dt=0.5, dt_out=0.5, method=None, progress=False)
+    sim.run(t_end=1.0, dt=0.5, dt_out=0.5, progress=False)
 
     # Fires once at t0 then at every output (dt_out == dt here): t = 0.0, 0.5, 1.0.
     np.testing.assert_allclose(seen_t, [0.0, 0.5, 1.0])
@@ -656,20 +656,20 @@ class TestStepClock:
             return mask
 
         monkeypatch.setattr(StepState, 'bound_mask', scripted)
-        sim = Sim()
+        sim = Sim(solver=None)
         sim.add_particles(np.zeros((3, 3)), np.zeros((3, 3)), np.ones(3), name='c')
         bh = BoundednessHook('c', eps=0.01)
         sim.add_hook(bh, EveryOutput())
-        sim.run(t_end=0.1, dt=self.dt, dt_out=self.dt_out, method=None, progress=False, monitors=False)
+        sim.run(t_end=0.1, dt=self.dt, dt_out=self.dt_out, progress=False, monitors=False)
 
         k = flip_step // round(self.dt_out / self.dt)
         assert bh.mask_at(sim.times[k - 1])[0]
         assert not bh.mask_at(sim.times[k])[0]
 
     def test_monitor_times_match_the_snapshot_times(self):
-        sim = Sim()
+        sim = Sim(solver=None)
         sim.add_particles(np.zeros((2, 3)), np.ones((2, 3)), np.ones(2), name='c')
-        sim.run(t_end=1.0, dt=self.dt, dt_out=self.dt_out, method=None, progress=False)
+        sim.run(t_end=1.0, dt=self.dt, dt_out=self.dt_out, progress=False)
         np.testing.assert_array_equal(sim.monitor.t, sim.times)
 
 
