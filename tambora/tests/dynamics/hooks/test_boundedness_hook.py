@@ -24,6 +24,7 @@ import warnings
 import numpy as np
 import pytest
 
+from tambora.dynamics import DirectSum
 from tambora.dynamics.hooks import BoundednessHook
 from tambora.dynamics.hooks.boundedness import _bound_com, _bound_dispersion
 
@@ -151,6 +152,7 @@ class _FakeState:
         return self._comp
 
     def bound_mask(self, component, **kw):
+        self.asked = kw
         return self._mask
 
     def report(self, **fields):
@@ -293,8 +295,32 @@ def test_dedup_key_distinguishes_meaningful_config():
                   BoundednessHook('sat', eps=0.02),
                   BoundednessHook('sat', eps=0.01, track=('com',)),
                   BoundednessHook('sat', eps=0.01, capture_transitions=('pos',)),
-                  BoundednessHook('sat', eps=0.01, method='direct')):
+                  BoundednessHook('sat', eps=0.01, solver=DirectSum())):
         assert base._dedup_key() != other._dedup_key()
+
+
+def test_hooks_given_the_same_solver_object_are_duplicates():
+    solver = DirectSum()
+    a, b = BoundednessHook('sat', solver=solver), BoundednessHook('sat', solver=solver)
+    assert a._dedup_key() == b._dedup_key() != BoundednessHook('sat', solver=DirectSum())._dedup_key()
+
+
+def test_the_hook_asks_for_the_mask_with_its_solver():
+    solver = DirectSum()
+    _, state = _drive([[True, False]], solver=solver)
+    assert state.asked == {'eps': 0.01, 'solver': solver, 'max_iter': 50} and state.asked['solver'] is solver
+    _, state = _drive([[True, False]])
+    assert state.asked == {'eps': 0.01, 'solver': None, 'max_iter': 50}
+
+
+@pytest.mark.parametrize("kwargs, message", [
+    (dict(solver='direct'), r"^solver must be a self-gravity solver, e.g. DirectSum\(\). Got 'str'.$"),
+    (dict(method='direct'), "unexpected keyword argument 'method'"),
+    (dict(theta=0.4), "unexpected keyword argument 'theta'"),
+], ids=['a name', 'method', 'theta'])
+def test_the_hook_takes_a_solver_object_only(kwargs, message):
+    with pytest.raises(TypeError, match=message):
+        BoundednessHook('sat', **kwargs)
 
 
 # =============================================================================

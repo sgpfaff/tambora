@@ -278,7 +278,7 @@ class StepState:
                 + np.sum(self.external_pot()))
 
     # -- boundedness (iterative unbinding), cached per step --
-    def bound_mask(self, component=None, *, eps=None, method='falcON', theta=0.6, max_iter=50):
+    def bound_mask(self, component=None, *, eps=None, solver=None, max_iter=50):
         '''
         Boolean mask of self-bound particles, via iterative unbinding.
 
@@ -295,17 +295,19 @@ class StepState:
             whole system for a top-level state).
         eps : float, optional
             Softening length [kpc] to use instead of the particles' own.
-        method, theta, max_iter
-            Passed through to the iterative unbinding solver.
+        solver : SelfGravityForce, optional
+            Self-gravity solver. Default ``FalcON()``.
+        max_iter : int, optional
+            Maximum unbinding iterations.
         '''
         from ..diagnostics import bound_mask as _bound_mask
         c = self if component is None else self.component(component)
         sl = c._sl
         # key by the resolved slice (not the component name) so a whole-system
         # call and a component call can never collide in the shared cache.
-        key = ("bound_mask", (sl.start, sl.stop, sl.step), eps, method, theta, max_iter)
+        key = ("bound_mask", (sl.start, sl.stop, sl.step), eps, solver, max_iter)
         if key not in self._cache:
             self._cache[key] = _bound_mask(c.pos(), c.vel(), c.mass,
                                            eps=c._softening() if eps is None else eps,
-                                           method=method, theta=theta, max_iter=max_iter)
+                                           solver=solver, max_iter=max_iter)
         return self._cache[key]

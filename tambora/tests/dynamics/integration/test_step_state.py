@@ -22,6 +22,7 @@ import copy
 import numpy as np
 import pytest
 
+from tambora.dynamics import DirectSum
 from tambora.dynamics.integration.step_state import StepState, StepContext
 from tambora.dynamics.integration.BaseIntegrator import StepResult
 
@@ -421,6 +422,7 @@ def _patch_bound_mask(monkeypatch):
     calls = {'n': 0}
     def spy(pos, vel, mass, **kw):
         calls['n'] += 1
+        calls['kw'] = kw
         return np.ones(len(mass), dtype=bool)
     monkeypatch.setattr('tambora.dynamics.diagnostics.bound_mask', spy)
     return calls
@@ -441,10 +443,23 @@ def test_bound_mask_cache_keys_are_distinct(monkeypatch):
     st.bound_mask('a', eps=0.1)                     # cached
     st.bound_mask('b', eps=0.1)                     # 2: other component
     st.bound_mask('a', eps=0.2)                     # 3: other eps
-    st.bound_mask('a', eps=0.1, method='direct')    # 4: other solver
-    st.bound_mask('a', eps=0.1, max_iter=10)        # 5: other max_iter
-    st.bound_mask(eps=0.1)                          # 6: whole system
-    assert calls['n'] == 6
+    solver = DirectSum()
+    st.bound_mask('a', eps=0.1, solver=solver)      # 4: a solver
+    st.bound_mask('a', eps=0.1, solver=solver)      # cached
+    st.bound_mask('a', eps=0.1, solver=DirectSum()) # 5: another solver
+    st.bound_mask('a', eps=0.1, max_iter=10)        # 6: other max_iter
+    st.bound_mask(eps=0.1)                          # 7: whole system
+    assert calls['n'] == 7
+
+
+def test_bound_mask_passes_its_solver_on(monkeypatch):
+    calls, solver = _patch_bound_mask(monkeypatch), DirectSum()
+    make_state().bound_mask('a', eps=0.1, solver=solver, max_iter=7)
+    assert calls['kw'] == {'eps': 0.1, 'solver': solver, 'max_iter': 7} and calls['kw']['solver'] is solver
+    make_state().bound_mask('a', eps=0.1)
+    assert calls['kw'] == {'eps': 0.1, 'solver': None, 'max_iter': 50}
+    with pytest.raises(TypeError, match="unexpected keyword argument 'method'"):
+        make_state().bound_mask('a', eps=0.1, method='direct')
 
 
 # --- reporting ----------------------------------------------------------------

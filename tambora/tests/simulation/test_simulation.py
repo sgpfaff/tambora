@@ -584,10 +584,23 @@ def test_hooks_get_the_particles_softening_and_unbind_with_it(monkeypatch):
     _quick_run(sim)
     np.testing.assert_array_equal(seen['eps'][0], sim.eps)
     np.testing.assert_array_equal(seen['eps'][1], eps_b)
-    expected = bound_mask(COMP2_POS, COMP2_VEL * KMS_TO_KPCGYR, COMP2_MASS * 1e6, eps=eps_b, method='falcON')
+    expected = bound_mask(COMP2_POS, COMP2_VEL * KMS_TO_KPCGYR, COMP2_MASS * 1e6, eps=eps_b, solver=FalcON())
     np.testing.assert_array_equal(seen['mask'], expected)
     np.testing.assert_array_equal(bounded.initial_mask, expected)
     assert used and all(np.array_equal(eps, eps_b) for eps in used)
+
+
+def test_a_boundedness_hook_unbinds_with_the_solver_it_is_given():
+    class Counting(DirectSum):
+        def potential(self, pos, mass, eps=None):
+            calls.append(len(mass))
+            return super().potential(pos, mass, eps)
+    calls = []
+    sim = _two_components(eps_a=0.1, eps_b=0.05)
+    bounded = BoundednessHook('b', solver=Counting())
+    sim.add_hook(bounded)
+    _quick_run(sim)
+    assert len(calls) >= len(bounded.t) > 0 and calls[0] == COMP2_NPTS
 
 
 def test_a_run_with_self_gravity_needs_every_components_softening():
