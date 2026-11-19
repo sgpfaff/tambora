@@ -1287,90 +1287,57 @@ def _run_caching_test_sim(sim, cache_self_gravity, cache_self_potential):
             cache_self_gravity_pot=cache_self_potential)
     
 
-class TestReadingAnAbsentCache:
-    """`elif use_cached and <cache> is None: raise`.
+class TestARunThatSavedNoSelfGravity:
+    """Without saved values, an analysis call computes with the Sim's solver, one snapshot at a time."""
 
-    The decorator ``_resolve_use_cached`` already rejects the obvious misuses
-    (asking for the cache before run(), alongside a ``method``, or with
-    ``include_all_components=False``). This branch catches the one it cannot see:
-    a run that *succeeded* but was told not to cache, after which ``use_cached``
-    defaults to True because the sim has run. Without it the ``else`` would fall
-    through and recompute with ``method=None``, so the user would get a confusing
-    failure from the solver instead of a sentence telling them what to do.
-
-    The same four lines exist on Sim.self_gravity, Sim.self_potential,
-    Component.self_gravity and Component.self_potential; all four are pinned.
-    """
-
-    def _uncached(self):
+    def _unsaved(self):
         sim = _caching_test_sim()
         _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=False)
         return sim
 
-    def test_sim_self_gravity_explains_the_missing_cache(self):
-        with pytest.raises(ValueError, match="Cached self-gravity is not available"):
-            self._uncached().self_gravity()
+    @pytest.mark.parametrize("name", ['self_gravity', 'self_potential'])
+    @pytest.mark.parametrize("of", ['the Sim', 'a component'])
+    def test_one_snapshot_is_computed_with_the_sims_solver(self, name, of):
+        sim = self._unsaved()
+        view = sim if of == 'the Sim' else sim.test
+        value = getattr(view, name)(t=3)
+        np.testing.assert_array_equal(value, getattr(view, name)(t=3, solver=DirectSum()))
+        assert value.shape == ((10, 3) if name == 'self_gravity' else (10,)) and np.any(value != 0)
 
-    def test_sim_self_potential_explains_the_missing_cache(self):
-        # Note the wording: the potential branch says "self-potential", the
-        # acceleration branch "self-gravity". Two caches, two messages.
-        with pytest.raises(ValueError, match="Cached self-potential is not available"):
-            self._uncached().self_potential()
+    @pytest.mark.parametrize("name", ['self_gravity', 'self_potential'])
+    @pytest.mark.parametrize("of", ['the Sim', 'a component'])
+    def test_every_snapshot_at_once_is_refused(self, name, of):
+        sim = self._unsaved()
+        view = sim if of == 'the Sim' else sim.test
+        with pytest.raises(TypeError, match="Cannot compute on-the-fly for all times"):
+            getattr(view, name)()
 
-    def test_component_self_gravity_explains_the_missing_cache(self):
-        with pytest.raises(ValueError, match="Cached self-gravity is not available"):
-            self._uncached().test.self_gravity()
-
-    def test_component_self_potential_explains_the_missing_cache(self):
-        with pytest.raises(ValueError, match="Cached self-potential is not available"):
-            self._uncached().test.self_potential()
-
-    @pytest.mark.parametrize("explicit", [True, False], ids=['use_cached=True', 'implicit'])
-    def test_it_raises_whether_use_cached_is_explicit_or_defaulted(self, explicit):
-        # The implicit path is the one users hit: after run(), _resolve_use_cached
-        # sets use_cached = sim._has_run, so a plain self_gravity() call asks for
-        # a cache that was never written. Nobody typed use_cached=True.
-        sim = self._uncached()
-        kw = {'use_cached': True} if explicit else {}
-        with pytest.raises(ValueError, match="Cached self-gravity is not available"):
-            sim.self_gravity(**kw)
-
-    def test_the_error_names_the_way_out(self):
-        # The message is the whole value of this branch, so pin its advice.
-        with pytest.raises(ValueError, match="use_cached to False"):
-            self._uncached().self_gravity()
-
-    def test_taking_the_advice_needs_an_explicit_time_too(self):
-        # The message says "set use_cached to False and provide a method". Doing
-        # exactly that still fails: on-the-fly evaluation cannot do t=... (all
-        # snapshots), so a second error demands an explicit t. The advice is
-        # incomplete -- pinned so that if the message is improved to mention t,
-        # this test is what says so. See TODO.
-        sim = self._uncached()
+    def test_a_solver_needs_an_explicit_time_too(self):
+        sim = self._unsaved()
         with pytest.raises(TypeError, match="Cannot compute on-the-fly for all times"):
             sim.self_gravity(solver=DirectSum(eps=0.0))
 
-    def test_the_advice_works_once_a_time_is_given(self):
-        sim = self._uncached()
+    def test_a_solver_works_once_a_time_is_given(self):
+        sim = self._unsaved()
         acc = sim.self_gravity(solver=DirectSum(eps=0.0), t=0)
         assert acc.shape == (10, 3)
         comp = sim.test.self_gravity(solver=DirectSum(eps=0.0), t=0)
         np.testing.assert_allclose(comp, acc)      # one component == whole sim here
 
-    def test_a_cached_run_does_not_raise(self):
-        # The control: this must fail only because caching was disabled.
+    def test_a_run_that_saved_them_gives_every_snapshot(self):
         sim = _caching_test_sim()
         _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=True)
         assert sim.self_gravity().shape == (len(sim.times), 10, 3)
         assert sim.test.self_potential().shape == (len(sim.times), 10)
 
-    def test_each_cache_is_independent(self):
-        # acc cached, pot not: self_gravity must work while self_potential raises.
+    def test_accelerations_and_potentials_are_saved_separately(self):
+        # Accelerations saved, potentials not.
         sim = _caching_test_sim()
         _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=False)
         assert sim.self_gravity().shape == (len(sim.times), 10, 3)
-        with pytest.raises(ValueError, match="Cached self-potential is not available"):
+        with pytest.raises(TypeError, match="Cannot compute on-the-fly for all times"):
             sim.self_potential()
+        np.testing.assert_array_equal(sim.self_potential(t=2), sim.self_potential(t=2, solver=DirectSum()))
 
 
 def test_no_self_gravity_pot_or_acc_caching_after_run():
@@ -1439,7 +1406,7 @@ def test_self_gravity_acc_cache_matches_direct_computation():
     '''
     sim = _caching_test_sim()
     _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=False)
-    np.testing.assert_allclose(sim.self_gravity(t=0, solver=DirectSum(eps=0.0)), sim.self_gravity(t=0, use_cached=True), rtol=1e-10)
+    np.testing.assert_allclose(sim.self_gravity(t=0, solver=DirectSum(eps=0.0)), sim.self_gravity(t=0), rtol=1e-10)
 
 def test_self_gravity_pot_cache_matches_direct_computation():
     '''
@@ -1447,66 +1414,24 @@ def test_self_gravity_pot_cache_matches_direct_computation():
     '''
     sim = _caching_test_sim()
     _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=True)
-    np.testing.assert_allclose(sim.self_potential(t=0, solver=DirectSum(eps=0.0)), sim.self_potential(t=0, use_cached=True), rtol=1e-10)
+    np.testing.assert_allclose(sim.self_potential(t=0, solver=DirectSum(eps=0.0)), sim.self_potential(t=0), rtol=1e-10)
 
-def test_provides_method_but_use_cached_true_raises_error():
-    '''
-    Test that requesting a method-specific computation with use_cached=True
-    raises an error, since the cache is not method-specific.
-    '''
+def test_before_a_run_gravity_is_computed_with_the_sims_solver():
     sim = _caching_test_sim()
-    _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=True)
-    with pytest.raises(ValueError, match="`method` should not be specified"):
-        sim.self_gravity(t=0, method='direct', eps=0.0, use_cached=True)
-
-def test_use_cache_true_before_run_raises_error():
-    '''
-    Test that trying to use the self-gravity cache before it has been populated by a run raises an error.
-    '''
-    sim = _caching_test_sim()
-    with pytest.raises(ValueError, match="Cannot use cached results before run"):
-        sim.self_gravity(t=0, method=None, eps=0.0, use_cached=True)
-    with pytest.raises(ValueError, match="Cannot use cached results before run"):
-        sim.self_gravity(t=0, method='direct', eps=0.0, use_cached=True)
-
-def test_no_caching_without_method_raises_error():
-    '''
-    Test that setting use_cached=False without specifying a method raises an error.
-    '''
-    sim = _caching_test_sim()
-    _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=True)
-    with pytest.raises(ValueError, match="`use_cached` is False but no `method` was provided"):
-        sim.self_gravity(t=0, use_cached=False)
-
-def test_caching_defaults_to_false_before_run():
-    '''
-    Test that calling an accessor before run() with no method raises
-    an informative error about the simulation not having been run.
-    '''
-    sim = _caching_test_sim()
-    with pytest.raises(ValueError, match="No cached results available .* the simulation has not been run yet"):
-        sim.self_gravity(t=0)
-    with pytest.raises(ValueError, match="No cached results available .* the simulation has not been run yet"):
-        sim.self_potential(t=0)
-
-def test_caching_fails_if_run_did_not_cache():
-    '''
-    Test that if you set cache_self_gravity=False but then try to use the cache after the run, it raises an error.
-    '''
-    sim = _caching_test_sim()
-    _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=False)
-    with pytest.raises(ValueError, match="Cached self-potential is not available"):
-        sim.self_potential(t=0, use_cached=True)
-    with pytest.raises(ValueError, match="Cached self-gravity is not available"):
-        sim.self_gravity(t=0, use_cached=True)
+    sim.eps = 0.0
+    pos, mass = sim.pos(t=0, return_internal=True), sim.mass
+    acc, phi = DirectSum().acc_and_potential(pos, mass, 0.0)
+    np.testing.assert_array_equal(sim.self_gravity(t=0, return_internal=True), acc)
+    np.testing.assert_array_equal(sim.self_potential(t=0, return_internal=True), mass * phi)
+    assert sim._cached_self_acc is None and sim._cached_self_pot is None      # nothing is saved
 
 def test_vectorized_t_fails_without_cached_results():
     '''
-    Test that passing an array of times to self_gravity without cached results raises an error, since the method-specific computation does not support vectorized t.
+    Without saved results, self-gravity is computed, and that takes one snapshot at a time.
     '''
     sim = _caching_test_sim()
     _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=False)
-    with pytest.raises(ValueError, match="Cached self-gravity is not available"):
+    with pytest.raises(TypeError, match="Cannot compute on-the-fly for all times"):
         sim.self_gravity(t=...)
     
 def test_vectorized_t_works_with_cache():
@@ -1515,7 +1440,7 @@ def test_vectorized_t_works_with_cache():
     '''
     sim = _caching_test_sim()
     _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=False)
-    acc = sim.self_gravity(t=..., use_cached=True)
+    acc = sim.self_gravity(t=...)
     assert acc.shape == (len(sim._times), sim._positions.shape[1], 3)
 
 def test_vectorized_t_fails_if_method_provided():
@@ -2181,12 +2106,12 @@ def test_component_self_potential_cached(two_component_sim):
     sp = two_component_sim.stars.self_potential(t=0)
     assert sp.shape == (10,)
 
-def test_component_self_potential_cached_include_all_false_requires_method(two_component_sim):
-    # The cache is an all-components quantity, so include_all_components=False
-    # cannot be served from it: require an explicit method instead of silently
-    # returning the all-components cache.
-    with pytest.raises(ValueError, match="all-components cache cannot be used"):
-        two_component_sim.stars.self_potential(t=0, include_all_components=False)
+def test_component_self_potential_alone_is_computed_not_read_from_the_saved_values(two_component_sim):
+    # The saved values count every component, so they can't give one component alone.
+    stars = two_component_sim.stars
+    alone = stars.self_potential(t=0, include_all_components=False)
+    np.testing.assert_array_equal(alone, stars.self_potential(t=0, include_all_components=False, solver=DirectSum()))
+    assert alone.shape == (10,) and not np.array_equal(alone, stars.self_potential(t=0))
 
 def test_component_energy(two_component_sim):
     E = two_component_sim.stars.energy(t=0)
