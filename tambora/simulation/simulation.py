@@ -8,8 +8,8 @@ import numpy as np
 import warnings
 from .component import Component
 from ._view import _ParticleView
-from ..dynamics import (_runner, Force, SelfGravityForce, FalcON, NullSelfGravity, Conservative,
-                        ExternalPotential, SELF_GRAVITY_METHODS, INTEGRATORS)
+from ..dynamics import (_runner, Force, SelfGravityForce, FalcON, DirectSum, NullSelfGravity, Conservative,
+                        ExternalPotential, INTEGRATORS)
 
 from ..dynamics import forces as _forces
 from ..dynamics.forces.CompositeForce import _CompositeConservative, _CompositePlain
@@ -24,6 +24,7 @@ import keyword
 
 
 _UNSET = object()   # an argument the caller didn't give
+_METHOD_NAMES = {'falcON': FalcON, 'direct': DirectSum, None: NullSelfGravity}     # a run's name for its solver
 
 
 def _check_solver(solver):
@@ -42,7 +43,7 @@ def _check_solver(solver):
 def _solver_settings(solver):
     """*solver* as a run's settings keep it (its class, its method name, and what its ``save`` gives)."""
     name = type(solver).__name__
-    method = next((m for m, cls in SELF_GRAVITY_METHODS.items() if type(solver) is cls), name)
+    method = next((m for m, cls in _METHOD_NAMES.items() if type(solver) is cls), name)
     return {'method': method, 'class': name, **(solver.save() or {})}
 
 
@@ -51,7 +52,7 @@ def _load_solver(settings):
     settings = dict(settings)
     method, name = settings.pop('method', None), settings.pop('class', None)
     if name is None:        # written before solvers saved themselves
-        name, cls = method, SELF_GRAVITY_METHODS.get(method)
+        name, cls = method, _METHOD_NAMES.get(method)
     else:
         cls = getattr(_forces, name, None)
     if not (isinstance(cls, type) and issubclass(cls, SelfGravityForce)):

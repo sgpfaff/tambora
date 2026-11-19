@@ -57,6 +57,13 @@ def test_without_any_softening_a_solver_refuses(make):
         make().acc(POS, MASS)
 
 
+@pytest.mark.parametrize("make", SOLVERS)
+@pytest.mark.parametrize("n", [1, 39, 41])
+def test_a_softening_per_particle_must_have_one_for_each(make, n):
+    with pytest.raises(TypeError, match=r"eps array must have shape \(N,\)"):
+        make().acc_and_potential(POS, MASS, eps=np.full(n, 0.1))
+
+
 @pytest.mark.parametrize("cls", [DirectSum, FalcON])
 def test_a_solvers_arguments_must_be_named(cls):
     with pytest.raises(TypeError):
