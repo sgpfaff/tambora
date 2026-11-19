@@ -7,8 +7,14 @@ import warnings
 
 import numpy as np
 
-from ..dynamics import diagnostics
+from ..dynamics import diagnostics, SelfGravityForce
 from ..units import unit_handler
+
+
+def _only_solver(kwargs):
+    """Refuse the keywords of ``method=`` when a solver object is given."""
+    if kwargs:
+        raise TypeError(f"{', '.join(sorted(kwargs))} can't be given with solver=. Give the solver what it needs.")
 
 
 class _ParticleView:
@@ -47,6 +53,19 @@ class _ParticleView:
             raise ValueError("Softening isn't set for every particle here: set it with sim.eps or "
                              "sim.<component>.eps, or pass eps=... to use one value for all.")
         return float(eps[0]) if np.all(eps == eps[0]) else eps
+
+    def _solve_self_gravity(self, solver, t, everyone, potential=False):
+        """These particles' self-gravity acceleration (or specific potential) at snapshot *t*, from *solver*.
+
+        With *everyone*, every particle of the Sim is a source. Without, only these particles are.
+        """
+        if not isinstance(solver, SelfGravityForce):
+            raise TypeError(f"solver must be a self-gravity solver, e.g. DirectSum(). Got {type(solver).__name__!r}.")
+        of = self._sim if everyone else self
+        eps = None if solver.eps is not None else of._softening()
+        compute = solver.potential if potential else solver.acc
+        result = compute(of.pos(t=t, return_internal=True), of.mass, eps)
+        return result[self._sl] if everyone else result
 
     # --- Position Accessors -------------------------------------------------------------------
 

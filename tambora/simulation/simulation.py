@@ -7,7 +7,7 @@ import os
 import numpy as np
 import warnings
 from .component import Component
-from ._view import _ParticleView
+from ._view import _ParticleView, _only_solver
 from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, FalcON, NullSelfGravity, Conservative,
                         ExternalPotential, SELF_GRAVITY_METHODS, INTEGRATORS)
 
@@ -956,6 +956,9 @@ class Sim(_ParticleView):
             - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
             - 'direct': direct summation.
+        solver : SelfGravityForce, optional
+            A solver object to compute self-gravity with, instead of using the cache,
+            e.g. ``DirectSum()``. It replaces ``method`` and its keywords.
         **kwargs
             Additional keyword arguments to pass to the gravity method. 
 
@@ -978,6 +981,10 @@ class Sim(_ParticleView):
         elif use_cached and self._cached_self_pot is None:
             raise ValueError("Cached self-potential is not available. Please set use_cached to False and provide a method for computing self-gravity.")
         else:
+            solver = kwargs.pop('solver', None)
+            if solver is not None:
+                _only_solver(kwargs)
+                return self._mass * self._solve_self_gravity(solver, self._ti(t, vectorized=False), True, potential=True)
             if 'eps' not in kwargs:
                 kwargs['eps'] = self._softening(everyone=True)
             _, self_pot = self_gravity(self.pos(t=self._ti(t, vectorized=False), return_internal=True),
@@ -1246,7 +1253,9 @@ class Sim(_ParticleView):
             - 'falcON': fast multipole method implemented in falcON.
             - 'direct_C': direct summation in C.
             - 'direct': direct summation.
-        
+        solver : SelfGravityForce, optional
+            A solver object to compute self-gravity with, instead of using the cache,
+            e.g. ``DirectSum()``. It replaces ``method`` and its keywords.
         **kwargs
             Additional keyword arguments to pass to the gravity method.
         
@@ -1262,6 +1271,10 @@ class Sim(_ParticleView):
         elif use_cached and self._cached_self_acc is None:
             raise ValueError("Cached self-gravity is not available. Please set use_cached to False and provide a method for computing self-gravity.")
         else:
+            solver = kwargs.pop('solver', None)
+            if solver is not None:
+                _only_solver(kwargs)
+                return self._solve_self_gravity(solver, self._ti(t, vectorized=False), True)
             if 'eps' not in kwargs:
                 kwargs['eps'] = self._softening(everyone=True)
             return self_gravity(self.pos(self._ti(t, vectorized=False), return_internal=True),

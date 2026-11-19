@@ -35,6 +35,13 @@ def _resolve_use_cached(func):
         # The cache is an all-components quantity; it cannot represent a single
         # component in isolation, so include_all_components gates its use.
         include_all = kwargs.get('include_all_components', True)
+        solver = kwargs.get('solver')       # a solver object, instead of method and its keywords
+        if solver is not None:
+            if method is not None:
+                raise ValueError("Give solver or method, not both.")
+            if explicit and use_cached:
+                raise ValueError("A solver computes afresh, so use_cached can't be True with solver=.")
+            return func(*args, use_cached=False, method=None, **kwargs)
 
         if not explicit:
             if method is not None:
