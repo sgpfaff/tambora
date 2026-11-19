@@ -527,7 +527,8 @@ def test_gravity_computed_again_uses_the_particles_softening_unless_given_one(ac
                                                                     mass if everyone else mass[sl])
         out = acc if accessor == 'self_gravity' else (mass if everyone else mass[sl]) * phi
         return out[sl] if everyone else out
-    get = lambda obj, **kw: getattr(obj, accessor)(t=0, method='direct', return_internal=True, **kw)
+    def get(obj, eps=None, **kw):
+        return getattr(obj, accessor)(t=0, solver=DirectSum(eps=eps), return_internal=True, **kw)
     np.testing.assert_allclose(get(sim), expected(sim.eps), rtol=1e-12)
     np.testing.assert_allclose(get(sim, eps=0.3), expected(0.3), rtol=1e-12)
     b = sim._slices['b']
@@ -541,9 +542,9 @@ def test_gravity_computed_again_needs_a_softening():
     sim = _two_components(eps_a=0.1, solver=None)
     _quick_run(sim)
     with pytest.raises(ValueError, match="Softening isn't set"):
-        sim.self_gravity(t=0, method='direct')
-    sim.a.self_gravity(t=0, method='direct', include_all_components=False)
-    sim.self_gravity(t=0, method='direct', eps=0.1)
+        sim.self_gravity(t=0, solver=DirectSum())
+    sim.a.self_gravity(t=0, solver=DirectSum(), include_all_components=False)
+    sim.self_gravity(t=0, solver=DirectSum(eps=0.1))
 
 
 def test_in_a_hook_gravity_computed_again_needs_a_softening_unless_the_solver_has_one():
@@ -871,7 +872,7 @@ def test_acc_matches_direct():
     mass = np.array(np.random.normal(loc=1e9, scale=1e8, size=(10,)))
     sim = Sim()
     sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
-    acc = sim.self_gravity(t=0, method='direct', eps=0.0, return_internal=True)
+    acc = sim.self_gravity(t=0, solver=DirectSum(eps=0.0), return_internal=True)
     acc_direct= DirectSum(eps=0.0).acc(pos, mass)
     np.testing.assert_allclose(acc, acc_direct, rtol=1e-10)
 
@@ -938,7 +939,7 @@ def test_self_potential_against_direct():
     sim = Sim()
     sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     pot_direct = DirectSum(eps=0.0).potential(pos, mass)
-    pot_sim = sim.self_potential(t=0, method='direct', eps=0.0, return_internal=True)
+    pot_sim = sim.self_potential(t=0, solver=DirectSum(eps=0.0), return_internal=True)
     np.testing.assert_allclose(pot_sim[0], mass[0] * pot_direct[0], rtol=1e-15)
     np.testing.assert_allclose(pot_sim[1], mass[1] * pot_direct[1], rtol=1e-15)
 
@@ -962,7 +963,7 @@ def test_PE_against_direct():
     ext_pot_direct = ([-G_INTERNAL * mass[0] * 1e9 / np.linalg.norm(pos[0]), 
                        -G_INTERNAL * mass[1] * 1e9 / np.linalg.norm(pos[1])])
     pot_direct = mass * self_pot_direct + ext_pot_direct
-    pot_sim = sim.PE(t=0, method='direct', eps=0.0, return_internal=True)
+    pot_sim = sim.PE(t=0, solver=DirectSum(eps=0.0), return_internal=True)
     np.testing.assert_allclose(pot_sim[0], pot_direct[0], rtol=1e-10)
     np.testing.assert_allclose(pot_sim[1], pot_direct[1], rtol=1e-10)
 
@@ -982,9 +983,9 @@ def test_PE_is_sum_of_self_and_external():
     sim = Sim()
     sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.add_force(kepler_pot)
-    self_pot = sim.self_potential(t=0, method='direct', eps=0.0, return_internal=True)
+    self_pot = sim.self_potential(t=0, solver=DirectSum(eps=0.0), return_internal=True)
     ext_pot = sim.compute_external_pot(t=0, return_internal=True)
-    total_pot = sim.PE(t=0, method='direct', eps=0.0, return_internal=True)
+    total_pot = sim.PE(t=0, solver=DirectSum(eps=0.0), return_internal=True)
     np.testing.assert_allclose(total_pot, self_pot + ext_pot, rtol=1e-15)
 
 # --- total energy accessors ------------------------------------------------------------------------ #
@@ -1006,8 +1007,8 @@ def test_energy_is_sum_of_KE_and_PE():
     sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.add_force(kepler_pot)
     KE = sim.KE(t=0, return_internal=True)
-    PE = sim.PE(t=0, method='direct', eps=0.0, return_internal=True)
-    energy = sim.energy(t=0, method='direct', eps=0.0, return_internal=True)
+    PE = sim.PE(t=0, solver=DirectSum(eps=0.0), return_internal=True)
+    energy = sim.energy(t=0, solver=DirectSum(eps=0.0), return_internal=True)
     np.testing.assert_allclose(energy, KE + PE, rtol=1e-15)
 
 def test_energy_is_sum_of_KE_and_PE_after_run():
@@ -1029,8 +1030,8 @@ def test_energy_is_sum_of_KE_and_PE_after_run():
     sim.add_force(kepler_pot)
     sim.eps = 0.0
     sim.run(t_end=0.5, dt=0.25, dt_out=0.25)
-    np.testing.assert_allclose(sim.energy(t=0.5, method='direct', eps=0.0, return_internal=True), 
-                               sim.KE(t=0.5, return_internal=True) + sim.PE(t=0.5, method='direct', eps=0.0, return_internal=True), rtol=1e-15)
+    np.testing.assert_allclose(sim.energy(t=0.5, solver=DirectSum(eps=0.0), return_internal=True), 
+                               sim.KE(t=0.5, return_internal=True) + sim.PE(t=0.5, solver=DirectSum(eps=0.0), return_internal=True), rtol=1e-15)
 
 def test_system_energy_is_sum_of_energies():
     '''
@@ -1055,8 +1056,8 @@ def test_system_energy_is_sum_of_energies():
     sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
     sim.add_force(kepler_pot)
     KE = np.sum(sim.KE(t=0, return_internal=True))
-    PE = 0.5 * np.sum(sim.self_potential(t=0, method='direct', eps=0.0, return_internal=True)) + np.sum(sim.compute_external_pot(t=0, return_internal=True))
-    system_energy = sim.system_energy(t=0, method='direct', eps=0.0, return_internal=True)
+    PE = 0.5 * np.sum(sim.self_potential(t=0, solver=DirectSum(eps=0.0), return_internal=True)) + np.sum(sim.compute_external_pot(t=0, return_internal=True))
+    system_energy = sim.system_energy(t=0, solver=DirectSum(eps=0.0), return_internal=True)
     np.testing.assert_allclose(system_energy, KE + PE, rtol=1e-15)
    
 def test_system_energy_is_sum_of_energies_after_run():
@@ -1069,8 +1070,8 @@ def test_system_energy_is_sum_of_energies_after_run():
     sim.eps = 0.0
     sim.run(t_end=0.5, dt=0.25, dt_out=0.25)
     KE = np.sum(sim.KE(t=0.5, return_internal=True))
-    PE = 0.5 *np.sum(sim.self_potential(t=0.5, method='direct', eps=0.0, return_internal=True)) + np.sum(sim.compute_external_pot(t=0.5, return_internal=True))
-    system_energy = sim.system_energy(t=0.5, method='direct', eps=0.0, return_internal=True)
+    PE = 0.5 *np.sum(sim.self_potential(t=0.5, solver=DirectSum(eps=0.0), return_internal=True)) + np.sum(sim.compute_external_pot(t=0.5, return_internal=True))
+    system_energy = sim.system_energy(t=0.5, solver=DirectSum(eps=0.0), return_internal=True)
     np.testing.assert_allclose(system_energy, KE + PE, rtol=1e-15)
 
 
@@ -1158,7 +1159,7 @@ def test_self_potential_is_mass_weighted():
     Relies on: DirectSum being correct (test_direct_summation.py).
     '''
     sim = _energy_sim()
-    pe = sim.self_potential(t=0, method='direct',eps=E_EPS, return_internal=True)
+    pe = sim.self_potential(t=0, solver=DirectSum(eps=E_EPS), return_internal=True)
     # Two-body: PE_i = m_i * (-G * m_j / r_ij)
     expected_0 = -E_MASS[0] * G_INTERNAL * E_MASS[1] / E_SEP
     expected_1 = -E_MASS[1] * G_INTERNAL * E_MASS[0] / E_SEP
@@ -1177,7 +1178,7 @@ def test_self_potential_differs_from_bare_phi():
     this fails, there is a contradiction).
     '''
     sim = _energy_sim()
-    pe = sim.self_potential(t=0, method='direct',eps=E_EPS, return_internal=True)
+    pe = sim.self_potential(t=0, solver=DirectSum(eps=E_EPS), return_internal=True)
     bare_phi_0 = -G_INTERNAL * E_MASS[1] / E_SEP   # potential, not PE
     assert not np.isclose(pe[0], bare_phi_0, rtol=1e-2, atol=0)
 
@@ -1216,7 +1217,7 @@ def test_PE_includes_mass_on_external():
     test_external_pot_is_mass_weighted (individual terms correct).
     '''
     sim = _energy_sim(with_ext_pot=True)
-    pe = sim.PE(t=0, method='direct', eps=E_EPS, return_internal=True)
+    pe = sim.PE(t=0, solver=DirectSum(eps=E_EPS), return_internal=True)
 
     r0 = np.linalg.norm(E_POS[0])
     r1 = np.linalg.norm(E_POS[1])
@@ -1240,7 +1241,7 @@ def test_PE_external_without_mass_is_wrong():
     fails, there is a contradiction).
     '''
     sim = _energy_sim(with_ext_pot=True)
-    pe = sim.PE(t=0, method='direct', eps=E_EPS, return_internal=True)
+    pe = sim.PE(t=0, solver=DirectSum(eps=E_EPS), return_internal=True)
 
     self_pe_0 = -E_MASS[0] * G_INTERNAL * E_MASS[1] / E_SEP
     bare_ext_0 = -G_INTERNAL * E_KEPLER_MASS / np.linalg.norm(E_POS[0])
@@ -1263,7 +1264,7 @@ def test_system_energy_analytical():
     This is the strongest energy test — independent of all other accessors.
     '''
     sim = _energy_sim(with_ext_pot=True)
-    E = sim.system_energy(t=0, method='direct', eps=E_EPS, use_cached=False, return_internal=True)
+    E = sim.system_energy(t=0, solver=DirectSum(eps=E_EPS), return_internal=True)
 
     ke = np.sum(0.5 * E_MASS * np.sum(E_VEL_INTERNAL ** 2, axis=-1))
 
@@ -1289,7 +1290,7 @@ def test_system_energy_mass_on_external_matters():
     fails, there is a contradiction).
     '''
     sim = _energy_sim(with_ext_pot=True)
-    E = sim.system_energy(t=0, method='direct', eps=E_EPS, return_internal=True)
+    E = sim.system_energy(t=0, solver=DirectSum(eps=E_EPS), return_internal=True)
 
     ke = np.sum(0.5 * E_MASS * np.sum(E_VEL_INTERNAL ** 2, axis=-1))
     self_pe = -G_INTERNAL * E_MASS[0] * E_MASS[1] / E_SEP
@@ -1375,13 +1376,13 @@ class TestReadingAnAbsentCache:
         # this test is what says so. See TODO.
         sim = self._uncached()
         with pytest.raises(TypeError, match="Cannot compute on-the-fly for all times"):
-            sim.self_gravity(use_cached=False, method='direct', eps=0.0)
+            sim.self_gravity(solver=DirectSum(eps=0.0))
 
     def test_the_advice_works_once_a_time_is_given(self):
         sim = self._uncached()
-        acc = sim.self_gravity(use_cached=False, method='direct', eps=0.0, t=0)
+        acc = sim.self_gravity(solver=DirectSum(eps=0.0), t=0)
         assert acc.shape == (10, 3)
-        comp = sim.test.self_gravity(use_cached=False, method='direct', eps=0.0, t=0)
+        comp = sim.test.self_gravity(solver=DirectSum(eps=0.0), t=0)
         np.testing.assert_allclose(comp, acc)      # one component == whole sim here
 
     def test_a_cached_run_does_not_raise(self):
@@ -1466,7 +1467,7 @@ def test_self_gravity_acc_cache_matches_direct_computation():
     '''
     sim = _caching_test_sim()
     _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=False)
-    np.testing.assert_allclose(sim.self_gravity(t=0, method='direct', eps=0.0), sim.self_gravity(t=0, use_cached=True), rtol=1e-10)
+    np.testing.assert_allclose(sim.self_gravity(t=0, solver=DirectSum(eps=0.0)), sim.self_gravity(t=0, use_cached=True), rtol=1e-10)
 
 def test_self_gravity_pot_cache_matches_direct_computation():
     '''
@@ -1474,7 +1475,7 @@ def test_self_gravity_pot_cache_matches_direct_computation():
     '''
     sim = _caching_test_sim()
     _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=True)
-    np.testing.assert_allclose(sim.self_potential(t=0, method='direct', eps=0.0), sim.self_potential(t=0, use_cached=True), rtol=1e-10)
+    np.testing.assert_allclose(sim.self_potential(t=0, solver=DirectSum(eps=0.0)), sim.self_potential(t=0, use_cached=True), rtol=1e-10)
 
 def test_provides_method_but_use_cached_true_raises_error():
     '''
@@ -1553,7 +1554,7 @@ def test_vectorized_t_fails_if_method_provided():
     sim = _caching_test_sim()
     _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=False)
     with pytest.raises((ValueError, TypeError), match="Cannot compute on-the-fly for all times."):
-        sim.self_gravity(t=..., method='direct', eps=0.0)
+        sim.self_gravity(t=..., solver=DirectSum(eps=0.0))
 
 
 # --- Output shape tests: single t vs. ellipsis -------------------------------------------- #
@@ -1643,15 +1644,15 @@ def test_dE_shape():
 # --- compute on-the-fly: single t only ---
 
 def test_self_potential_compute_single_t_shape():
-    result = _SHAPE_SIM.self_potential(t=0, method='direct', eps=0.05)
+    result = _SHAPE_SIM.self_potential(t=0, solver=DirectSum(eps=0.05))
     assert result.shape == (_N_PART,)
 
 def test_self_gravity_compute_single_t_shape():
-    result = _SHAPE_SIM.self_gravity(t=0, method='direct', eps=0.05)
+    result = _SHAPE_SIM.self_gravity(t=0, solver=DirectSum(eps=0.05))
     assert result.shape == (_N_PART, 3)
 
 def test_system_energy_compute_single_t_shape():
-    result = _SHAPE_SIM.system_energy(t=0, method='direct', eps=0.05)
+    result = _SHAPE_SIM.system_energy(t=0, solver=DirectSum(eps=0.05))
     assert np.isscalar(result) or result.shape == ()
 
 
@@ -2274,7 +2275,7 @@ def test_dE_uncached():
                       mass=np.abs(np.random.normal(loc=1e9, scale=1e8, size=10)))
     sim.eps = 0.05
     sim.run(t_end=0.2, dt=0.1, dt_out=0.1)
-    dE = sim.dE(use_cached=False, method='direct', eps=0.05)
+    dE = sim.dE(solver=DirectSum(eps=0.05))
     assert dE.shape == (len(sim.times),)
     assert dE[0] == 0.0
 
@@ -2285,7 +2286,7 @@ def test_dE_uncached_single_t():
                       mass=np.abs(np.random.normal(loc=1e9, scale=1e8, size=10)))
     sim.eps = 0.05
     sim.run(t_end=0.2, dt=0.1, dt_out=0.1)
-    dE = sim.dE(t=-1, use_cached=False, method='direct', eps=0.05)
+    dE = sim.dE(t=-1, solver=DirectSum(eps=0.05))
     assert isinstance(dE, (float, np.floating))
 
 def test_self_ax_simulation(two_component_sim):

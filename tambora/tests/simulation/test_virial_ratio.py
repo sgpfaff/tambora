@@ -92,13 +92,13 @@ def test_the_ratio_is_taken_about_the_center_of_mass():
 
 def test_initial_conditions_can_be_checked_before_a_run():
     sim = _binary()
-    assert sim.virial_ratio(t=0, method='direct', eps=0.) == pytest.approx(1., rel=1e-12)
-    assert sim.binary.virial_ratio(t=0, method='direct', eps=0.) == pytest.approx(1., rel=1e-12)
+    assert sim.virial_ratio(t=0, solver=DirectSum(eps=0.)) == pytest.approx(1., rel=1e-12)
+    assert sim.binary.virial_ratio(t=0, solver=DirectSum(eps=0.)) == pytest.approx(1., rel=1e-12)
 
 
 def test_self_gravity_computed_again_gives_the_cached_ratio():
     sim = _run(_binary(0.7))
-    assert sim.virial_ratio(t=0, method='direct', eps=0.) == pytest.approx(sim.virial_ratio(t=0), rel=1e-12)
+    assert sim.virial_ratio(t=0, solver=DirectSum(eps=0.)) == pytest.approx(sim.virial_ratio(t=0), rel=1e-12)
 
 
 def test_a_uniform_external_field_leaves_the_ratio_alone():
@@ -127,7 +127,7 @@ def test_a_components_ratio_counts_the_other_components_unless_told_not_to():
     assert sim.ring.virial_ratio(t=0) == pytest.approx(1., rel=1e-12)
     # In its own gravity alone, the ring's ratio is its total acceleration over its own.
     alone = np.linalg.norm(acc[0]) / np.linalg.norm(_DIRECT.acc(pos, mass)[0])
-    assert sim.ring.virial_ratio(t=0, include_all_components=False, method='direct', eps=0.) == \
+    assert sim.ring.virial_ratio(t=0, include_all_components=False, solver=DirectSum(eps=0.)) == \
         pytest.approx(alone, rel=1e-12)
 
 
