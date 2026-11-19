@@ -389,10 +389,10 @@ def test_multicomponent_run_output_shapes():
     assert multicomp._times.shape == (11,)
 
 
-# --- self-gravity selection (via run's method=) ------------------------------------------------- #
+# --- self-gravity selection (via the Sim's solver) ---------------------------------------------- #
 
 def test_self_gravity_none_gives_zero_acc():
-    # method=None disables self-gravity; cached acc is zero.
+    # solver=None disables self-gravity; cached acc is zero.
     sim = Sim(solver=None)
     sim.add_particles(np.random.normal(size=(30, 3)) * 0.5, np.zeros((30, 3)), np.ones(30) * 1e4, name='a')
     sim.run(t_end=2, dt=1, dt_out=2)
@@ -600,10 +600,13 @@ def test_a_run_with_self_gravity_needs_every_components_softening():
     assert sim._has_run
 
 
-def test_run_takes_no_softening():
+@pytest.mark.parametrize("keyword", [dict(method='direct'), dict(method=None), dict(theta=0.3), dict(eps=0.5)],
+                         ids=['a method', 'no method', 'a solver setting', 'a softening'])
+def test_run_takes_no_method_nor_what_went_with_it(keyword):
     sim = _two_components(eps_a=0.1, eps_b=0.1)
-    with pytest.raises(ValueError, match=r"\{'eps'\} is \(are\) invalid kwarg"):
-        sim.run(t_end=0.01, dt=0.01, dt_out=0.01, method='direct', eps=0.5)
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        sim.run(t_end=0.01, dt=0.01, dt_out=0.01, **keyword)
+    assert not sim._has_run
 
 
 @pytest.mark.parametrize("eps, error", [
@@ -1074,37 +1077,6 @@ def test_system_energy_is_sum_of_energies_after_run():
     system_energy = sim.system_energy(t=0.5, solver=DirectSum(eps=0.0), return_internal=True)
     np.testing.assert_allclose(system_energy, KE + PE, rtol=1e-15)
 
-
-def test_invalid_method():
-    with pytest.raises(ValueError, match=r"Unknown method 'invalid_method' for self-gravity. Supported methods: \['direct', 'falcON'\]"):
-        KEPLER_SIM.eps = 0.0
-        KEPLER_SIM.run(
-                  t_end=1.0, 
-                  dt=0.1, 
-                  dt_out=0.1,
-                  method='invalid_method',
-                  )
-
-def test_invalid_kwargs():
-    with pytest.raises(ValueError, match=r"{'invalid_kwarg'} is \(are\) invalid kwarg\(s\) for 'direct' self-gravity method. Only kwargs for self-gravity methods are allowed."):
-        KEPLER_SIM.eps = 0.0
-        KEPLER_SIM.run(
-                  t_end=1.0, 
-                  dt=0.1, 
-                  dt_out=0.1,
-                  method='direct',
-
-                  invalid_kwarg=42)
-    with pytest.raises(ValueError, match=r"{'invalid_kwarg'} is \(are\) invalid kwarg\(s\) for 'falcON' self-gravity method. Only kwargs for self-gravity methods are allowed."):
-        KEPLER_SIM.eps = 0.0
-        KEPLER_SIM.run(
-                  t_end=1.0, 
-                  dt=0.1, 
-                  dt_out=0.1,
-                  method='falcON',
-
-                  theta=0.3,
-                  invalid_kwarg=42)
 
 # --- Energy tests with non-unit masses ------------------------------------------------------------------------ #
 

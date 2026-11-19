@@ -20,9 +20,7 @@ from ..dynamics.integration import StepState
 from ..dynamics.integration.recorder import _MemoryRecorder
 from ..dynamics.integration.integrate import _check_dt_dt_out, _count_steps, _time_at
 from ..io.run_files import RUN_FILE, _FileRecorder, _snapshot_arrays, existing_run, read_run, snapshot_name
-import inspect
 import keyword
-from typing import Optional
 from ._decorators import _USE_CACHED_DEFAULT, _resolve_use_cached, _resolve_t
 
 
@@ -568,10 +566,9 @@ class Sim(_ParticleView):
     # --- Running the Simulation ------------------------------------------------------------------------------------------
 
     def run(self, t_end: float, dt: float, dt_out: float, t0: float=0.0,
-            method: Optional[str] = _UNSET, integration_method: str = 'leapfrog',
+            integration_method: str = 'leapfrog',
             cache_self_gravity_acc: bool = True, cache_self_gravity_pot: bool = True,
-            progress: bool = True, monitors='auto',
-            **kwargs):
+            progress: bool = True, monitors='auto'):
         """
         Run the simulation to *t_end* [Gyr].
 
@@ -586,12 +583,6 @@ class Sim(_ParticleView):
         dt_out : float
             Output interval. Must be a multiple of dt.
             Units: `Gyr`
-        method : str or None, optional
-            Method to use for computing self-gravity, instead of the Sim's solver.
-            Included options are:
-            - 'falcON': fast multipole method implemented in falcON.
-            - 'direct': direct summation.
-            - None: no self-gravity.
         integration_method: str, optional
             Method to use for integration. Currently only leapfrog is available.
         cache_self_gravity_acc : bool, optional
@@ -609,16 +600,12 @@ class Sim(_ParticleView):
             monitor the previous run attached. Ignored if you already added
             your own ``ConservationMonitor``; read the results from
             ``sim.monitor``.
-        **kwargs
-            Additional keyword arguments to pass to the gravity method. For 'falcON':
-
-            - theta (float, optional): Tree opening angle. Default is 0.6. Smaller = more accurate but slower.
-            - kernel (int, optional): Softening kernel: 0=Plummer, 1=default (~r^-7), 2,3=faster decay.
-
-            The softening comes from the particles: see ``add_particles`` and ``eps``.
 
         Notes
         -----
+        - Self-gravity is computed by the Sim's solver (see ``Sim(solver=...)``), with the
+          particles' softening (see ``add_particles`` and ``eps``).
+
         - Running again starts from the initial conditions, replaces the previous
           run's outputs, and resets every hook's records (see ``Hook.reset``).
 
@@ -633,30 +620,13 @@ class Sim(_ParticleView):
         if self._loaded:
             raise RuntimeError(f"This Sim was loaded from {self._output_dir!r} and can't run. "
                                "Make a new Sim to run again.")
-        if method is _UNSET and not kwargs:
-            solver = self._self_gravity_force
-        else:
-            method = 'falcON' if method is _UNSET else method
-            supported = sorted(m for m in SELF_GRAVITY_METHODS if m is not None)
-            if method not in SELF_GRAVITY_METHODS:
-                raise ValueError(
-                    f"Unknown method {method!r} for self-gravity. "
-                    f"Supported methods: {supported} (or None to disable self-gravity).")
-            solver_cls = SELF_GRAVITY_METHODS[method]
-            valid = set(inspect.signature(solver_cls.__init__).parameters) - {'self', 'eps'}  # the particles' softening
-            invalid = set(kwargs) - valid
-            if invalid:
-                raise ValueError(
-                    f"{invalid} is (are) invalid kwarg(s) for {method!r} self-gravity method. "
-                    "Only kwargs for self-gravity methods are allowed."
-                )
-            solver = solver_cls(**kwargs)
+        solver = self._self_gravity_force
         if not isinstance(solver, NullSelfGravity):
             unset = [name for name, sl in self._slices.items() if np.isnan(self._eps[sl]).any()]
             if unset:
                 raise ValueError(
-                    f"Softening isn't set for {', '.join(repr(n) for n in unset)}: give it with "
-                    f"add_particles(..., eps=...) or sim.<component>.eps = ..., or run with method=None.")
+                    f"Softening isn't set for {', '.join(repr(n) for n in unset)}. Give it with "
+                    f"add_particles(..., eps=...) or sim.<component>.eps = ..., or make the Sim with solver=None.")
         _check_dt_dt_out(dt, dt_out, t0, t_end)
         t0, t_end, dt, dt_out = float(t0), float(t_end), float(dt), float(dt_out)
         cache_self_gravity_acc, cache_self_gravity_pot = bool(cache_self_gravity_acc), bool(cache_self_gravity_pot)
@@ -694,7 +664,6 @@ class Sim(_ParticleView):
         }
 
         # Every check passed: only now change the Sim.
-        self._self_gravity_force = solver
         self._hooks[:] = [(h, c) for h, c in self._hooks if h is not self._auto_monitor]
         self._auto_monitor = monitor
         if monitor is not None:
