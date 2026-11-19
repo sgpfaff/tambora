@@ -440,9 +440,9 @@ def test_a_sim_refuses_what_is_not_a_solver_it_can_use(solver, error, message):
 
 
 @pytest.mark.parametrize("solver, settings", [
-    (DirectSum(), {'method': 'direct', 'use_C': True}),
-    (DirectSum(use_C=False), {'method': 'direct', 'use_C': False}),
-    (FalcON(theta=0.3), {'method': 'falcON', 'theta': 0.3, 'kernel': 1}),
+    (DirectSum(), {'method': 'direct', 'class': 'DirectSum', 'use_C': True}),
+    (DirectSum(use_C=False), {'method': 'direct', 'class': 'DirectSum', 'use_C': False}),
+    (FalcON(theta=0.3), {'method': 'falcON', 'class': 'FalcON', 'theta': 0.3, 'kernel': 1}),
 ], ids=['DirectSum', 'DirectSum in Python', 'FalcON'])
 def test_run_uses_the_sims_solver_and_records_it(solver, settings):
     sim = _run_with_solver(solver=solver)
@@ -455,7 +455,7 @@ def test_run_without_a_solver_has_no_self_gravity_and_needs_no_softening():
     sim = Sim(solver=None)
     sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS * 1e6, name='a')
     sim.run(t_end=0.01, dt=0.01, dt_out=0.01, progress=False, monitors=False)
-    assert sim._run_settings['self_gravity'] == {'method': None}
+    assert sim._run_settings['self_gravity'] == {'method': None, 'class': 'NullSelfGravity'}
     np.testing.assert_array_equal(sim.self_gravity(return_internal=True), 0.)
 
 

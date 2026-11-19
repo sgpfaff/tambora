@@ -141,7 +141,7 @@ def test_run_h5_holds_the_components_particles_and_run_settings(tmp_path):
     np.testing.assert_array_equal(settings['particles']['eps'], sim._eps)
     assert settings['run'] == sim._run_settings == {
         't0': 0.0, 't_end': 1.0, 'dt': 0.01, 'dt_out': 0.05, 'n_steps': 100, 'steps_per_output': 5,
-        'integration_method': 'leapfrog', 'self_gravity': {'method': 'falcON', 'kernel': 1, 'theta': 0.6},
+        'integration_method': 'leapfrog', 'self_gravity': {'method': 'falcON', 'class': 'FalcON', 'kernel': 1, 'theta': 0.6},
         'cache_self_gravity_acc': True, 'cache_self_gravity_pot': True, 'monitors': 'auto', 'forces': [],
         'hooks': {'names': ['ConservationMonitor'], 'cadences': ['EveryOutput']}}
     assert all(type(settings['run'][k]) is float for k in ('t0', 't_end', 'dt', 'dt_out'))
@@ -220,11 +220,11 @@ def test_the_times_are_those_the_settings_give(tmp_path):
 
 
 @pytest.mark.parametrize("method, kwargs, expected", [
-    ('falcON', {}, {'method': 'falcON', 'kernel': 1, 'theta': 0.6}),
-    ('falcON', dict(theta=0.3, kernel=0), {'method': 'falcON', 'kernel': 0, 'theta': 0.3}),
-    ('direct', {}, {'method': 'direct', 'use_C': True}),
-    ('direct', dict(use_C=False), {'method': 'direct', 'use_C': False}),
-    (None, {}, {'method': None}),
+    ('falcON', {}, {'method': 'falcON', 'class': 'FalcON', 'kernel': 1, 'theta': 0.6}),
+    ('falcON', dict(theta=0.3, kernel=0), {'method': 'falcON', 'class': 'FalcON', 'kernel': 0, 'theta': 0.3}),
+    ('direct', {}, {'method': 'direct', 'class': 'DirectSum', 'use_C': True}),
+    ('direct', dict(use_C=False), {'method': 'direct', 'class': 'DirectSum', 'use_C': False}),
+    (None, {}, {'method': None, 'class': 'NullSelfGravity'}),
 ])
 def test_the_solver_is_recorded_with_every_setting(tmp_path, method, kwargs, expected):
     sim = _sim(output_dir=tmp_path / 'run')

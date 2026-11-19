@@ -43,10 +43,23 @@ def _check_solver(solver):
 
 
 def _solver_settings(solver):
-    """*solver* as a run's settings keep it: its method name and what it was made with."""
-    method = next((name for name, cls in SELF_GRAVITY_METHODS.items() if type(solver) is cls), type(solver).__name__)
-    made_with = set(inspect.signature(type(solver).__init__).parameters) - {'self', 'eps'}  # the particles' softening
-    return {'method': method, **{name: getattr(solver, name) for name in sorted(made_with)}}
+    """*solver* as a run's settings keep it (its class, its method name, and what its ``save`` gives)."""
+    name = type(solver).__name__
+    method = next((m for m, cls in SELF_GRAVITY_METHODS.items() if type(solver) is cls), name)
+    return {'method': method, 'class': name, **(solver.save() or {})}
+
+
+def _load_solver(settings):
+    """The self-gravity solver a run's *settings* keep, through its class in ``tambora.dynamics.forces``."""
+    settings = dict(settings)
+    method, name = settings.pop('method', None), settings.pop('class', None)
+    if name is None:        # written before solvers saved themselves
+        name, cls = method, SELF_GRAVITY_METHODS.get(method)
+    else:
+        cls = getattr(_forces, name, None)
+    if not (isinstance(cls, type) and issubclass(cls, SelfGravityForce)):
+        raise ValueError(f"This tambora has no {name!r} self-gravity solver.")
+    return cls.load(settings)
 
 
 def _check_eps(eps, n):
@@ -1584,12 +1597,16 @@ class Sim(_ParticleView):
             If the run used external forces that couldn't be loaded and aren't in ``forces``,
             naming them, with the reason for a saved potential that couldn't.
         UserWarning
+            If the run's self-gravity solver couldn't be loaded, with the reason.
+        UserWarning
             If the run made fewer outputs than planned: it stopped early, or is still
             running.
 
         Notes
         -----
         - Snapshots are read from their files when an accessor asks for them.
+        - The Sim's solver is the run's, rebuilt through its class's ``load``. Only tambora's
+          own solver classes are found.
         - The run's saved forces are added again, as the run used them, each through its
           class's ``load``. Only tambora's own force classes are found. Other forces, and
           those added with ``save_with_run=False``, are left out. Give them again as
@@ -1622,6 +1639,12 @@ class Sim(_ParticleView):
         sim._run_settings, sim._run_forces = settings['run'], run['forces']
         sim._has_run = sim._loaded = True
         sim._output_dir = directory
+        try:
+            sim._self_gravity_force = _load_solver(settings['run']['self_gravity'])
+        except Exception as e:
+            sim._self_gravity_force = None
+            warnings.warn(f"The run's self-gravity solver couldn't be loaded ({type(e).__name__}: {e}).",
+                          stacklevel=2)
         not_loaded = []     # (label, what the warning calls it)
         with warnings.catch_warnings(record=True) as from_loading:
             warnings.simplefilter('always')

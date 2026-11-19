@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 from galpy import potential as gp
 
+from tambora.dynamics import DirectSum, FalcON
 from tambora.dynamics.hooks import EveryStep
 from tambora.io import run_files
 from tambora.io.run_files import RUN_FILE, snapshot_name
@@ -159,6 +160,59 @@ def test_with_the_forces_it_couldnt_load_given_again_a_loaded_run_gives_what_the
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')     # on-the-fly external potential
         np.testing.assert_array_equal(compute(sim), compute(memory))
+
+
+# --- the run's solver ---------------------------------------------------------------------- #
+
+RUN_WITH_THE_SIMS_SOLVER = {name: value for name, value in RUN.items() if name != 'method'}
+
+
+def _loading_with_solver_settings(monkeypatch, change):
+    """Sim.load reading run.h5 after *change* changed its record of the solver."""
+    import tambora.simulation.simulation as simulation_module
+    read = simulation_module.read_run
+
+    def changed(directory):
+        run = read(directory)
+        change(run['settings']['run']['self_gravity'])
+        return run
+    monkeypatch.setattr(simulation_module, 'read_run', changed)
+
+
+SOLVERS = [pytest.param(lambda: FalcON(theta=0.3, kernel=0), id='falcON'),
+           pytest.param(lambda: DirectSum(use_C=False), id='direct'),
+           pytest.param(lambda: None, id='none')]
+
+
+@pytest.mark.parametrize("solver", SOLVERS)
+@pytest.mark.parametrize("written", ['now', 'before solvers saved themselves'])
+def test_a_loaded_sim_has_the_runs_solver(tmp_path, monkeypatch, solver, written):
+    run = _sim(solver=solver(), output_dir=tmp_path / 'run')
+    run.run(**RUN_WITH_THE_SIMS_SOLVER)
+    if written != 'now':
+        _loading_with_solver_settings(monkeypatch, lambda settings: settings.pop('class'))
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        sim = Sim.load(tmp_path / 'run')
+    assert sim._self_gravity_force is not run._self_gravity_force
+    assert type(sim._self_gravity_force) is type(run._self_gravity_force)
+    assert sim._self_gravity_force.save() == run._self_gravity_force.save()
+
+
+@pytest.mark.parametrize("change, reason", [
+    (lambda s: s.update({'class': 'NoSuchSolver'}), r"ValueError: This tambora has no 'NoSuchSolver' self-gravity solver."),
+    (lambda s: s.update({'class': 'ExternalPotential'}),
+     r"ValueError: This tambora has no 'ExternalPotential' self-gravity solver."),
+    (lambda s: (s.pop('class'), s.update(method='tree')), r"ValueError: This tambora has no 'tree' self-gravity solver."),
+    (lambda s: s.pop('theta'), r"KeyError: 'theta'"),
+], ids=['unknown class', 'a class that is not a solver', 'unknown method in an older run', 'a missing setting'])
+def test_a_solver_that_cant_be_loaded_is_warned_about_with_why(tmp_path, monkeypatch, change, reason):
+    _sim(output_dir=tmp_path / 'run').run(**RUN_WITH_THE_SIMS_SOLVER)
+    _loading_with_solver_settings(monkeypatch, change)
+    with pytest.warns(UserWarning, match=r"^The run's self-gravity solver couldn't be loaded \(" + reason) as caught:
+        sim = Sim.load(tmp_path / 'run')
+    assert len(caught) == 1 and caught[0].filename == __file__ and sim._self_gravity_force is None
+    assert sim.pos().shape == (5, 50, 3)     # the rest of the run loads
 
 
 def test_loading_a_run_that_stopped_early_warns_and_keeps_its_outputs(tmp_path):

@@ -71,6 +71,14 @@ class FalcON(SelfGravityForce):
         self.kernel = kernel
         self.eps = eps
 
+    def save(self):
+        """What it was made with, without a softening of its own."""
+        return {'theta': self.theta, 'kernel': self.kernel}
+
+    @classmethod
+    def load(cls, record):
+        return cls(theta=float(record['theta']), kernel=int(record['kernel']))
+
     def acc_and_potential(
         self, pos: np.ndarray, mass: np.ndarray, eps=None) -> Tuple[np.ndarray, np.ndarray]:
         return _falcON_gravity(
@@ -106,6 +114,14 @@ class DirectSum(SelfGravityForce):
         self.use_C = use_C
         self.eps = eps
 
+    def save(self):
+        """What it was made with, without a softening of its own."""
+        return {'use_C': self.use_C}
+
+    @classmethod
+    def load(cls, record):
+        return cls(use_C=bool(record['use_C']))
+
     def acc_and_potential(
         self, pos: np.ndarray, mass: np.ndarray, eps=None
     ) -> Tuple[np.ndarray, np.ndarray]:
@@ -124,6 +140,13 @@ class NullSelfGravity(SelfGravityForce):
     def __init__(self):
         self._zeros_array_3d = None
         self._zeros_array_1d = None
+
+    def save(self):
+        return {}
+
+    @classmethod
+    def load(cls, record):
+        return cls()
 
     def acc(self, pos, mass, eps=None):
         if self._zeros_array_3d is None:

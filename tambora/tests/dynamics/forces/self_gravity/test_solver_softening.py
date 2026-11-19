@@ -13,6 +13,21 @@ POS = _rng.normal(size=(40, 3))
 MASS = _rng.uniform(1e5, 1e6, size=40)
 EPS = _rng.uniform(0.05, 0.2, size=40)
 
+@pytest.mark.parametrize("solver, record", [
+    (FalcON(theta=0.3, kernel=2), {'theta': 0.3, 'kernel': 2}),
+    (FalcON(), {'theta': 0.6, 'kernel': 1}),
+    (DirectSum(use_C=False), {'use_C': False}),
+    (DirectSum(eps=0.1), {'use_C': True}),
+    (NullSelfGravity(), {}),
+], ids=['falcON', 'falcON by default', 'direct in Python', 'direct with its own softening', 'none'])
+def test_a_solver_saves_what_it_was_made_with_and_loads_as_the_same_solver(solver, record):
+    assert solver.save() == record
+    as_read_from_a_file = {name: np.asarray(value)[()] for name, value in record.items()}
+    loaded = type(solver).load(as_read_from_a_file)
+    assert type(loaded) is type(solver) and loaded.save() == record and loaded.eps is None
+    assert all(type(value) in (float, int, bool) for value in loaded.save().values())
+
+
 SOLVERS = [
     pytest.param(lambda **kw: DirectSum(**kw), id='direct'),
     pytest.param(lambda **kw: FalcON(theta=0.5, **kw), id='falcON'),
