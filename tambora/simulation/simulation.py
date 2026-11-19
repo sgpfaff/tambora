@@ -1335,7 +1335,7 @@ class Sim(_ParticleView):
             raise
 
     @classmethod
-    def load(cls, path, forces=None):
+    def load(cls, path, forces=None, solver=_UNSET):
         """
         The Sim whose run was written to *path* by ``Sim(output_dir=path)`` or ``sim.save(path)``.
 
@@ -1346,6 +1346,8 @@ class Sim(_ParticleView):
         forces : list of Force or potential, optional
             The run's external forces that weren't saved with it, each as given to
             ``add_force``.
+        solver : SelfGravityForce or None, optional
+            The Sim's solver, in place of the run's. As for ``Sim(solver=...)``.
 
         Returns
         -------
@@ -1364,6 +1366,10 @@ class Sim(_ParticleView):
             If one of ``forces`` duplicates another, or a potential loaded from the run.
         TypeError
             If one of ``forces`` is neither a force nor a potential an installed backend can use.
+        TypeError
+            If ``solver`` is neither a self-gravity solver nor None.
+        ValueError
+            If ``solver`` has its own softening.
 
         Warns
         -----
@@ -1371,7 +1377,8 @@ class Sim(_ParticleView):
             If the run used external forces that couldn't be loaded and aren't in ``forces``,
             naming them, with the reason for a saved potential that couldn't.
         UserWarning
-            If the run's self-gravity solver couldn't be loaded, with the reason.
+            If the run's self-gravity solver couldn't be loaded and ``solver`` isn't given, with
+            the reason.
         UserWarning
             If the run made fewer outputs than planned: it stopped early, or is still
             running.
@@ -1380,7 +1387,8 @@ class Sim(_ParticleView):
         -----
         - Snapshots are read from their files when an accessor asks for them.
         - The Sim's solver is the run's, rebuilt through its class's ``load``. Only tambora's
-          own solver classes are found.
+          own solver classes are found. Give another as ``solver``. What the run saved stays
+          the run's.
         - The run's saved forces are added again, as the run used them, each through its
           class's ``load``. Only tambora's own force classes are found. Other forces, and
           those added with ``save_with_run=False``, are left out. Give them again as
@@ -1390,6 +1398,8 @@ class Sim(_ParticleView):
         - Hooks and their records aren't saved.
         - A loaded Sim can't run again, and nothing can be added to it.
         """
+        if solver is not _UNSET:
+            solver = _check_solver(solver)
         directory = os.path.abspath(os.path.expanduser(os.fspath(path)))
         run = read_run(directory)
         settings, n = run['settings'], run['n_outputs']
@@ -1413,12 +1423,15 @@ class Sim(_ParticleView):
         sim._run_settings, sim._run_forces = settings['run'], run['forces']
         sim._has_run = sim._loaded = True
         sim._output_dir = directory
-        try:
-            sim._self_gravity_force = _load_solver(settings['run']['self_gravity'])
-        except Exception as e:
-            sim._self_gravity_force = None
-            warnings.warn(f"The run's self-gravity solver couldn't be loaded ({type(e).__name__}: {e}).",
-                          stacklevel=2)
+        if solver is not _UNSET:
+            sim._self_gravity_force = solver
+        else:
+            try:
+                sim._self_gravity_force = _load_solver(settings['run']['self_gravity'])
+            except Exception as e:
+                sim._self_gravity_force = None
+                warnings.warn(f"The run's self-gravity solver couldn't be loaded ({type(e).__name__}: {e}). "
+                              "Load again with solver=... to give one.", stacklevel=2)
         not_loaded = []     # (label, what the warning calls it)
         with warnings.catch_warnings(record=True) as from_loading:
             warnings.simplefilter('always')

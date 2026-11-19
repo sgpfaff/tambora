@@ -211,7 +211,41 @@ def test_a_solver_that_cant_be_loaded_is_warned_about_with_why(tmp_path, monkeyp
     with pytest.warns(UserWarning, match=r"^The run's self-gravity solver couldn't be loaded \(" + reason) as caught:
         sim = Sim.load(tmp_path / 'run')
     assert len(caught) == 1 and caught[0].filename == __file__ and sim._self_gravity_force is None
+    assert str(caught[0].message).endswith("). Load again with solver=... to give one.")
     assert sim.pos().shape == (5, 50, 3)     # the rest of the run loads
+
+
+@pytest.mark.parametrize("file", ['loads', "can't be loaded"])
+def test_a_solver_given_to_load_is_the_sims_in_place_of_the_runs(tmp_path, monkeypatch, file):
+    ran = _sim(solver=FalcON(), output_dir=tmp_path / 'run')
+    ran.run(**{**RUN, 'cache_self_gravity_pot': False})
+    if file != 'loads':
+        _loading_with_solver_settings(monkeypatch, lambda s: s.update({'class': 'NoSuchSolver'}))
+    given = DirectSum()
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')      # the run's solver isn't asked for
+        sim = Sim.load(tmp_path / 'run', solver=given)
+    assert sim._self_gravity_force is given
+    np.testing.assert_array_equal(sim.self_potential(t=1), ran.self_potential(t=1, solver=DirectSum()))
+    assert not np.array_equal(sim.self_potential(t=1), ran.self_potential(t=1))
+    np.testing.assert_array_equal(sim.self_gravity(), ran.self_gravity())      # what the run saved
+    assert sim._run_settings['self_gravity']['method'] == 'falcON'
+
+
+def test_loading_with_solver_none_gives_a_sim_without_self_gravity(tmp_path):
+    _sim(output_dir=tmp_path / 'run').run(**{**RUN, 'cache_self_gravity_acc': False})
+    sim = Sim.load(tmp_path / 'run', solver=None)
+    assert type(sim._self_gravity_force).__name__ == 'NullSelfGravity'
+    assert not sim.self_gravity(t=1).any()
+
+
+@pytest.mark.parametrize("solver, error, message", [
+    ('direct', TypeError, r"^solver must be a self-gravity solver, e.g. FalcON\(\), or None. Got 'str'.$"),
+    (DirectSum(eps=0.1), ValueError, "^The Sim's solver can't have its own softening."),
+], ids=['a name', 'its own softening'])
+def test_load_checks_its_solver_as_sim_does(tmp_path, solver, error, message):
+    with pytest.raises(error, match=message):      # before the run is looked for
+        Sim.load(tmp_path / 'no run', solver=solver)
 
 
 def test_loading_a_run_that_stopped_early_warns_and_keeps_its_outputs(tmp_path):
