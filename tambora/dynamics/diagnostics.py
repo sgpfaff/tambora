@@ -58,7 +58,17 @@ def virial_ratio(pos, vel, mass, acc):
     return 2 * K / np.abs(W)
 
 
-def bound_mask(pos, vel, mass, eps, method='falcON', theta=0.6, max_iter=50):
+def _check_solver(solver):
+    """The solver boundedness is given; ``FalcON()`` for None."""
+    from .forces.self_gravity import FalcON, SelfGravityForce
+    if solver is None:
+        return FalcON()
+    if not isinstance(solver, SelfGravityForce):
+        raise TypeError(f"solver must be a self-gravity solver, e.g. DirectSum(). Got {type(solver).__name__!r}.")
+    return solver
+
+
+def bound_mask(pos, vel, mass, eps, solver=None, max_iter=50):
     """Boolean mask of self-bound particles via iterative unbinding.
 
     A particle is bound if its specific energy in the cluster's center-of-mass
@@ -82,10 +92,8 @@ def bound_mask(pos, vel, mass, eps, method='falcON', theta=0.6, max_iter=50):
         Masses [Msun].
     eps : float or (N,) array
         Softening length [kpc], one for all or one per particle.
-    method : str, optional
-        Self-gravity solver: ``'falcON'`` (default), ``'direct'``, ``'direct_C'``.
-    theta : float, optional
-        falcON opening angle (ignored by the direct methods).
+    solver : SelfGravityForce, optional
+        Self-gravity solver. Default ``FalcON()``.
     max_iter : int, optional
         Maximum unbinding iterations.
 
@@ -100,18 +108,15 @@ def bound_mask(pos, vel, mass, eps, method='falcON', theta=0.6, max_iter=50):
     using the most bound particles only to avoid stripped stars
     biasing the result.
     """
-    from .forces.self_gravity import self_gravity
-
+    solver = _check_solver(solver)
     mass = np.asarray(mass)
-    kw = dict(eps=eps, theta=theta) if method == 'falcON' else dict(eps=eps)
 
     bound = np.ones(len(mass), dtype=bool)
     for i in range(max_iter):
         mb = mass[bound]
         vb = vel[bound]
-        if np.ndim(eps) > 0:
-            kw['eps'] = np.asarray(eps)[bound]
-        _, phi = self_gravity(pos[bound], mb, method=method, **kw)   # specific potential
+        eps_bound = np.asarray(eps)[bound] if np.ndim(eps) > 0 else eps
+        phi = solver.potential(pos[bound], mb, eps_bound)           # specific potential
 
         if i == 0:
             # Seed from the most-bound core.

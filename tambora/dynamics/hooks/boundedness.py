@@ -14,7 +14,7 @@ per fire.
 import numpy as np
 from .base import Hook
 from .cadence import EveryOutput
-from ..diagnostics import reconstruct_mask
+from ..diagnostics import _check_solver, reconstruct_mask
 
 
 # User-facing names for the two flip directions, mapped to the integer codes the
@@ -66,9 +66,12 @@ class BoundednessHook(Hook):
         same name (aligned with ``self.t``).
     capture_transitions : sequence of str, optional
         Per-flip payload to attach to each event. Subset of ``('pos', 'vel')``.
-    method, theta, max_iter
-        Passed to the iterative unbinding solver (must match across hooks to
-        share the cached ``bound_mask``).
+    solver : SelfGravityForce, optional
+        Self-gravity solver for the unbinding. Default ``FalcON()``. Hooks share the
+        cached ``bound_mask`` when given the same solver object, or none.
+    max_iter : int, optional
+        Maximum unbinding iterations (must match across hooks to share the cached
+        ``bound_mask``).
 
     Attributes
     ----------
@@ -87,7 +90,7 @@ class BoundednessHook(Hook):
     default_cadence = EveryOutput()
 
     def __init__(self, component, eps=None, track=(), capture_transitions=(),
-                 method='falcON', theta=0.6, max_iter=50):
+                 solver=None, max_iter=50):
         for name in track:
             if name not in _REDUCTIONS:
                 raise ValueError(
@@ -97,12 +100,13 @@ class BoundednessHook(Hook):
                 raise ValueError(
                     f"Unknown capture {name!r}. Available: ('pos', 'vel')")
 
+        if solver is not None:
+            _check_solver(solver)
         self.component = component
         self.eps = eps
         self.track = tuple(track)
         self.capture_transitions = tuple(capture_transitions)
-        self.method = method
-        self.theta = theta
+        self.solver = solver
         self.max_iter = max_iter
         self.reset()
 
@@ -117,12 +121,12 @@ class BoundednessHook(Hook):
     def _dedup_key(self):
         # Full intentional config: only an exactly-identical hook is a duplicate.
         return (type(self), self.component, self.eps, self.track,
-                self.capture_transitions, self.method, self.theta, self.max_iter)
+                self.capture_transitions, self.solver, self.max_iter)
 
     def __call__(self, state):
         c = state.component(self.component)
-        mask = state.bound_mask(self.component, eps=self.eps, method=self.method,
-                                theta=self.theta, max_iter=self.max_iter)
+        mask = state.bound_mask(self.component, eps=self.eps, solver=self.solver,
+                                max_iter=self.max_iter)
         self.t.append(state.t)
 
         # transition log

@@ -21,6 +21,7 @@ decided by the potential alone -- which makes the expected answer analytic.
 import numpy as np
 import pytest
 
+from tambora.dynamics import DirectSum, FalcON
 from tambora.dynamics.diagnostics import bound_mask, reconstruct_mask
 from tambora.units import G_INTERNAL, KMS_TO_KPCGYR
 
@@ -53,7 +54,7 @@ def _escape_speed(m_cl, r):
 def test_cold_isolated_cluster_is_entirely_bound():
     """Zero relative velocity => E = phi_self < 0 for every particle."""
     pos, vel, mass = _cold_blob(1e6, 0.3, N=200, n_far=0)
-    assert bound_mask(pos, vel, mass, eps=0.01, method='direct').all()
+    assert bound_mask(pos, vel, mass, eps=0.01, solver=DirectSum()).all()
 
 
 def test_fast_tracer_is_unbound():
@@ -65,7 +66,7 @@ def test_fast_tracer_is_unbound():
     vel = np.vstack([vel, [10 * _escape_speed(1e6, r), 0.0, 0.0]])
     mass = np.append(mass, mass[0])
 
-    b = bound_mask(pos, vel, mass, eps=0.01, method='direct')
+    b = bound_mask(pos, vel, mass, eps=0.01, solver=DirectSum())
     assert not b[-1]            # the escaper is gone
     assert b[:-1].all()         # the core is untouched
 
@@ -76,9 +77,9 @@ def test_a_softening_per_particle_follows_the_bound_set():
     pos = np.vstack([pos, [R_GAL + 1.0, 0.0, 0.0]])
     vel = np.vstack([vel, [10 * _escape_speed(1e6, 1.0), 0.0, 0.0]])
     mass = np.append(mass, mass[0])
-    for method in ('direct', 'falcON'):
-        each = bound_mask(pos, vel, mass, eps=np.full(len(mass), 0.01), method=method)
-        np.testing.assert_array_equal(each, bound_mask(pos, vel, mass, eps=0.01, method=method))
+    for solver in (DirectSum(), FalcON()):
+        each = bound_mask(pos, vel, mass, eps=np.full(len(mass), 0.01), solver=solver)
+        np.testing.assert_array_equal(each, bound_mask(pos, vel, mass, eps=0.01, solver=solver))
         assert not each[-1] and each[:-1].all()
 
 
@@ -90,9 +91,9 @@ def test_mask_is_invariant_under_a_velocity_boost():
     vel = np.vstack([vel, [10 * _escape_speed(1e6, r), 0.0, 0.0]])
     mass = np.append(mass, mass[0])
 
-    rest = bound_mask(pos, vel, mass, eps=0.01, method='direct')
+    rest = bound_mask(pos, vel, mass, eps=0.01, solver=DirectSum())
     boosted = bound_mask(pos, vel + np.array([10*_escape_speed(1e6, r), -10 * _escape_speed(1e6, r), 5*_escape_speed(1e6, r)]), mass,
-                         eps=0.01, method='direct')
+                         eps=0.01, solver=DirectSum())
     np.testing.assert_array_equal(rest, boosted)
 
 
@@ -105,7 +106,7 @@ def test_all_unbound_returns_all_false():
     # ... against a large isotropic velocity spread, so nothing can hold together.
     vel = rng.normal(scale=1e3, size=(N, 3))
     mass = np.full(N, m_cl / N)
-    assert not bound_mask(pos, vel, mass, eps=0.01, method='direct').any()
+    assert not bound_mask(pos, vel, mass, eps=0.01, solver=DirectSum()).any()
 
 
 def test_direct_and_falcON_agree():
@@ -117,8 +118,47 @@ def test_direct_and_falcON_agree():
     mass = np.append(mass, mass[0])
 
     np.testing.assert_array_equal(
-        bound_mask(pos, vel, mass, eps=0.05, method='direct'),
-        bound_mask(pos, vel, mass, eps=0.05, method='falcON', theta=0.4))
+        bound_mask(pos, vel, mass, eps=0.05, solver=DirectSum()),
+        bound_mask(pos, vel, mass, eps=0.05, solver=FalcON(theta=0.4)))
+
+
+def _core_and_escaper():
+    pos, vel, mass = _cold_blob(1e6, 0.3, N=200, n_far=0)
+    pos = np.vstack([pos, [R_GAL + 1.0, 0.0, 0.0]])
+    vel = np.vstack([vel, [10 * _escape_speed(1e6, 1.0), 0.0, 0.0]])
+    return pos, vel, np.append(mass, mass[0])
+
+
+def test_bound_mask_computes_with_the_solver_it_is_given():
+    class Recording(DirectSum):
+        def potential(self, pos, mass, eps=None):
+            asked.append((len(mass), eps))
+            return super().potential(pos, mass, eps)
+    asked = []
+    pos, vel, mass = _core_and_escaper()
+    b = bound_mask(pos, vel, mass, eps=0.01, solver=Recording())
+    assert asked == [(201, 0.01), (200, 0.01)]      # everyone, then without the escaper
+    np.testing.assert_array_equal(b, bound_mask(pos, vel, mass, eps=0.01, solver=DirectSum()))
+
+
+def test_without_a_solver_bound_mask_uses_falcon_as_it_comes(monkeypatch):
+    potential, used = FalcON.potential, []
+    monkeypatch.setattr(FalcON, 'potential', lambda self, *a: used.append(self.save()) or potential(self, *a))
+    pos, vel, mass = _core_and_escaper()
+    b = bound_mask(pos, vel, mass, eps=0.01)
+    assert used == [{'theta': 0.6, 'kernel': 1}] * 2
+    np.testing.assert_array_equal(b, bound_mask(pos, vel, mass, eps=0.01, solver=FalcON()))
+
+
+@pytest.mark.parametrize("kwargs, message", [
+    (dict(solver='direct'), r"^solver must be a self-gravity solver, e.g. DirectSum\(\). Got 'str'.$"),
+    (dict(method='direct'), "unexpected keyword argument 'method'"),
+    (dict(theta=0.4), "unexpected keyword argument 'theta'"),
+], ids=['a name', 'method', 'theta'])
+def test_bound_mask_takes_a_solver_object_only(kwargs, message):
+    pos, vel, mass = _core_and_escaper()
+    with pytest.raises(TypeError, match=message):
+        bound_mask(pos, vel, mass, eps=0.01, **kwargs)
 
 
 # --- the COM-frame seed -------------------------------------------------------
@@ -163,7 +203,7 @@ def test_remnant_survives_a_stream_that_drags_the_global_mean_velocity(f_stream)
     particle looks unbound and unbinding is monotonic, so it never recovers.
     """
     pos, vel, mass, truth = _cluster_plus_stream(f_stream)
-    b = bound_mask(pos, vel, mass, eps=0.01, method='direct')
+    b = bound_mask(pos, vel, mass, eps=0.01, solver=DirectSum())
 
     assert b[truth].mean() > 0.99      # the remnant survives
     assert not b[~truth].any()         # and no stream particle is kept
@@ -185,7 +225,7 @@ def test_seed_is_robust_to_the_global_mean_being_useless():
     # The global mean really is off by more than the cluster can hold on to.
     assert np.linalg.norm(v_com_global - v_com_true) > v_esc
 
-    assert bound_mask(pos, vel, mass, eps=0.01, method='direct')[truth].mean() > 0.99
+    assert bound_mask(pos, vel, mass, eps=0.01, solver=DirectSum())[truth].mean() > 0.99
 
 
 # =============================================================================
@@ -286,15 +326,15 @@ def _heavy_core_plus_light_escapers():
 
 def test_v_com_is_mass_weighted_not_a_plain_mean():
     pos, vel, mass = _heavy_core_plus_light_escapers()
-    b = bound_mask(pos, vel, mass, eps=0.005, method='direct')
+    b = bound_mask(pos, vel, mass, eps=0.005, solver=DirectSum())
     np.testing.assert_array_equal(b, [True] * 4 + [False] * 3)
 
 
 def test_mass_weighted_com_frame_survives_a_boost():
     # Same system, boosted: the weighting must hold in any frame.
     pos, vel, mass = _heavy_core_plus_light_escapers()
-    ref = bound_mask(pos, vel, mass, eps=0.005, method='direct')
-    boosted = bound_mask(pos, vel + [30., -12, 7], mass, eps=0.005, method='direct')
+    ref = bound_mask(pos, vel, mass, eps=0.005, solver=DirectSum())
+    boosted = bound_mask(pos, vel + [30., -12, 7], mass, eps=0.005, solver=DirectSum())
     np.testing.assert_array_equal(boosted, ref)
 
 
@@ -309,6 +349,6 @@ def test_heavy_core_dominates_the_frame_regardless_of_particle_count():
     pos = rng.normal(scale=0.01, size=(64, 3))
     vel = np.zeros((64, 3))
     vel[4:, 0] = 0.8
-    b = bound_mask(pos, vel, mass, eps=0.005, method='direct')
+    b = bound_mask(pos, vel, mass, eps=0.005, solver=DirectSum())
     assert b[:4].all()          # heavy core kept
     assert not b[4:].any()      # every light escaper dropped

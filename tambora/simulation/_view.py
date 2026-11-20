@@ -7,8 +7,10 @@ import warnings
 
 import numpy as np
 
-from ..dynamics import diagnostics
+from ..dynamics import diagnostics, SelfGravityForce
 from ..units import unit_handler
+
+
 
 
 class _ParticleView:
@@ -44,9 +46,35 @@ class _ParticleView:
         """These particles' softening (the whole Sim's, if *everyone*), as one number if shared."""
         eps = self._sim._eps if everyone else self._sim._eps[self._sl]
         if np.isnan(eps).any():
-            raise ValueError("Softening isn't set for every particle here: set it with sim.eps or "
-                             "sim.<component>.eps, or pass eps=... to use one value for all.")
+            raise ValueError("Softening isn't set for every particle here. Set it with sim.eps or "
+                             "sim.<component>.eps, or pass a solver made with its own eps.")
         return float(eps[0]) if np.all(eps == eps[0]) else eps
+
+    def _self_gravity(self, t, solver, everyone, potential=False):
+        """These particles' self-gravity acceleration (or specific potential) at *t*.
+
+        With *everyone*, every particle of the Sim is a source. Without, only these particles are.
+        Without *solver*, the values the run saved are used if it saved them and *everyone* is a
+        source. Otherwise they are computed for one snapshot, by *solver* or by the Sim's own.
+        """
+        sim = self._sim
+        saved = sim._cached_self_pot if potential else sim._cached_self_acc
+        if solver is None and everyone and saved is not None:
+            return self._snap(saved, t)
+        if solver is None:
+            solver = sim._self_gravity_force
+            if solver is None:
+                raise RuntimeError("The run's self-gravity solver couldn't be loaded. Pass solver=... to compute self-gravity.")
+        elif not isinstance(solver, SelfGravityForce):
+            raise TypeError(f"solver must be a self-gravity solver, e.g. DirectSum(). Got {type(solver).__name__!r}.")
+        if t is ...:
+            raise TypeError("Cannot compute on-the-fly for all times. Please provide an integer index or a float "
+                            "time for t. You will have to manually loop over snapshots.")
+        of = sim if everyone else self
+        eps = None if solver.eps is not None else of._softening()
+        compute = solver.potential if potential else solver.acc
+        result = compute(of.pos(t=sim._ti(t, vectorized=False), return_internal=True), of.mass, eps)
+        return result[self._sl] if everyone else result
 
     # --- Position Accessors -------------------------------------------------------------------
 

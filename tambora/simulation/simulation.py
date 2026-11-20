@@ -8,8 +8,8 @@ import numpy as np
 import warnings
 from .component import Component
 from ._view import _ParticleView
-from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, NullSelfGravity, Conservative, ExternalPotential,
-                        SELF_GRAVITY_METHODS, INTEGRATORS)
+from ..dynamics import (_runner, Force, SelfGravityForce, FalcON, DirectSum, NullSelfGravity, Conservative,
+                        ExternalPotential, INTEGRATORS)
 
 from ..dynamics import forces as _forces
 from ..dynamics.forces.CompositeForce import _CompositeConservative, _CompositePlain
@@ -20,10 +20,44 @@ from ..dynamics.integration import StepState
 from ..dynamics.integration.recorder import _MemoryRecorder
 from ..dynamics.integration.integrate import _check_dt_dt_out, _count_steps, _time_at
 from ..io.run_files import RUN_FILE, _FileRecorder, _snapshot_arrays, existing_run, read_run, snapshot_name
-import inspect
 import keyword
-from typing import Optional
-from ._decorators import _USE_CACHED_DEFAULT, _resolve_use_cached, _resolve_t
+
+
+_UNSET = object()   # an argument the caller didn't give
+_METHOD_NAMES = {'falcON': FalcON, 'direct': DirectSum, None: NullSelfGravity}     # a run's name for its solver
+
+
+def _check_solver(solver):
+    """The self-gravity solver a Sim is given; ``FalcON()`` when not given, none for None."""
+    if solver is _UNSET:
+        return FalcON()
+    if solver is None:
+        return NullSelfGravity()
+    if not isinstance(solver, SelfGravityForce):
+        raise TypeError(f"solver must be a self-gravity solver, e.g. FalcON(), or None. Got {type(solver).__name__!r}.")
+    if solver.eps is not None:
+        raise ValueError("The Sim's solver can't have its own softening. Give the softening to the particles.")
+    return solver
+
+
+def _solver_settings(solver):
+    """*solver* as a run's settings keep it (its class, its method name, and what its ``save`` gives)."""
+    name = type(solver).__name__
+    method = next((m for m, cls in _METHOD_NAMES.items() if type(solver) is cls), name)
+    return {'method': method, 'class': name, **(solver.save() or {})}
+
+
+def _load_solver(settings):
+    """The self-gravity solver a run's *settings* keep, through its class in ``tambora.dynamics.forces``."""
+    settings = dict(settings)
+    method, name = settings.pop('method', None), settings.pop('class', None)
+    if name is None:        # written before solvers saved themselves
+        name, cls = method, _METHOD_NAMES.get(method)
+    else:
+        cls = getattr(_forces, name, None)
+    if not (isinstance(cls, type) and issubclass(cls, SelfGravityForce)):
+        raise ValueError(f"This tambora has no {name!r} self-gravity solver.")
+    return cls.load(settings)
 
 
 def _check_eps(eps, n):
@@ -169,6 +203,10 @@ class Sim(_ParticleView):
 
     Parameters
     ----------
+    solver : SelfGravityForce or None, optional
+        What computes the particles' gravity on each other, in the run and in analysis. 
+        None for no self-gravity.
+        Default: ``FalcON()``.
     output_dir : str or path, optional
         Directory to write the run to, one file per output, instead of keeping it
         in memory; the accessors then read the files. It must not hold a run
@@ -182,7 +220,8 @@ class Sim(_ParticleView):
     def _sim(self):
         return self
 
-    def __init__(self, *, output_dir=None):
+    def __init__(self, *, solver=_UNSET, output_dir=None):
+        solver = _check_solver(solver)
         self._output_dir = None if output_dir is None else _check_output_dir(output_dir)
         taken = self._run_in_output_dir()
         if taken:
@@ -209,7 +248,7 @@ class Sim(_ParticleView):
         self._run_settings = None    # the settings of the run that made the outputs
         self._run_forces = None      # that run's external forces, as _force_records gave them
         self._has_run = False
-        self._self_gravity_force = NullSelfGravity()
+        self._self_gravity_force = solver
         self._conserv_ext_force = _CompositeConservative([]) # conservative external forces
         self._base_ext_force = _CompositePlain([]) # non-conservative external forces
         self._not_saved = [] # external forces added with save_with_run=False
@@ -527,10 +566,9 @@ class Sim(_ParticleView):
     # --- Running the Simulation ------------------------------------------------------------------------------------------
 
     def run(self, t_end: float, dt: float, dt_out: float, t0: float=0.0,
-            method: Optional[str] = 'falcON', integration_method: str = 'leapfrog',
+            integration_method: str = 'leapfrog',
             cache_self_gravity_acc: bool = True, cache_self_gravity_pot: bool = True,
-            progress: bool = True, monitors='auto',
-            **kwargs):
+            progress: bool = True, monitors='auto'):
         """
         Run the simulation to *t_end* [Gyr].
 
@@ -545,11 +583,6 @@ class Sim(_ParticleView):
         dt_out : float
             Output interval. Must be a multiple of dt.
             Units: `Gyr`
-        method : str or None, optional
-            Method to use for computing self-gravity. Included options are:
-            - 'falcON' (default): fast multipole method implemented in falcON.
-            - 'direct': direct summation.
-            - None: no self-gravity.
         integration_method: str, optional
             Method to use for integration. Currently only leapfrog is available.
         cache_self_gravity_acc : bool, optional
@@ -567,16 +600,12 @@ class Sim(_ParticleView):
             monitor the previous run attached. Ignored if you already added
             your own ``ConservationMonitor``; read the results from
             ``sim.monitor``.
-        **kwargs
-            Additional keyword arguments to pass to the gravity method. For 'falcON':
-
-            - theta (float, optional): Tree opening angle. Default is 0.6. Smaller = more accurate but slower.
-            - kernel (int, optional): Softening kernel: 0=Plummer, 1=default (~r^-7), 2,3=faster decay.
-
-            The softening comes from the particles: see ``add_particles`` and ``eps``.
 
         Notes
         -----
+        - Self-gravity is computed by the Sim's solver (see ``Sim(solver=...)``), with the
+          particles' softening (see ``add_particles`` and ``eps``).
+
         - Running again starts from the initial conditions, replaces the previous
           run's outputs, and resets every hook's records (see ``Hook.reset``).
 
@@ -591,32 +620,19 @@ class Sim(_ParticleView):
         if self._loaded:
             raise RuntimeError(f"This Sim was loaded from {self._output_dir!r} and can't run. "
                                "Make a new Sim to run again.")
-        supported = sorted(m for m in SELF_GRAVITY_METHODS if m is not None)
-        if method not in SELF_GRAVITY_METHODS:
-            raise ValueError(
-                f"Unknown method {method!r} for self-gravity. "
-                f"Supported methods: {supported} (or None to disable self-gravity).")
-        solver_cls = SELF_GRAVITY_METHODS[method]
-        valid = set(inspect.signature(solver_cls.__init__).parameters) - {'self', 'eps'}  # the particles' softening
-        invalid = set(kwargs) - valid
-        if invalid:
-            raise ValueError(
-                f"{invalid} is (are) invalid kwarg(s) for {method!r} self-gravity method. "
-                "Only kwargs for self-gravity methods are allowed."
-            )
-        if method is not None:
+        solver = self._self_gravity_force
+        if not isinstance(solver, NullSelfGravity):
             unset = [name for name, sl in self._slices.items() if np.isnan(self._eps[sl]).any()]
             if unset:
                 raise ValueError(
-                    f"Softening isn't set for {', '.join(repr(n) for n in unset)}: give it with "
-                    f"add_particles(..., eps=...) or sim.<component>.eps = ..., or run with method=None.")
+                    f"Softening isn't set for {', '.join(repr(n) for n in unset)}. Give it with "
+                    f"add_particles(..., eps=...) or sim.<component>.eps = ..., or make the Sim with solver=None.")
         _check_dt_dt_out(dt, dt_out, t0, t_end)
         t0, t_end, dt, dt_out = float(t0), float(t_end), float(dt), float(dt_out)
         cache_self_gravity_acc, cache_self_gravity_pot = bool(cache_self_gravity_acc), bool(cache_self_gravity_pot)
         if integration_method not in INTEGRATORS:
             raise ValueError(f"Unknown integration_method {integration_method!r}. "
                              f"Supported: {sorted(INTEGRATORS)}.")
-        solver = solver_cls(**kwargs)
         # Outside state (e.g. Agama's global units) can invalidate a wrapped
         # potential after it was added; each backend checks for that here.
         for force in self._conserv_ext_force.members + self._base_ext_force.members:
@@ -640,7 +656,7 @@ class Sim(_ParticleView):
             't0': t0, 't_end': t_end, 'dt': dt, 'dt_out': dt_out,
             'n_steps': n_steps, 'steps_per_output': steps_per_output,
             'integration_method': integration_method,
-            'self_gravity': {'method': method, **{name: getattr(solver, name) for name in sorted(valid)}},
+            'self_gravity': _solver_settings(solver),
             'cache_self_gravity_acc': cache_self_gravity_acc,
             'cache_self_gravity_pot': cache_self_gravity_pot,
             'monitors': monitors,
@@ -648,7 +664,6 @@ class Sim(_ParticleView):
         }
 
         # Every check passed: only now change the Sim.
-        self._self_gravity_force = solver
         self._hooks[:] = [(h, c) for h, c in self._hooks if h is not self._auto_monitor]
         self._auto_monitor = monitor
         if monitor is not None:
@@ -885,10 +900,8 @@ class Sim(_ParticleView):
 
     # --- Potential Energy --- #
 
-    @_resolve_use_cached
-    @_resolve_t
     @unit_handler('energy')
-    def self_potential(self, t=..., use_cached=True, method=None, **kwargs) -> np.ndarray:
+    def self_potential(self, t=..., solver=None) -> np.ndarray:
         '''
         Self-gravitational potential of particles at *t*.
 
@@ -901,24 +914,10 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
-        use_cached : bool, optional
-            Whether to use the self-potential cached during the run. Default is True, unless
-            ``method`` is given.
-        method : str, optional
-            Method to compute self-gravity with, instead of using the cache.
-            Included options are:
-            - 'falcON': fast multipole method implemented in falcON.
-            - 'direct_C': direct summation in C.
-            - 'direct': direct summation.
-        **kwargs
-            Additional keyword arguments to pass to the gravity method. 
-
-            For 'falcON', these include:
-            - eps: Softening length (kpc) to use instead of the particles' own
-            - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
-
-            For 'direct' and 'direct_C', these include:
-            - eps: Softening length (kpc) to use instead of the particles' own
+        solver : SelfGravityForce, optional
+            A solver to compute the self-gravity afresh with, one snapshot at a time.
+            By default the values the run saved are used where they apply, and the
+            Sim's solver otherwise.
 
         Returns
         -------
@@ -927,21 +926,10 @@ class Sim(_ParticleView):
 
             Units: `Msun km^2 / s^2`
         '''
-        if use_cached and self._cached_self_pot is not None:
-            return self._mass * self._cached_self_pot[self._ti(t, vectorized=True)]
-        elif use_cached and self._cached_self_pot is None:
-            raise ValueError("Cached self-potential is not available. Please set use_cached to False and provide a method for computing self-gravity.")
-        else:
-            if 'eps' not in kwargs:
-                kwargs['eps'] = self._softening(everyone=True)
-            _, self_pot = self_gravity(self.pos(t=self._ti(t, vectorized=False), return_internal=True),
-                                       self._mass, method=method, **kwargs)
-            return self._mass * self_pot
-    
-    @_resolve_use_cached
-    @_resolve_t
+        return self._mass * self._self_gravity(t, solver, True, potential=True)
+
     @unit_handler('energy')
-    def PE(self, t=..., use_cached=True, method=None, **kwargs) -> np.ndarray:
+    def PE(self, t=..., solver=None) -> np.ndarray:
         '''
         Total potential energy of particles at *t*.
 
@@ -954,24 +942,10 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
-        use_cached : bool, optional
-            Whether to use the self-potential cached during the run. Default is True, unless
-            ``method`` is given.
-        method : str, optional
-            Method to compute self-gravity with, instead of using the cache.
-            Included options are:
-            - 'falcON': fast multipole method implemented in falcON.
-            - 'direct_C': direct summation in C.
-            - 'direct': direct summation.
-        **kwargs
-            Additional keyword arguments to pass to the gravity method. 
-
-            For 'falcON', these include:
-            - eps: Softening length (`kpc`) to use instead of the particles' own
-            - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
-
-            For 'direct' and 'direct_C', these include:
-            - eps: Softening length (`kpc`) to use instead of the particles' own
+        solver : SelfGravityForce, optional
+            A solver to compute the self-gravity afresh with, one snapshot at a time.
+            By default the values the run saved are used where they apply, and the
+            Sim's solver otherwise.
 
         Returns
         -------
@@ -979,16 +953,13 @@ class Sim(_ParticleView):
             Total potential energy of each particle at each snapshot.
             Units: `Msun km^2 / s^2`
         '''
-        return (self.self_potential(t=t, method=method, use_cached=use_cached, 
-                                   return_internal=True, **kwargs) + 
-                self.compute_external_pot(t=t, return_internal=True)
-        )
+        return (self.self_potential(t=t, solver=solver, return_internal=True)
+                + self.compute_external_pot(t=t, return_internal=True))
+
     # --- Total Energy --- #
 
-    @_resolve_use_cached
-    @_resolve_t
     @unit_handler('energy')
-    def energy(self, t=..., use_cached=True, method=None, **kwargs):
+    def energy(self, t=..., solver=None):
         """
         Energy of particles at *t*.
         
@@ -1001,38 +972,21 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
-        use_cached : bool, optional
-            Whether to use the self-potential cached during the run. Default is True, unless
-            ``method`` is given.
-        method : str, optional
-            Method to compute self-gravity with, instead of using the cache.
-            Included options are:
-            - 'falcON': fast multipole method implemented in falcON.
-            - 'direct_C': direct summation in C.
-            - 'direct': direct summation.
-        **kwargs
-            Additional keyword arguments to pass to the gravity method. 
+        solver : SelfGravityForce, optional
+            A solver to compute the self-gravity afresh with, one snapshot at a time.
+            By default the values the run saved are used where they apply, and the
+            Sim's solver otherwise.
 
-            For 'falcON', these include:
-            - eps: Softening length (kpc) to use instead of the particles' own
-            - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
-
-            For 'direct' and 'direct_C', these include:
-            - eps: Softening length (kpc) to use instead of the particles' own
-        
         Returns
         -------
         energy : (len(t), n_particles) array
             Total energy of each particle at each snapshot.
             Units: `Msun km^2 / s^2`
         """
-        return self.KE(t=t, return_internal=True) + self.PE(t=t, method=method, use_cached=use_cached,
-                                                            return_internal=True, **kwargs)
-    
-    @_resolve_use_cached
-    @_resolve_t
+        return self.KE(t=t, return_internal=True) + self.PE(t=t, solver=solver, return_internal=True)
+
     @unit_handler('energy')
-    def system_energy(self, t=..., use_cached=True, method=None,  **kwargs):
+    def system_energy(self, t=..., solver=None):
         r"""
         Total conserved system energy at *t*.
         
@@ -1050,24 +1004,10 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
-        use_cached : bool, optional
-            Whether to use the self-potential cached during the run. Default is True, unless
-            ``method`` is given.
-        method : str, optional
-            Method to compute self-gravity with, instead of using the cache.
-            Included options are:
-            - 'falcON': fast multipole method implemented in falcON.
-            - 'direct_C': direct summation in C.
-            - 'direct': direct summation.
-        **kwargs
-            Additional keyword arguments to pass to the gravity method.
-
-            For 'falcON', these include:
-            - eps: Softening length (kpc) to use instead of the particles' own
-            - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
-
-            For 'direct' and 'direct_C', these include:
-            - eps: Softening length (kpc) to use instead of the particles' own
+        solver : SelfGravityForce, optional
+            A solver to compute the self-gravity afresh with, one snapshot at a time.
+            By default the values the run saved are used where they apply, and the
+            Sim's solver otherwise.
 
         Returns
         -------
@@ -1075,60 +1015,39 @@ class Sim(_ParticleView):
             Total energy of the system at time t.
             Units: :math:`Msun km^2 / s^2`
         """
-        return (np.sum(self.KE(t=t, return_internal=True), axis=-1) + 
-                0.5 * np.sum(self.self_potential(t=t, method=method, 
-                                                 use_cached=use_cached, return_internal=True, **kwargs), axis=-1) + 
-                np.sum(self.compute_external_pot(t=t, return_internal=True), axis=-1)
-                )
-    
-    @_resolve_use_cached
-    def dE(self, t=..., use_cached=True, method=None, **kwargs):
+        return (np.sum(self.KE(t=t, return_internal=True), axis=-1)
+                + 0.5 * np.sum(self.self_potential(t=t, solver=solver, return_internal=True), axis=-1)
+                + np.sum(self.compute_external_pot(t=t, return_internal=True), axis=-1))
+
+    def dE(self, t=..., solver=None):
         '''
         Percent change in total energy over the simulation time.
 
         Parameters
         ----------
-        method : str, optional
-            Method to compute self-gravity with, instead of using the cache.
-            Included options are:
-            - 'falcON': fast multipole method implemented in falcON.
-            - 'direct_C': direct summation in C.
-            - 'direct': direct summation.
-        **kwargs
-            Additional keyword arguments to pass to the gravity method.
-
-            For 'falcON', these include:
-            - eps: Softening length (kpc) to use instead of the particles' own
-            - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
-
-            For 'direct' and 'direct_C', these include:
-            - eps: Softening length (kpc) to use instead of the particles' own
-        use_cached : bool, optional
-            Whether to use the self-potential cached during the run. Default is True, unless
-            ``method`` is given.
+        solver : SelfGravityForce, optional
+            A solver to compute the self-gravity afresh with, one snapshot at a time.
+            By default the values the run saved are used where they apply, and the
+            Sim's solver otherwise.
 
         Returns
         -------
         dE : (n_snaps,) array
             Percent change in total energy at each snapshot.
         '''
-        if use_cached:
-            Es = self.system_energy(t=t, use_cached=use_cached, method=method, return_internal=True, **kwargs)
-            E0 = Es[0]
-        else:
-            if t is ...:
-                Es = np.array([self.system_energy(t=t_i, use_cached=False, method=method, return_internal=True, **kwargs) for t_i in self._times])
-                E0 = Es[0]
+        if t is ...:
+            if solver is None and self._cached_self_pot is not None:
+                Es = self.system_energy(return_internal=True)
             else:
-                Es = self.system_energy(t=t, use_cached=False, method=method, return_internal=True, **kwargs)
-                E0 = self.system_energy(t=0, use_cached=False, method=method, return_internal=True, **kwargs)
-        return np.abs((Es - E0) / E0)
+                Es = np.array([self.system_energy(t=i, solver=solver, return_internal=True)
+                               for i in range(len(self._times))])
+            return np.abs((Es - Es[0]) / Es[0])
+        E0 = self.system_energy(t=0, solver=solver, return_internal=True)
+        return np.abs((self.system_energy(t=t, solver=solver, return_internal=True) - E0) / E0)
 
     # --- Virial Ratio --- #
 
-    @_resolve_use_cached
-    @_resolve_t
-    def virial_ratio(self, t=..., use_cached=True, method=None, **kwargs):
+    def virial_ratio(self, t=..., solver=None):
         r'''
         Virial ratio :math:`2K/|W|` of the particles at *t*: 1 in equilibrium.
 
@@ -1147,18 +1066,10 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
-        use_cached : bool, optional
-            Whether to use the self-gravity cached during the run. Default is True, unless
-            ``method`` is given.
-        method : str, optional
-            Method to compute self-gravity with, instead of using the cache.
-            Included options are:
-            - 'falcON': fast multipole method implemented in falcON.
-            - 'direct_C': direct summation in C.
-            - 'direct': direct summation.
-        **kwargs
-            Additional keyword arguments to pass to the gravity method,
-            e.g. eps, a softening length (kpc) to use instead of the particles' own.
+        solver : SelfGravityForce, optional
+            A solver to compute the self-gravity afresh with, one snapshot at a time.
+            By default the values the run saved are used where they apply, and the
+            Sim's solver otherwise.
 
         Returns
         -------
@@ -1166,18 +1077,16 @@ class Sim(_ParticleView):
             Virial ratio at each snapshot.
         '''
         acc = (self.external_acc(t, return_internal=True)
-               + self.self_gravity(t=t, use_cached=use_cached, method=method, return_internal=True, **kwargs))
+               + self.self_gravity(t=t, solver=solver, return_internal=True))
         return diagnostics.virial_ratio(self.pos(t, return_internal=True), self.vel(t, return_internal=True),
-                                    self._mass, acc)
+                                        self._mass, acc)
 
     # --- Acceleration Accessors -----------------------------------------------------------------
 
     # --- Self-Gravity --- #
 
-    @_resolve_use_cached
-    @_resolve_t
     @unit_handler('acceleration')
-    def self_gravity(self, t=..., use_cached=True, method=None,  **kwargs):
+    def self_gravity(self, t=..., solver=None):
         '''
         The self-gravity acceleration (ax, ay, az) 
         of each particle at *t*.
@@ -1191,19 +1100,11 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
-        use_cached : bool, optional
-            Whether to use the self-gravity cached during the run. Default is True, unless
-            ``method`` is given.
-        method : str, optional
-            Method to compute self-gravity with, instead of using the cache.
-            Included options are:
-            - 'falcON': fast multipole method implemented in falcON.
-            - 'direct_C': direct summation in C.
-            - 'direct': direct summation.
-        
-        **kwargs
-            Additional keyword arguments to pass to the gravity method.
-        
+        solver : SelfGravityForce, optional
+            A solver to compute the self-gravity afresh with, one snapshot at a time.
+            By default the values the run saved are used where they apply, and the
+            Sim's solver otherwise.
+
         Returns
         -------
         self_acc : (n_snaps, N, 3) array
@@ -1211,20 +1112,10 @@ class Sim(_ParticleView):
             [ax, ay, az]
             Units: `km / s^2`
         '''
-        if use_cached and self._cached_self_acc is not None:
-            return self._cached_self_acc[self._ti(t, vectorized=True)]
-        elif use_cached and self._cached_self_acc is None:
-            raise ValueError("Cached self-gravity is not available. Please set use_cached to False and provide a method for computing self-gravity.")
-        else:
-            if 'eps' not in kwargs:
-                kwargs['eps'] = self._softening(everyone=True)
-            return self_gravity(self.pos(self._ti(t, vectorized=False), return_internal=True),
-                                self.mass, method=method, **kwargs)[0]
-        
-    @_resolve_use_cached
-    @_resolve_t
+        return self._self_gravity(t, solver, True)
+
     @unit_handler('acceleration')
-    def self_ax(self, t=..., use_cached=True, method=None, **kwargs):
+    def self_ax(self, t=..., solver=None):
         '''
         x-component of self-gravity acceleration on each particle at *t*.
         
@@ -1237,31 +1128,11 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
-        use_cached : bool, optional
-            Whether to use the self-gravity cached during the run. Default is True, unless
-            ``method`` is given.
-        method : str, optional
-            Method to compute self-gravity with, instead of using the cache.
-            Included options are:
-            - 'falcON': fast multipole method implemented in falcON.
-            - 'direct_C': direct summation in C.
-            - 'direct': direct summation.
-        **kwargs
-            Additional keyword arguments to pass to the gravity method.
+        solver : SelfGravityForce, optional
+            A solver to compute the self-gravity afresh with, one snapshot at a time.
+            By default the values the run saved are used where they apply, and the
+            Sim's solver otherwise.
 
-            For 'falcON', these include:
-            - eps : float
-                Gravitational softening length.
-                Units: kpc
-            - theta : float
-                Tree opening angle for pyfalcon.
-                Smaller = more accurate but slower.
-
-            For 'direct' and 'direct_C', these include:
-            - eps : float
-                Gravitational softening length.
-                Units: kpc
-        
         Returns
         -------
         self_ax : (n_snaps, N) array
@@ -1269,13 +1140,10 @@ class Sim(_ParticleView):
             each particle at each snapshot.
             Units: `km / s^2`
         '''
-        return self.self_gravity(t=t, method=method, use_cached=use_cached, 
-                                return_internal=True, **kwargs)[..., 0]
-    
-    @_resolve_use_cached
-    @_resolve_t
+        return self.self_gravity(t=t, solver=solver, return_internal=True)[..., 0]
+
     @unit_handler('acceleration')
-    def self_ay(self, t=..., use_cached=True, method=None, **kwargs):
+    def self_ay(self, t=..., solver=None):
         '''
         y-component of self-gravity acceleration on each particle at *t*.
         
@@ -1288,26 +1156,11 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
-        use_cached : bool, optional
-            Whether to use the self-gravity cached during the run. Default is True, unless
-            ``method`` is given.
-        method : str, optional
-            Method to compute self-gravity with, instead of using the cache.
-            Included options are:
-            - 'falcON': fast multipole method implemented in falcON.
-            - 'direct_C': direct summation in C.
-            - 'direct': direct summation.
-        **kwargs
-            Additional keyword arguments to pass to the gravity method.
+        solver : SelfGravityForce, optional
+            A solver to compute the self-gravity afresh with, one snapshot at a time.
+            By default the values the run saved are used where they apply, and the
+            Sim's solver otherwise.
 
-            For 'falcON', these include:
-            - eps : float
-                Gravitational softening length.
-                Units: kpc
-            - theta : float
-                Tree opening angle for pyfalcon.
-                Smaller = more accurate but slower.
-        
         Returns
         -------
         self_ay : (n_snaps, N) array
@@ -1315,13 +1168,10 @@ class Sim(_ParticleView):
             each particle at each snapshot.
             Units: `km / s^2`
         '''
-        return self.self_gravity(t=t, method=method, use_cached=use_cached, 
-                                 return_internal=True, **kwargs)[..., 1]
-    
-    @_resolve_use_cached
-    @_resolve_t
+        return self.self_gravity(t=t, solver=solver, return_internal=True)[..., 1]
+
     @unit_handler('acceleration')
-    def self_az(self, t=..., use_cached=True, method=None, **kwargs):
+    def self_az(self, t=..., solver=None):
         '''
         z-component of self-gravity acceleration on each particle at *t*.
         
@@ -1334,26 +1184,11 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
-        method : str, optional
-            Method to compute self-gravity with, instead of using the cache.
-            Included options are:
-            - 'falcON': fast multipole method implemented in falcON.
-            - 'direct_C': direct summation in C.
-            - 'direct': direct summation.
-        use_cached : bool, optional
-            Whether to use the self-gravity cached during the run. Default is True, unless
-            ``method`` is given.
-        **kwargs
-            Additional keyword arguments to pass to the gravity method.
+        solver : SelfGravityForce, optional
+            A solver to compute the self-gravity afresh with, one snapshot at a time.
+            By default the values the run saved are used where they apply, and the
+            Sim's solver otherwise.
 
-            For 'falcON', these include:
-            - eps : float
-                Gravitational softening length.
-                Units: kpc
-            - theta : float
-                Tree opening angle for pyfalcon.
-                Smaller = more accurate but slower.
-        
         Returns
         -------
         self_az : (n_snaps, N) array
@@ -1361,46 +1196,32 @@ class Sim(_ParticleView):
             each particle at each snapshot.
             Units: `km / s^2`
         '''
-        return self.self_gravity(t=t, method=method, use_cached=use_cached,
-                                 return_internal=True, **kwargs)[..., 2]
+        return self.self_gravity(t=t, solver=solver, return_internal=True)[..., 2]
 
     # --- Diagnostics -----------------------------------------------------------------
 
-    @_resolve_use_cached
-    def plot_energy_diagnostic(self, method=None, use_cached=True, nsnap=None, 
-                        filename=None, **kwargs):   # pragma: no cover
+    def plot_energy_diagnostic(self, solver=None, nsnap=None, filename=None):   # pragma: no cover
         '''
         Plot global energy conservation as a function of 
         time.
         
         Parameters
         ----------
-        method : str, optional
-            Method to compute self-gravity with, instead of using the cache.
-            Included options are:
-            - 'falcON': fast multipole method implemented in falcON.
-            - 'direct_C': direct summation in C.
-            - 'direct': direct summation.
-        use_cached : bool, optional
-            Whether to use the self-potential cached during the run. Default is True, unless
-            ``method`` is given.
+        solver : SelfGravityForce, optional
+            A solver to compute the self-gravity afresh with, one snapshot at a time.
+            By default the values the run saved are used where they apply, and the
+            Sim's solver otherwise.
         nsnap : int, optional
             Number of snapshots to use. If None (default), will use all snapshots.
         filename : str, optional
             If provided, will save the plot to the given filename
             instead of showing it.
-        **kwargs
-            Additional keyword arguments to pass to the gravity method.
-            For 'falcON', these include:
-            - eps: Softening length (kpc) to use instead of the particles' own
-            - theta: Tree opening angle
         '''
         import matplotlib.pyplot as plt
 
         skip_every = 1 if nsnap is None else max(1, len(self.times) // nsnap)
-        
         plt.figure(figsize=(7,5))
-        dE = self.dE(t=..., use_cached=use_cached, method=method, **kwargs)[::skip_every]
+        dE = self.dE(solver=solver)[::skip_every]
         plt.plot(self.times[::skip_every], dE, c='k')
         plt.yscale('log')
         plt.xlabel("Time (Gyr)")
@@ -1410,7 +1231,7 @@ class Sim(_ParticleView):
             plt.savefig(filename, dpi=300, bbox_inches='tight')
         else:
             plt.show()
-    
+
     def plot_momentum_diagnostic(self, filename=None,
                                  plot_components=True):   # pragma: no cover
         '''
@@ -1515,7 +1336,7 @@ class Sim(_ParticleView):
             raise
 
     @classmethod
-    def load(cls, path, forces=None):
+    def load(cls, path, forces=None, solver=_UNSET):
         """
         The Sim whose run was written to *path* by ``Sim(output_dir=path)`` or ``sim.save(path)``.
 
@@ -1526,6 +1347,8 @@ class Sim(_ParticleView):
         forces : list of Force or potential, optional
             The run's external forces that weren't saved with it, each as given to
             ``add_force``.
+        solver : SelfGravityForce or None, optional
+            The Sim's solver, in place of the run's. As for ``Sim(solver=...)``.
 
         Returns
         -------
@@ -1544,6 +1367,10 @@ class Sim(_ParticleView):
             If one of ``forces`` duplicates another, or a potential loaded from the run.
         TypeError
             If one of ``forces`` is neither a force nor a potential an installed backend can use.
+        TypeError
+            If ``solver`` is neither a self-gravity solver nor None.
+        ValueError
+            If ``solver`` has its own softening.
 
         Warns
         -----
@@ -1551,12 +1378,18 @@ class Sim(_ParticleView):
             If the run used external forces that couldn't be loaded and aren't in ``forces``,
             naming them, with the reason for a saved potential that couldn't.
         UserWarning
+            If the run's self-gravity solver couldn't be loaded and ``solver`` isn't given, with
+            the reason.
+        UserWarning
             If the run made fewer outputs than planned: it stopped early, or is still
             running.
 
         Notes
         -----
         - Snapshots are read from their files when an accessor asks for them.
+        - The Sim's solver is the run's, rebuilt through its class's ``load``. Only tambora's
+          own solver classes are found. Give another as ``solver``. What the run saved stays
+          the run's.
         - The run's saved forces are added again, as the run used them, each through its
           class's ``load``. Only tambora's own force classes are found. Other forces, and
           those added with ``save_with_run=False``, are left out. Give them again as
@@ -1566,6 +1399,8 @@ class Sim(_ParticleView):
         - Hooks and their records aren't saved.
         - A loaded Sim can't run again, and nothing can be added to it.
         """
+        if solver is not _UNSET:
+            solver = _check_solver(solver)
         directory = os.path.abspath(os.path.expanduser(os.fspath(path)))
         run = read_run(directory)
         settings, n = run['settings'], run['n_outputs']
@@ -1589,6 +1424,15 @@ class Sim(_ParticleView):
         sim._run_settings, sim._run_forces = settings['run'], run['forces']
         sim._has_run = sim._loaded = True
         sim._output_dir = directory
+        if solver is not _UNSET:
+            sim._self_gravity_force = solver
+        else:
+            try:
+                sim._self_gravity_force = _load_solver(settings['run']['self_gravity'])
+            except Exception as e:
+                sim._self_gravity_force = None
+                warnings.warn(f"The run's self-gravity solver couldn't be loaded ({type(e).__name__}: {e}). "
+                              "Load again with solver=... to give one.", stacklevel=2)
         not_loaded = []     # (label, what the warning calls it)
         with warnings.catch_warnings(record=True) as from_loading:
             warnings.simplefilter('always')

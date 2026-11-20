@@ -6,11 +6,12 @@ import numpy as np
 import pytest
 
 from tambora.simulation import Sim
+from tambora.dynamics import DirectSum
 from tambora.dynamics.hooks import EveryStep
 from tambora.dynamics.forces.external_force import ExternalConservativeForce
 import tambora.dynamics.integration.integrate as integrate
 
-RUN = dict(t_end=1.0, dt=0.01, dt_out=0.1, method='direct', progress=False, monitors=False)
+RUN = dict(t_end=1.0, dt=0.01, dt_out=0.1, progress=False, monitors=False)
 
 
 class _InterruptAfter(ExternalConservativeForce):
@@ -29,7 +30,7 @@ class _InterruptAfter(ExternalConservativeForce):
 
 def _sim(t_stop=np.inf):
     rng = np.random.default_rng(0)
-    sim = Sim()
+    sim = Sim(solver=DirectSum())
     sim.add_particles(rng.normal(size=(50, 3)), rng.normal(size=(50, 3)) * 10, np.full(50, 1e5),
                       name='c', eps=0.05)
     sim.add_force(_InterruptAfter(t_stop))

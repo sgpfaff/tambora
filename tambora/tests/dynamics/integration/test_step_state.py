@@ -22,6 +22,7 @@ import copy
 import numpy as np
 import pytest
 
+from tambora.dynamics import DirectSum
 from tambora.dynamics.integration.step_state import StepState, StepContext
 from tambora.dynamics.integration.BaseIntegrator import StepResult
 
@@ -299,13 +300,13 @@ def test_self_potential_custom_solver_computed_once_and_shared():
 
 
 def test_self_potential_isolated_uses_only_component_particles():
-    from tambora.dynamics.forces.self_gravity import DirectSummationGravity
-    solver = DirectSummationGravity(eps=0.1)
-    _, full = DirectSummationGravity(eps=0.1).acc_and_potential(POS, MASS)
+    from tambora.dynamics.forces.self_gravity import DirectSum
+    solver = DirectSum(eps=0.1)
+    _, full = DirectSum(eps=0.1).acc_and_potential(POS, MASS)
     st = make_state(self_pot=full, sg=solver)
 
     iso = st.a.self_potential(include_all_components=False)
-    _, phi_a = DirectSummationGravity(eps=0.1).acc_and_potential(POS[0:3], MASS[0:3])
+    _, phi_a = DirectSum(eps=0.1).acc_and_potential(POS[0:3], MASS[0:3])
     np.testing.assert_allclose(iso, MASS[0:3] * phi_a)
     # Isolated (a's own gravity) differs from a's slice of the whole-system field.
     assert not np.allclose(iso, st.a.self_potential(include_all_components=True))
@@ -354,13 +355,13 @@ def test_self_gravity_custom_solver_computed_once_and_shared():
 
 
 def test_self_gravity_isolated_uses_only_component_particles():
-    from tambora.dynamics.forces.self_gravity import DirectSummationGravity
-    solver = DirectSummationGravity(eps=0.1)
-    full_acc, full_pot = DirectSummationGravity(eps=0.1).acc_and_potential(POS, MASS)
+    from tambora.dynamics.forces.self_gravity import DirectSum
+    solver = DirectSum(eps=0.1)
+    full_acc, full_pot = DirectSum(eps=0.1).acc_and_potential(POS, MASS)
     st = make_state(self_acc=full_acc, self_pot=full_pot, sg=solver)
 
     iso = st.a.self_gravity(include_all_components=False)
-    acc_a, _ = DirectSummationGravity(eps=0.1).acc_and_potential(POS[0:3], MASS[0:3])
+    acc_a, _ = DirectSum(eps=0.1).acc_and_potential(POS[0:3], MASS[0:3])
     np.testing.assert_allclose(iso, acc_a)
     # Isolated (a's own gravity) differs from a's slice of the whole-system field.
     assert not np.allclose(iso, st.a.self_gravity(include_all_components=True))
@@ -386,9 +387,9 @@ def test_external_pot_computed_once_and_shared():
 
 
 def test_PE_and_energy_forward_self_potential_options():
-    from tambora.dynamics.forces.self_gravity import DirectSummationGravity
-    solver = DirectSummationGravity(eps=0.1)
-    _, full = DirectSummationGravity(eps=0.1).acc_and_potential(POS, MASS)
+    from tambora.dynamics.forces.self_gravity import DirectSum
+    solver = DirectSum(eps=0.1)
+    _, full = DirectSum(eps=0.1).acc_and_potential(POS, MASS)
     st = make_state(self_pot=full, sg=solver, ext=SpyExternal(phi=-2.0))
     a = st.a
 
@@ -421,6 +422,7 @@ def _patch_bound_mask(monkeypatch):
     calls = {'n': 0}
     def spy(pos, vel, mass, **kw):
         calls['n'] += 1
+        calls['kw'] = kw
         return np.ones(len(mass), dtype=bool)
     monkeypatch.setattr('tambora.dynamics.diagnostics.bound_mask', spy)
     return calls
@@ -441,10 +443,23 @@ def test_bound_mask_cache_keys_are_distinct(monkeypatch):
     st.bound_mask('a', eps=0.1)                     # cached
     st.bound_mask('b', eps=0.1)                     # 2: other component
     st.bound_mask('a', eps=0.2)                     # 3: other eps
-    st.bound_mask('a', eps=0.1, method='direct')    # 4: other solver
-    st.bound_mask('a', eps=0.1, max_iter=10)        # 5: other max_iter
-    st.bound_mask(eps=0.1)                          # 6: whole system
-    assert calls['n'] == 6
+    solver = DirectSum()
+    st.bound_mask('a', eps=0.1, solver=solver)      # 4: a solver
+    st.bound_mask('a', eps=0.1, solver=solver)      # cached
+    st.bound_mask('a', eps=0.1, solver=DirectSum()) # 5: another solver
+    st.bound_mask('a', eps=0.1, max_iter=10)        # 6: other max_iter
+    st.bound_mask(eps=0.1)                          # 7: whole system
+    assert calls['n'] == 7
+
+
+def test_bound_mask_passes_its_solver_on(monkeypatch):
+    calls, solver = _patch_bound_mask(monkeypatch), DirectSum()
+    make_state().bound_mask('a', eps=0.1, solver=solver, max_iter=7)
+    assert calls['kw'] == {'eps': 0.1, 'solver': solver, 'max_iter': 7} and calls['kw']['solver'] is solver
+    make_state().bound_mask('a', eps=0.1)
+    assert calls['kw'] == {'eps': 0.1, 'solver': None, 'max_iter': 50}
+    with pytest.raises(TypeError, match="unexpected keyword argument 'method'"):
+        make_state().bound_mask('a', eps=0.1, method='direct')
 
 
 # --- reporting ----------------------------------------------------------------

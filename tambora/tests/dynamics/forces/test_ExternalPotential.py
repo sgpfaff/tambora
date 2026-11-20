@@ -109,7 +109,7 @@ def test_the_sim_summary_labels_the_potential_by_its_components():
 # --- check_still_valid: called at the start of every run -----------------------
 
 def _one_particle_sim(force):
-    sim = Sim()
+    sim = Sim(solver=None)
     sim.add_particles(pos=[[8., 0., 0.]], vel=[[0., 200., 0.]], mass=[1.])
     sim.add_force(force)
     return sim
@@ -129,7 +129,7 @@ def test_run_works_with_an_external_force_that_has_no_validity_check():
     # external force would break forces users write themselves.
     sim = _one_particle_sim(_UniformField())
     sim.add_force(_plummer())
-    sim.run(t_end=0.01, dt=0.01, dt_out=0.01, method=None, progress=False, monitors=False)
+    sim.run(t_end=0.01, dt=0.01, dt_out=0.01, progress=False, monitors=False)
     assert sim.times[-1] == pytest.approx(0.01)
 
 
@@ -141,12 +141,12 @@ def test_run_calls_check_still_valid_on_each_external_potential(monkeypatch):
     monkeypatch.setattr(f.backend, "check_still_valid", invalid)
     sim = _one_particle_sim(f)
     with pytest.raises(RuntimeError, match="potential invalidated"):
-        sim.run(t_end=0.01, dt=0.01, dt_out=0.01, method=None, progress=False, monitors=False)
+        sim.run(t_end=0.01, dt=0.01, dt_out=0.01, progress=False, monitors=False)
 
 
 def test_a_valid_potential_runs():
     sim = _one_particle_sim(ExternalPotential(_plummer()))
-    sim.run(t_end=0.01, dt=0.01, dt_out=0.01, method=None, progress=False, monitors=False)
+    sim.run(t_end=0.01, dt=0.01, dt_out=0.01, progress=False, monitors=False)
     assert sim.times[-1] == pytest.approx(0.01)
 
 

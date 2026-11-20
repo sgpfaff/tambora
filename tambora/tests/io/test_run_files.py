@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 import tambora
-from tambora.dynamics import DirectSummationGravity, NullForce, NullSelfGravity
+from tambora.dynamics import DirectSum, NullForce, NullSelfGravity
 from tambora.dynamics.forces.CompositeForce import _CompositeConservative
 from tambora.dynamics.hooks import EveryStep
 from tambora.dynamics.integration import _runner
@@ -31,7 +31,7 @@ def _run(recorder, method='direct', keep_acc=True, keep_pot=True, t_end=1.0, dt=
     """A 50-particle cluster run to *t_end*, its outputs handed to *recorder*."""
     rng = np.random.default_rng(0)
     pos, vel, mass = rng.normal(size=(N, 3)), rng.normal(size=(N, 3)) * 10, np.full(N, 1e5)
-    solver = DirectSummationGravity() if method == 'direct' else NullSelfGravity()
+    solver = DirectSum() if method == 'direct' else NullSelfGravity()
     return _runner(pos, vel, mass, LeapfrogIntegrator(), solver, _CompositeConservative([]), NullForce(),
                    t0=0.0, t_end=t_end, dt=dt, dt_out=dt_out, return_self_gravity_acc=keep_acc,
                    return_self_gravity_pot=keep_pot, hooks=hooks, progress=False, eps=np.full(N, 0.05),
@@ -146,7 +146,7 @@ def test_settings_read_back_as_written(tmp_path):
                 'name': np.str_('lmc'), 'greek': 'Ωμ', 'monitors': ('energy',),
                 'track': ['energy', 'angular_momentum'], 'pair': (1, 2.5), 'none': (),
                 'mass': np.arange(3.0), 'names': np.array(['disk', 'halo']),
-                'solver': {'type': 'FalcONGravity', 'inner': {'n': 2}}, 'empty': {}, 'last': 1}
+                'solver': {'type': 'FalcON', 'inner': {'n': 2}}, 'empty': {}, 'last': 1}
     _FileRecorder(tmp_path, settings=settings).begin(1, 1, False, False)
     with h5py.File(tmp_path / 'run.h5', 'r') as f:
         back = _read_settings(f['settings'])
@@ -155,7 +155,7 @@ def test_settings_read_back_as_written(tmp_path):
         'name': 'lmc', 'greek': 'Ωμ', 'monitors': ['energy'],
         'track': ['energy', 'angular_momentum'], 'pair': [1.0, 2.5], 'none': [],
         'mass': np.arange(3.0), 'names': np.array(['disk', 'halo'], dtype=object),
-        'solver': {'type': 'FalcONGravity', 'inner': {'n': 2}}, 'empty': {}, 'last': 1})
+        'solver': {'type': 'FalcON', 'inner': {'n': 2}}, 'empty': {}, 'last': 1})
 
 
 @pytest.mark.parametrize("key", ['lmc/halo', '', '.', '__order__', 1])

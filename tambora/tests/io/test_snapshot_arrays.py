@@ -10,7 +10,7 @@ import h5py
 import numpy as np
 import pytest
 
-from tambora.dynamics import DirectSummationGravity, NullForce, NullSelfGravity
+from tambora.dynamics import DirectSum, NullForce, NullSelfGravity
 from tambora.dynamics.forces.CompositeForce import _CompositeConservative
 from tambora.dynamics.forces.external_force import ExternalConservativeForce
 from tambora.dynamics.integration import _runner
@@ -26,7 +26,7 @@ N, NSNAPS = 50, 11
 def _run(recorder):
     rng = np.random.default_rng(0)
     pos, vel, mass = rng.normal(size=(N, 3)), rng.normal(size=(N, 3)) * 10, np.full(N, 1e5)
-    return _runner(pos, vel, mass, LeapfrogIntegrator(), DirectSummationGravity(), _CompositeConservative([]),
+    return _runner(pos, vel, mass, LeapfrogIntegrator(), DirectSum(), _CompositeConservative([]),
                    NullForce(), t0=0.0, t_end=1.0, dt=0.01, dt_out=0.1, progress=False, eps=np.full(N, 0.05),
                    recorder=recorder)
 
@@ -268,7 +268,7 @@ class _Halo(ExternalConservativeForce):
 
 def _sim(**kwargs):
     rng = np.random.default_rng(1)
-    sim = Sim(**kwargs)
+    sim = Sim(solver=DirectSum(), **kwargs)
     sim.add_particles(rng.normal(size=(30, 3)) + 5, rng.normal(size=(30, 3)) * 20, np.full(30, 1e5), name='a', eps=0.05)
     sim.add_particles(rng.normal(size=(20, 3)) - 5, rng.normal(size=(20, 3)) * 20, np.full(20, 2e5), name='b', eps=0.1)
     sim.add_force(_Halo())
@@ -277,7 +277,7 @@ def _sim(**kwargs):
 
 @pytest.fixture(scope='module')
 def sims(tmp_path_factory):
-    run = dict(t_end=0.5, dt=0.01, dt_out=0.05, method='direct', progress=False)
+    run = dict(t_end=0.5, dt=0.01, dt_out=0.05, progress=False)
     on_disk, in_memory = _sim(output_dir=tmp_path_factory.mktemp('sim_run')), _sim()
     on_disk.run(**run)
     in_memory.run(**run)

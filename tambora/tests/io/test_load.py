@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 from galpy import potential as gp
 
+from tambora.dynamics import DirectSum, FalcON
 from tambora.dynamics.hooks import EveryStep
 from tambora.io import run_files
 from tambora.io.run_files import RUN_FILE, snapshot_name
@@ -24,12 +25,14 @@ def _load(directory):
 
 @pytest.mark.parametrize("run", [
     {}, dict(cache_self_gravity_acc=False, cache_self_gravity_pot=False), dict(cache_self_gravity_pot=False),
-    dict(method=None), dict(method='falcON', theta=0.4), dict(t_end=-0.2, dt=-0.01, dt_out=-0.05),
+    dict(solver=None), dict(solver=FalcON(theta=0.4)), dict(t_end=-0.2, dt=-0.01, dt_out=-0.05),
     dict(t0=1.5, t_end=1.73), dict(monitors=False),
 ], ids=['default', 'no caches', 'no pot', 'no self-gravity', 'falcON', 'backward', 'later t0, uneven end',
         'no monitor'])
 def test_a_loaded_run_is_the_run_kept_in_memory_bit_for_bit(tmp_path, run):
-    disk, memory = _sim(output_dir=tmp_path / 'run'), _sim()
+    solver = {name: value for name, value in run.items() if name == 'solver'}
+    run = {name: value for name, value in run.items() if name != 'solver'}
+    disk, memory = _sim(output_dir=tmp_path / 'run', **solver), _sim(**solver)
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')     # the uneven end
         disk.run(**{**RUN, **run})
@@ -50,13 +53,13 @@ def test_a_loaded_run_is_the_run_kept_in_memory_bit_for_bit(tmp_path, run):
 def test_a_run_without_softening_loads(tmp_path):
     def test_particles(**kwargs):
         rng = np.random.default_rng(1)
-        sim = Sim(**kwargs)
+        sim = Sim(solver=None, **kwargs)
         sim.add_particles(rng.normal(size=(10, 3)) + 8, rng.normal(size=(10, 3)) * 200, np.zeros(10), name='stars')
         sim.add_force(gp.NFWPotential(ro=8, vo=220))
         return sim
     disk, memory = test_particles(output_dir=tmp_path / 'run'), test_particles()
-    disk.run(**{**RUN, 'method': None})
-    memory.run(**{**RUN, 'method': None})
+    disk.run(**RUN)
+    memory.run(**RUN)
     sim = _load(tmp_path / 'run')
     assert np.isnan(sim._eps).all()
     _assert_same_run(sim, memory)
@@ -159,6 +162,90 @@ def test_with_the_forces_it_couldnt_load_given_again_a_loaded_run_gives_what_the
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')     # on-the-fly external potential
         np.testing.assert_array_equal(compute(sim), compute(memory))
+
+
+# --- the run's solver ---------------------------------------------------------------------- #
+
+def _loading_with_solver_settings(monkeypatch, change):
+    """Sim.load reading run.h5 after *change* changed its record of the solver."""
+    import tambora.simulation.simulation as simulation_module
+    read = simulation_module.read_run
+
+    def changed(directory):
+        run = read(directory)
+        change(run['settings']['run']['self_gravity'])
+        return run
+    monkeypatch.setattr(simulation_module, 'read_run', changed)
+
+
+SOLVERS = [pytest.param(lambda: FalcON(theta=0.3, kernel=0), id='falcON'),
+           pytest.param(lambda: DirectSum(use_C=False), id='direct'),
+           pytest.param(lambda: None, id='none')]
+
+
+@pytest.mark.parametrize("solver", SOLVERS)
+@pytest.mark.parametrize("written", ['now', 'before solvers saved themselves'])
+def test_a_loaded_sim_has_the_runs_solver(tmp_path, monkeypatch, solver, written):
+    run = _sim(solver=solver(), output_dir=tmp_path / 'run')
+    run.run(**RUN)
+    if written != 'now':
+        _loading_with_solver_settings(monkeypatch, lambda settings: settings.pop('class'))
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        sim = Sim.load(tmp_path / 'run')
+    assert sim._self_gravity_force is not run._self_gravity_force
+    assert type(sim._self_gravity_force) is type(run._self_gravity_force)
+    assert sim._self_gravity_force.save() == run._self_gravity_force.save()
+
+
+@pytest.mark.parametrize("change, reason", [
+    (lambda s: s.update({'class': 'NoSuchSolver'}), r"ValueError: This tambora has no 'NoSuchSolver' self-gravity solver."),
+    (lambda s: s.update({'class': 'ExternalPotential'}),
+     r"ValueError: This tambora has no 'ExternalPotential' self-gravity solver."),
+    (lambda s: (s.pop('class'), s.update(method='tree')), r"ValueError: This tambora has no 'tree' self-gravity solver."),
+    (lambda s: s.pop('theta'), r"KeyError: 'theta'"),
+], ids=['unknown class', 'a class that is not a solver', 'unknown method in an older run', 'a missing setting'])
+def test_a_solver_that_cant_be_loaded_is_warned_about_with_why(tmp_path, monkeypatch, change, reason):
+    _sim(solver=FalcON(), output_dir=tmp_path / 'run').run(**RUN)
+    _loading_with_solver_settings(monkeypatch, change)
+    with pytest.warns(UserWarning, match=r"^The run's self-gravity solver couldn't be loaded \(" + reason) as caught:
+        sim = Sim.load(tmp_path / 'run')
+    assert len(caught) == 1 and caught[0].filename == __file__ and sim._self_gravity_force is None
+    assert str(caught[0].message).endswith("). Load again with solver=... to give one.")
+    assert sim.pos().shape == (5, 50, 3)     # the rest of the run loads
+
+
+@pytest.mark.parametrize("file", ['loads', "can't be loaded"])
+def test_a_solver_given_to_load_is_the_sims_in_place_of_the_runs(tmp_path, monkeypatch, file):
+    ran = _sim(solver=FalcON(), output_dir=tmp_path / 'run')
+    ran.run(**{**RUN, 'cache_self_gravity_pot': False})
+    if file != 'loads':
+        _loading_with_solver_settings(monkeypatch, lambda s: s.update({'class': 'NoSuchSolver'}))
+    given = DirectSum()
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')      # the run's solver isn't asked for
+        sim = Sim.load(tmp_path / 'run', solver=given)
+    assert sim._self_gravity_force is given
+    np.testing.assert_array_equal(sim.self_potential(t=1), ran.self_potential(t=1, solver=DirectSum()))
+    assert not np.array_equal(sim.self_potential(t=1), ran.self_potential(t=1))
+    np.testing.assert_array_equal(sim.self_gravity(), ran.self_gravity())      # what the run saved
+    assert sim._run_settings['self_gravity']['method'] == 'falcON'
+
+
+def test_loading_with_solver_none_gives_a_sim_without_self_gravity(tmp_path):
+    _sim(output_dir=tmp_path / 'run').run(**{**RUN, 'cache_self_gravity_acc': False})
+    sim = Sim.load(tmp_path / 'run', solver=None)
+    assert type(sim._self_gravity_force).__name__ == 'NullSelfGravity'
+    assert not sim.self_gravity(t=1).any()
+
+
+@pytest.mark.parametrize("solver, error, message", [
+    ('direct', TypeError, r"^solver must be a self-gravity solver, e.g. FalcON\(\), or None. Got 'str'.$"),
+    (DirectSum(eps=0.1), ValueError, "^The Sim's solver can't have its own softening."),
+], ids=['a name', 'its own softening'])
+def test_load_checks_its_solver_as_sim_does(tmp_path, solver, error, message):
+    with pytest.raises(error, match=message):      # before the run is looked for
+        Sim.load(tmp_path / 'no run', solver=solver)
 
 
 def test_loading_a_run_that_stopped_early_warns_and_keeps_its_outputs(tmp_path):

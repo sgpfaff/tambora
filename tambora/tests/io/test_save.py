@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 from galpy import potential as gp
 
+from tambora.dynamics import FalcON
 from tambora.dynamics.hooks import EveryStep
 from tambora.io import run_files
 from tambora.io.run_files import RUN_FILE, read_run, snapshot_name
@@ -37,12 +38,14 @@ def _assert_same_files(saved, streamed):
 
 @pytest.mark.parametrize("run", [
     {}, dict(cache_self_gravity_acc=False, cache_self_gravity_pot=False), dict(cache_self_gravity_pot=False),
-    dict(method=None), dict(method='falcON', theta=0.4), dict(t_end=-0.2, dt=-0.01, dt_out=-0.05),
+    dict(solver=None), dict(solver=FalcON(theta=0.4)), dict(t_end=-0.2, dt=-0.01, dt_out=-0.05),
     dict(t0=1.5, t_end=1.73), dict(monitors=False),
 ], ids=['default', 'no caches', 'no pot', 'no self-gravity', 'falcON', 'backward', 'later t0, uneven end',
         'no monitor'])
 def test_a_saved_run_is_what_streaming_writes(tmp_path, run):
-    memory, disk = _sim(), _sim(output_dir=tmp_path / 'streamed')
+    solver = {name: value for name, value in run.items() if name == 'solver'}
+    run = {name: value for name, value in run.items() if name != 'solver'}
+    memory, disk = _sim(**solver), _sim(output_dir=tmp_path / 'streamed', **solver)
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')     # the uneven end
         memory.run(**{**RUN, **run})
