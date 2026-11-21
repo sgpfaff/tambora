@@ -21,7 +21,7 @@ All About Simulations
    .. grid-item-card:: Generating Initial Conditions
       :link: generating_initial_conditions
       :link-type: doc
-      :img-bottom: sampled_plummer_IC.png
+      :img-bottom: sampled_plummer_vs_analytic.png
 
       Generate equilibrium initial conditions for with tambora's built-in IC generation convenience functions.
 
@@ -44,7 +44,7 @@ All About Simulations
 
       Configure the integrator and launch a run.
    
-   .. grid-item-card:: Hooks
+   .. grid-item-card:: Hooks 🪝
       :link: hooks
       :link-type: doc
 
