@@ -468,7 +468,7 @@ def test_a_sim_with_a_solver_refuses_particles_without_softening(sim_kwargs, as_
     particles = (ParticleSet(COMP2_POS, COMP2_VEL, COMP2_MASS),) if as_set else (COMP2_POS, COMP2_VEL, COMP2_MASS)
     with pytest.raises(ValueError, match=r"need a softening. Give it with eps=..., or make the Sim with solver=None.$"):
         sim.add_particles(*particles, name='b')
-    assert list(sim._slices) == ['a'] and len(sim.mass) == len(sim.eps) == COMP1_NPTS
+    assert list(sim._slices) == ['a'] and len(sim.mass) == len(sim.eps()) == COMP1_NPTS
 
 
 # --- softening ------------------------------------------------------------------------------ #
@@ -487,11 +487,11 @@ def _quick_run(sim):
 def test_each_component_keeps_its_own_softening_and_the_run_uses_it():
     eps_b = np.linspace(0.02, 0.08, COMP2_NPTS)
     sim = _two_components(eps_a=0.1, eps_b=eps_b)
-    np.testing.assert_array_equal(sim.a.eps, 0.1)
-    np.testing.assert_array_equal(sim.b.eps, eps_b)
-    np.testing.assert_array_equal(sim.eps, np.concatenate([np.full(COMP1_NPTS, 0.1), eps_b]))
+    np.testing.assert_array_equal(sim.a.eps(), 0.1)
+    np.testing.assert_array_equal(sim.b.eps(), eps_b)
+    np.testing.assert_array_equal(sim.eps(), np.concatenate([np.full(COMP1_NPTS, 0.1), eps_b]))
     _quick_run(sim)
-    expected = DirectSum().acc(sim.pos(t=0, return_internal=True), sim.mass, sim.eps)
+    expected = DirectSum().acc(sim.pos(t=0, return_internal=True), sim.mass, sim.eps())
     np.testing.assert_allclose(sim.self_gravity(t=0, return_internal=True), expected, rtol=1e-12)
 
 
@@ -511,7 +511,7 @@ def test_a_hook_gets_a_components_own_gravity_with_its_own_softening(solver):
     seen = {}
     sim.add_hook(lambda state: seen.setdefault('acc', state.b.self_gravity(include_all_components=False)))
     _quick_run(sim)
-    expected = solver.acc(COMP2_POS, COMP2_MASS * 1e6, eps=sim.b.eps)
+    expected = solver.acc(COMP2_POS, COMP2_MASS * 1e6, eps=sim.b.eps())
     np.testing.assert_array_equal(seen['acc'], expected)
 
 
@@ -528,9 +528,9 @@ def test_gravity_computed_again_uses_the_particles_softening(accessor):
         return out[sl] if everyone else out
     def get(obj, **kw):
         return getattr(obj, accessor)(t=0, solver=DirectSum(), return_internal=True, **kw)
-    np.testing.assert_allclose(get(sim), expected(sim.eps), rtol=1e-12)
+    np.testing.assert_allclose(get(sim), expected(sim.eps()), rtol=1e-12)
     b = sim._slices['b']
-    np.testing.assert_allclose(get(sim.b), expected(sim.eps, b), rtol=1e-12)
+    np.testing.assert_allclose(get(sim.b), expected(sim.eps(), b), rtol=1e-12)
     np.testing.assert_allclose(get(sim.b, include_all_components=False), expected(eps_b, b, everyone=False), rtol=1e-12)
 
 
@@ -573,7 +573,7 @@ def test_hooks_get_the_particles_softening_and_unbind_with_it(monkeypatch):
     bounded = BoundednessHook('b')
     sim.add_hook(bounded)
     _quick_run(sim)
-    np.testing.assert_array_equal(seen['eps'][0], sim.eps)
+    np.testing.assert_array_equal(seen['eps'][0], sim.eps())
     np.testing.assert_array_equal(seen['eps'][1], eps_b)
     expected = bound_mask(COMP2_POS, COMP2_VEL * KMS_TO_KPCGYR, COMP2_MASS * 1e6, eps=eps_b, solver=FalcON())
     np.testing.assert_array_equal(seen['mask'], expected)
@@ -625,18 +625,18 @@ def test_clearing_the_outputs_goes_back_to_before_the_run():
     assert not sim._has_run and len(sim.times) == 1
     np.testing.assert_array_equal(sim.pos(-1), COMP1_POS.tolist() + COMP2_POS.tolist())
     _quick_run(sim)
-    expected = DirectSum().acc(sim.pos(t=0, return_internal=True), sim.mass, sim.eps)
+    expected = DirectSum().acc(sim.pos(t=0, return_internal=True), sim.mass, sim.eps())
     np.testing.assert_allclose(sim.self_gravity(t=0, return_internal=True), expected, rtol=1e-12)
 
 
 def test_the_softening_given_back_cannot_be_changed_in_place():
     sim = _two_components(eps_a=0.1, eps_b=0.1)
     with pytest.raises(ValueError, match="read-only"):
-        sim.eps[0] = 1.
+        sim.eps()[0] = 1.
 
 
 def test_a_sim_without_particles_has_no_softening():
-    assert Sim().eps is None
+    assert Sim().eps() is None
 
 
 # --- .add_force() ------------------------------------------------------------------------------- #

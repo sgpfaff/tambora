@@ -68,7 +68,7 @@ class StepState:
 
     @property
     def eps(self):
-        """Live particle softening [kpc], mirroring ``Sim.eps``; None if the run has none."""
+        """Live particle softening [kpc], mirroring ``Sim.eps()``; None if the run has none."""
         eps = self._ctx.eps
         if eps is None:
             return None

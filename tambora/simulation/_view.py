@@ -23,7 +23,6 @@ class _ParticleView:
             return array[:, self._sl]
         return array[ti, self._sl]
 
-    @property
     def eps(self):
         """Softening length of each particle [kpc], NaN where it isn't set."""
         eps = self._sim._eps
