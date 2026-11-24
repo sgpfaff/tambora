@@ -276,12 +276,11 @@ def test_a_loaded_sim_cant_run_again_or_take_particles_or_hooks(tmp_path):
     assert not (tmp_path / 'run').exists()
 
 
-def test_setting_eps_on_a_loaded_sim_goes_back_to_the_first_output(tmp_path):
+def test_clearing_a_loaded_sims_outputs_goes_back_to_the_first_output(tmp_path):
     _sim(output_dir=tmp_path / 'run').run(**RUN)
     memory = _sim()
     sim = _load(tmp_path / 'run')
-    sim.a.eps = 0.2
-    memory.a.eps = 0.2
+    sim._clear_outputs()
     _assert_same_run(sim, memory)
 
 

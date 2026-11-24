@@ -407,14 +407,6 @@ class Sim(_ParticleView):
         self._times = np.array([0.0])
         self._steps = np.array([0])
 
-    def _set_eps(self, sl, eps):
-        """Set the softening of the particles in *sl*; a previous run's outputs are cleared."""
-        if self._eps is None:
-            raise RuntimeError("Add particles before setting their softening.")
-        self._eps[sl] = _check_eps(eps, len(self._eps[sl]))
-        if self._has_run:
-            self._clear_outputs()
-
     def _clear_outputs(self):
         """Back to the initial conditions, as before ``run()``."""
         N = self._mass.shape[0]

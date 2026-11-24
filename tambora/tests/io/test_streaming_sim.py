@@ -182,7 +182,7 @@ def test_run_h5_lists_the_hooks_the_run_had():
     sim.add_hook(_note)
     sim.run(**RUN)
     assert sim._run_settings['hooks']['names'] == ['function', 'ConservationMonitor']
-    sim.eps = 0.3                                   # clears the outputs: the Sim can run again
+    sim._clear_outputs()                            # the Sim can run again
     sim.run(**RUN, monitors=False)
     assert sim._run_settings['hooks'] == {'names': ['function'], 'cadences': ['EveryOutput']}
 
@@ -288,7 +288,7 @@ def test_the_steps_and_settings_go_with_the_outputs():
     np.testing.assert_array_equal(sim._steps, [0])
     sim.run(**RUN)
     assert sim._run_settings['n_steps'] == 20 and len(sim._steps) == 5
-    sim.eps = 0.2       # clears the outputs
+    sim._clear_outputs()
     np.testing.assert_array_equal(sim._steps, [0])
     assert sim._run_settings is None
 
@@ -411,7 +411,7 @@ def test_a_rerun_after_the_outputs_were_cleared_is_still_refused(tmp_path):
     sim = _sim(output_dir=tmp_path / 'run')
     sim.run(**RUN)
     files = _files(tmp_path / 'run')
-    sim.eps = 0.3
+    sim._clear_outputs()
     with pytest.raises(FileExistsError, match="already holds a run"):
         sim.run(**RUN)
     assert _files(tmp_path / 'run') == files

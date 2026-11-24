@@ -82,8 +82,7 @@ class StepState:
         eps = eps if everyone else eps[self._sl]
         if np.isnan(eps).any():
             raise ValueError("Softening isn't set for every particle here. Give it with "
-                             "add_particles(..., eps=...) or sim.<component>.eps, or pass eps=... "
-                             "to this calculation.")
+                             "add_particles(..., eps=...), or pass eps=... to this calculation.")
         return eps
 
     # -- reporting: push display fields to the run's progress bar --

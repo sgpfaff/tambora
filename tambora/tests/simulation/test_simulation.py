@@ -615,26 +615,13 @@ def test_run_takes_no_method_nor_what_went_with_it(keyword):
 def test_a_bad_softening_is_refused(eps, error):
     with pytest.raises(error, match="eps must"):
         _two_components(eps_a=eps)
-    sim = _two_components(eps_a=0.1, eps_b=0.1)
-    with pytest.raises(error, match="eps must"):
-        sim.a.eps = eps
-    np.testing.assert_array_equal(sim.a.eps, 0.1)
 
 
-def test_the_softening_can_be_set_for_everyone_or_per_component():
-    sim = _two_components(eps_a=0.1, eps_b=0.1)
-    sim.eps = 0.2
-    np.testing.assert_array_equal(sim.eps, 0.2)
-    sim.b.eps = np.full(COMP2_NPTS, 0.05)
-    np.testing.assert_array_equal(sim.a.eps, 0.2)
-    np.testing.assert_array_equal(sim.b.eps, 0.05)
-
-
-def test_setting_the_softening_after_a_run_clears_the_run():
+def test_clearing_the_outputs_goes_back_to_before_the_run():
     sim = _two_components(eps_a=0.1, eps_b=0.1)
     _quick_run(sim)
     assert len(sim.times) == 2
-    sim.b.eps = 0.5
+    sim._clear_outputs()
     assert not sim._has_run and len(sim.times) == 1
     np.testing.assert_array_equal(sim.pos(-1), COMP1_POS.tolist() + COMP2_POS.tolist())
     _quick_run(sim)
@@ -648,11 +635,8 @@ def test_the_softening_given_back_cannot_be_changed_in_place():
         sim.eps[0] = 1.
 
 
-def test_softening_can_only_be_set_once_there_are_particles():
-    sim = Sim()
-    assert sim.eps is None
-    with pytest.raises(RuntimeError, match="Add particles before"):
-        sim.eps = 0.1
+def test_a_sim_without_particles_has_no_softening():
+    assert Sim().eps is None
 
 
 # --- .add_force() ------------------------------------------------------------------------------- #
@@ -2959,7 +2943,7 @@ class TestDefaultMonitors:
         for _ in range(2):
             self._run(sim)
             assert [h for h, _ in sim.hooks] == [hook, sim.monitor]
-        sim.eps = 0.0                       # clears the outputs, so hooks can be added again
+        sim._clear_outputs()                # so hooks can be added again
         sim.add_hook(later)
         self._run(sim)
         assert [h for h, _ in sim.hooks] == [hook, later, sim.monitor]

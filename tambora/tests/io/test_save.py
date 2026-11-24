@@ -106,7 +106,7 @@ def test_a_sim_that_hasnt_run_isnt_saved(tmp_path):
     with pytest.raises(RuntimeError, match="hasn't run. There's nothing to save"):
         sim.save(tmp_path / 'saved')
     sim.run(**RUN)
-    sim.eps = 0.3                                   # clears the outputs
+    sim._clear_outputs()
     with pytest.raises(RuntimeError, match="hasn't run"):
         sim.save(tmp_path / 'saved')
     assert not (tmp_path / 'saved').exists()
