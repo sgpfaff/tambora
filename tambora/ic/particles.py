@@ -50,7 +50,7 @@ class ParticleSet:
     def __repr__(self):
         return f"ParticleSet(n={len(self)}, total mass={self.mass.sum():.4g} Msun, meta={self.meta!r})"
 
-    def shifted(self, pos=(0., 0., 0.), vel=(0., 0., 0.)):
+    def shift(self, pos=(0., 0., 0.), vel=(0., 0., 0.)):
         """A copy moved by ``pos`` [kpc] and ``vel`` [km/s], e.g. to place a cluster on its orbit."""
         pos, vel = np.asarray(pos, dtype=float), np.asarray(vel, dtype=float)
         if pos.shape != (3,) or vel.shape != (3,):
