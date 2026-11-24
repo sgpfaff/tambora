@@ -324,7 +324,7 @@ class Sim(_ParticleView):
             where i is the component's position (from 0).
         eps : float or (N,) array, optional
             Softening length of the particles, one for all or one each. Required
-            to run with self-gravity; it can also be set later through ``eps``.
+            unless the Sim was made with ``solver=None``.
             Units: `kpc`
 
         Returns
@@ -334,8 +334,9 @@ class Sim(_ParticleView):
         Raises
         ------
         ValueError
-            If the component already exists, the name can't be used, or the input
-            arrays have incompatible shapes.
+            If the component already exists, the name can't be used, the input
+            arrays have incompatible shapes, or ``eps`` is missing and the Sim has
+            a self-gravity solver.
         TypeError
             If the input types are incorrect, or if a ParticleSet is given together with
             ``vel`` or ``mass``, or neither is given.
@@ -378,6 +379,9 @@ class Sim(_ParticleView):
             raise ValueError(f"mass must be shape (N,), received {mass.shape}")
         if not (pos.shape[0] == vel.shape[0] == mass.shape[0]):
             raise ValueError(f"pos, vel, mass must have same number of particles, received {pos.shape[0]}, {vel.shape[0]}, {mass.shape[0]}.")
+        if eps is None and not isinstance(self._self_gravity_force, NullSelfGravity):
+            raise ValueError("Particles in a Sim with self-gravity need a softening. "
+                             "Give it with eps=..., or make the Sim with solver=None.")
         eps = np.full(pos.shape[0], np.nan) if eps is None else _check_eps(eps, pos.shape[0])
 
         # Build slice and append to flat arrays
@@ -619,12 +623,6 @@ class Sim(_ParticleView):
             raise RuntimeError(f"This Sim was loaded from {self._output_dir!r} and can't run. "
                                "Make a new Sim to run again.")
         solver = self._self_gravity_force
-        if not isinstance(solver, NullSelfGravity):
-            unset = [name for name, sl in self._slices.items() if np.isnan(self._eps[sl]).any()]
-            if unset:
-                raise ValueError(
-                    f"Softening isn't set for {', '.join(repr(n) for n in unset)}. Give it with "
-                    f"add_particles(..., eps=...) or sim.<component>.eps = ..., or make the Sim with solver=None.")
         _check_dt_dt_out(dt, dt_out, t0, t_end)
         t0, t_end, dt, dt_out = float(t0), float(t_end), float(dt), float(dt_out)
         cache_self_gravity_acc, cache_self_gravity_pot = bool(cache_self_gravity_acc), bool(cache_self_gravity_pot)

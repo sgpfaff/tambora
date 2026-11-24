@@ -460,11 +460,15 @@ def test_run_with_the_default_solver_is_what_run_with_falcon_was():
     np.testing.assert_array_equal(default.pos(), named.pos())
 
 
-def test_a_sim_with_a_solver_needs_softening_to_run():
-    sim = Sim(solver=DirectSum())
-    sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS * 1e6, name='a')
-    with pytest.raises(ValueError, match="Softening isn't set for 'a'"):
-        sim.run(t_end=0.01, dt=0.01, dt_out=0.01, progress=False, monitors=False)
+@pytest.mark.parametrize("sim_kwargs", [{}, {'solver': DirectSum()}], ids=['falcON by default', 'direct'])
+@pytest.mark.parametrize("as_set", [False, True], ids=['arrays', 'a particle set'])
+def test_a_sim_with_a_solver_refuses_particles_without_softening(sim_kwargs, as_set):
+    sim = Sim(**sim_kwargs)
+    sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='a', eps=0.1)
+    particles = (ParticleSet(COMP2_POS, COMP2_VEL, COMP2_MASS),) if as_set else (COMP2_POS, COMP2_VEL, COMP2_MASS)
+    with pytest.raises(ValueError, match=r"need a softening. Give it with eps=..., or make the Sim with solver=None.$"):
+        sim.add_particles(*particles, name='b')
+    assert list(sim._slices) == ['a'] and len(sim.mass) == len(sim.eps) == COMP1_NPTS
 
 
 # --- softening ------------------------------------------------------------------------------ #
@@ -590,16 +594,6 @@ def test_a_boundedness_hook_unbinds_with_the_solver_it_is_given():
     assert len(calls) >= len(bounded.t) > 0 and calls[0] == COMP2_NPTS
 
 
-def test_a_run_with_self_gravity_needs_every_components_softening():
-    sim = _two_components(eps_a=0.1)
-    np.testing.assert_array_equal(sim.b.eps, np.nan)
-    with pytest.raises(ValueError, match="Softening isn't set for 'b'"):
-        _quick_run(sim)
-    sim = _two_components(eps_a=0.1, solver=None)
-    _quick_run(sim)
-    assert sim._has_run
-
-
 @pytest.mark.parametrize("keyword", [dict(method='direct'), dict(method=None), dict(theta=0.3), dict(eps=0.5)],
                          ids=['a method', 'no method', 'a solver setting', 'a softening'])
 def test_run_takes_no_method_nor_what_went_with_it(keyword):
@@ -621,14 +615,14 @@ def test_run_takes_no_method_nor_what_went_with_it(keyword):
 def test_a_bad_softening_is_refused(eps, error):
     with pytest.raises(error, match="eps must"):
         _two_components(eps_a=eps)
-    sim = _two_components(eps_a=0.1)
+    sim = _two_components(eps_a=0.1, eps_b=0.1)
     with pytest.raises(error, match="eps must"):
         sim.a.eps = eps
     np.testing.assert_array_equal(sim.a.eps, 0.1)
 
 
 def test_the_softening_can_be_set_for_everyone_or_per_component():
-    sim = _two_components()
+    sim = _two_components(eps_a=0.1, eps_b=0.1)
     sim.eps = 0.2
     np.testing.assert_array_equal(sim.eps, 0.2)
     sim.b.eps = np.full(COMP2_NPTS, 0.05)
