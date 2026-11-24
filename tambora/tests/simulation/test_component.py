@@ -21,11 +21,11 @@ multicomp = Sim(solver=FalcON(theta=0.3))
 multicomp.add_particles(name='comp1',
                     pos=COMP1_POS, 
                     vel=COMP1_VEL, 
-                    mass=COMP1_MASS)
+                    mass=COMP1_MASS, eps=0.1)
 multicomp.add_particles(name='comp2',
                     pos=COMP2_POS, 
                     vel=COMP2_VEL, 
-                    mass=COMP2_MASS)
+                    mass=COMP2_MASS, eps=0.1)
 
 # --- Basic attribute access ------------------------------------------------- #
 
@@ -82,7 +82,6 @@ def test_component_mass_is_read_only_property():
 
 # --- Shapes after run ------------------------------------------------------- #
 
-multicomp.eps = 0.1
 multicomp.run(t_end=1., dt=0.1, dt_out=0.1)
 _N_SNAP_MC = 11
 
@@ -628,10 +627,9 @@ def _iac_sim():
     """Two-component sim for include_all_components testing."""
     sim = Sim(solver=DirectSum())
     sim.add_particles(name='disk', pos=_IAC_COMP1_POS.copy(),
-                      vel=_IAC_COMP1_VEL.copy(), mass=_IAC_COMP1_MASS.copy())
+                      vel=_IAC_COMP1_VEL.copy(), mass=_IAC_COMP1_MASS.copy(), eps=0.0)
     sim.add_particles(name='sat', pos=_IAC_COMP2_POS.copy(),
-                      vel=_IAC_COMP2_VEL.copy(), mass=_IAC_COMP2_MASS.copy())
-    sim.eps = 0.0
+                      vel=_IAC_COMP2_VEL.copy(), mass=_IAC_COMP2_MASS.copy(), eps=0.0)
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, 
             cache_self_gravity_acc=True, cache_self_gravity_pot=True)
     return sim

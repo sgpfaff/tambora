@@ -15,7 +15,6 @@ _DIRECT = DirectSum()
 
 
 def _run(sim, t_end=0.01, dt=0.01, dt_out=0.01):
-    sim.eps = 0.0
     sim.run(t_end=t_end, dt=dt, dt_out=dt_out, progress=False, monitors=False)
     return sim
 
@@ -73,7 +72,7 @@ def _ring_around_a_point_mass():
     host = _PointMass(M)
     sim = Sim(solver=DirectSum())
     sim.add_force(host)
-    sim.add_particles(pos, _circular(pos, host.acc(pos, 0.) + _DIRECT.acc(pos, mass, 0.)), mass, name='ring')
+    sim.add_particles(pos, _circular(pos, host.acc(pos, 0.) + _DIRECT.acc(pos, mass, 0.)), mass, name='ring', eps=0.)
     return sim
 
 
@@ -120,8 +119,8 @@ def test_a_components_ratio_counts_the_other_components_unless_told_not_to():
     pos, mass = _ring()
     acc = _DIRECT.acc(np.vstack([pos, np.zeros((1, 3))]), np.append(mass, M), 0.)[:-1]
     sim = Sim(solver=DirectSum())
-    sim.add_particles(pos, _circular(pos, acc), mass, name='ring')
-    sim.add_particles(np.zeros((1, 3)), np.zeros((1, 3)), np.array([M]), name='host')
+    sim.add_particles(pos, _circular(pos, acc), mass, name='ring', eps=0.)
+    sim.add_particles(np.zeros((1, 3)), np.zeros((1, 3)), np.array([M]), name='host', eps=0.)
     _run(sim)
     assert sim.virial_ratio(t=0) == pytest.approx(1., rel=1e-12)
     assert sim.ring.virial_ratio(t=0) == pytest.approx(1., rel=1e-12)
