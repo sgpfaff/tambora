@@ -23,14 +23,8 @@ class _ParticleView:
             return array[:, self._sl]
         return array[ti, self._sl]
 
-    @property
     def eps(self):
-        """
-        Softening length of each particle [kpc], NaN where it isn't set.
-
-        Set it to a number, or one value per particle, to change it. Changing it after a
-        run clears that run's outputs, so a new run uses it.
-        """
+        """Softening length of each particle [kpc], NaN where it isn't set."""
         eps = self._sim._eps
         if eps is None:
             return None
@@ -38,16 +32,12 @@ class _ParticleView:
         view.flags.writeable = False
         return view
 
-    @eps.setter
-    def eps(self, eps):
-        self._sim._set_eps(self._sl, eps)
-
     def _softening(self, everyone=False):
         """These particles' softening (the whole Sim's, if *everyone*), as one number if shared."""
         eps = self._sim._eps if everyone else self._sim._eps[self._sl]
         if np.isnan(eps).any():
-            raise ValueError("Softening isn't set for every particle here. Set it with sim.eps or "
-                             "sim.<component>.eps, or pass a solver made with its own eps.")
+            raise ValueError("Softening isn't set for every particle here. "
+                             "Give it with add_particles(..., eps=...).")
         return float(eps[0]) if np.all(eps == eps[0]) else eps
 
     def _self_gravity(self, t, solver, everyone, potential=False):
@@ -71,9 +61,8 @@ class _ParticleView:
             raise TypeError("Cannot compute on-the-fly for all times. Please provide an integer index or a float "
                             "time for t. You will have to manually loop over snapshots.")
         of = sim if everyone else self
-        eps = None if solver.eps is not None else of._softening()
         compute = solver.potential if potential else solver.acc
-        result = compute(of.pos(t=sim._ti(t, vectorized=False), return_internal=True), of.mass, eps)
+        result = compute(of.pos(t=sim._ti(t, vectorized=False), return_internal=True), of.mass, of._softening())
         return result[self._sl] if everyone else result
 
     # --- Position Accessors -------------------------------------------------------------------

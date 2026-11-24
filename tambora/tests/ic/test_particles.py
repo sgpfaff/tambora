@@ -16,11 +16,11 @@ def _ps(n=4, meta=None):
                        meta if meta is not None else {'seed': 7})
 
 
-def test_it_unpacks_like_tuple():
+def test_it_has_a_length_and_does_not_unpack():
     ps = _ps()
-    pos, vel, mass = ps
-    assert pos is ps.pos and vel is ps.vel and mass is ps.mass
     assert len(ps) == 4
+    with pytest.raises(TypeError, match="cannot unpack non-iterable ParticleSet"):
+        pos, vel, mass = ps
 
 
 def test_inputs_become_float_arrays():
@@ -59,7 +59,7 @@ def test_the_arrays_are_copies_of_the_callers():
 
 @pytest.mark.parametrize("make", [
     pytest.param(_ps, id='made'),
-    pytest.param(lambda: _ps().shifted(pos=[1., 0., 0.]), id='shifted'),
+    pytest.param(lambda: _ps().shift(pos=[1., 0., 0.]), id='shift'),
 ])
 @pytest.mark.parametrize("field", ['pos', 'vel', 'mass'])
 def test_the_arrays_are_read_only(make, field):
@@ -85,9 +85,9 @@ def test_repr_summarises_instead_of_printing_arrays():
     assert repr(_ps()) == "ParticleSet(n=4, total mass=10 Msun, meta={'seed': 7})"
 
 
-def test_shifted_moves_positions_and_velocities_and_keeps_the_rest():
+def test_shift_moves_positions_and_velocities_and_keeps_the_rest():
     ps = _ps()
-    moved = ps.shifted(pos=[1., 2., 3.], vel=[-10., 0., 10.])
+    moved = ps.shift(pos=[1., 2., 3.], vel=[-10., 0., 10.])
     np.testing.assert_array_equal(moved.pos, ps.pos + [1., 2., 3.])
     np.testing.assert_array_equal(moved.vel, ps.vel + [-10., 0., 10.])
     np.testing.assert_array_equal(moved.mass, ps.mass)
@@ -95,6 +95,6 @@ def test_shifted_moves_positions_and_velocities_and_keeps_the_rest():
     assert moved.pos is not ps.pos        # the original is untouched
 
 
-def test_shifted_takes_one_vector_not_one_per_particle():
+def test_shift_takes_one_vector_not_one_per_particle():
     with pytest.raises(ValueError, match="one 3-vector"):
-        _ps().shifted(pos=np.zeros((4, 3)))
+        _ps().shift(pos=np.zeros((4, 3)))

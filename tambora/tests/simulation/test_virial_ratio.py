@@ -11,11 +11,10 @@ from tambora.simulation import Sim
 from tambora.units import G_INTERNAL, KMS_TO_KPCGYR
 
 M = 1e9  # Msun
-_DIRECT = DirectSum(eps=0.)
+_DIRECT = DirectSum()
 
 
 def _run(sim, t_end=0.01, dt=0.01, dt_out=0.01):
-    sim.eps = 0.0
     sim.run(t_end=t_end, dt=dt, dt_out=dt_out, progress=False, monitors=False)
     return sim
 
@@ -28,7 +27,7 @@ def _binary(speed=1., offset=(0., 0., 0.), boost=(0., 0., 0.)):
     pos = np.array([[r[0], 0., 0.], [-r[1], 0., 0.]]) + offset
     vel = speed * omega * np.array([[0., r[0], 0.], [0., -r[1], 0.]]) / KMS_TO_KPCGYR + boost
     sim = Sim(solver=DirectSum())
-    sim.add_particles(pos, vel, mass, name='binary')
+    sim.add_particles(pos, vel, mass, name='binary', eps=0.)
     return sim
 
 
@@ -73,7 +72,7 @@ def _ring_around_a_point_mass():
     host = _PointMass(M)
     sim = Sim(solver=DirectSum())
     sim.add_force(host)
-    sim.add_particles(pos, _circular(pos, host.acc(pos, 0.) + _DIRECT.acc(pos, mass)), mass, name='ring')
+    sim.add_particles(pos, _circular(pos, host.acc(pos, 0.) + _DIRECT.acc(pos, mass, 0.)), mass, name='ring', eps=0.)
     return sim
 
 
@@ -92,13 +91,13 @@ def test_the_ratio_is_taken_about_the_center_of_mass():
 
 def test_initial_conditions_can_be_checked_before_a_run():
     sim = _binary()
-    assert sim.virial_ratio(t=0, solver=DirectSum(eps=0.)) == pytest.approx(1., rel=1e-12)
-    assert sim.binary.virial_ratio(t=0, solver=DirectSum(eps=0.)) == pytest.approx(1., rel=1e-12)
+    assert sim.virial_ratio(t=0, solver=DirectSum()) == pytest.approx(1., rel=1e-12)
+    assert sim.binary.virial_ratio(t=0, solver=DirectSum()) == pytest.approx(1., rel=1e-12)
 
 
 def test_self_gravity_computed_again_gives_the_cached_ratio():
     sim = _run(_binary(0.7))
-    assert sim.virial_ratio(t=0, solver=DirectSum(eps=0.)) == pytest.approx(sim.virial_ratio(t=0), rel=1e-12)
+    assert sim.virial_ratio(t=0, solver=DirectSum()) == pytest.approx(sim.virial_ratio(t=0), rel=1e-12)
 
 
 def test_a_uniform_external_field_leaves_the_ratio_alone():
@@ -118,16 +117,16 @@ def test_external_forces_count():
 
 def test_a_components_ratio_counts_the_other_components_unless_told_not_to():
     pos, mass = _ring()
-    acc = _DIRECT.acc(np.vstack([pos, np.zeros((1, 3))]), np.append(mass, M))[:-1]
+    acc = _DIRECT.acc(np.vstack([pos, np.zeros((1, 3))]), np.append(mass, M), 0.)[:-1]
     sim = Sim(solver=DirectSum())
-    sim.add_particles(pos, _circular(pos, acc), mass, name='ring')
-    sim.add_particles(np.zeros((1, 3)), np.zeros((1, 3)), np.array([M]), name='host')
+    sim.add_particles(pos, _circular(pos, acc), mass, name='ring', eps=0.)
+    sim.add_particles(np.zeros((1, 3)), np.zeros((1, 3)), np.array([M]), name='host', eps=0.)
     _run(sim)
     assert sim.virial_ratio(t=0) == pytest.approx(1., rel=1e-12)
     assert sim.ring.virial_ratio(t=0) == pytest.approx(1., rel=1e-12)
     # In its own gravity alone, the ring's ratio is its total acceleration over its own.
-    alone = np.linalg.norm(acc[0]) / np.linalg.norm(_DIRECT.acc(pos, mass)[0])
-    assert sim.ring.virial_ratio(t=0, include_all_components=False, solver=DirectSum(eps=0.)) == \
+    alone = np.linalg.norm(acc[0]) / np.linalg.norm(_DIRECT.acc(pos, mass, 0.)[0])
+    assert sim.ring.virial_ratio(t=0, include_all_components=False, solver=DirectSum()) == \
         pytest.approx(alone, rel=1e-12)
 
 

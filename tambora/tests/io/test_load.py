@@ -241,8 +241,7 @@ def test_loading_with_solver_none_gives_a_sim_without_self_gravity(tmp_path):
 
 @pytest.mark.parametrize("solver, error, message", [
     ('direct', TypeError, r"^solver must be a self-gravity solver, e.g. FalcON\(\), or None. Got 'str'.$"),
-    (DirectSum(eps=0.1), ValueError, "^The Sim's solver can't have its own softening."),
-], ids=['a name', 'its own softening'])
+], ids=['a name'])
 def test_load_checks_its_solver_as_sim_does(tmp_path, solver, error, message):
     with pytest.raises(error, match=message):      # before the run is looked for
         Sim.load(tmp_path / 'no run', solver=solver)
@@ -277,12 +276,11 @@ def test_a_loaded_sim_cant_run_again_or_take_particles_or_hooks(tmp_path):
     assert not (tmp_path / 'run').exists()
 
 
-def test_setting_eps_on_a_loaded_sim_goes_back_to_the_first_output(tmp_path):
+def test_clearing_a_loaded_sims_outputs_goes_back_to_the_first_output(tmp_path):
     _sim(output_dir=tmp_path / 'run').run(**RUN)
     memory = _sim()
     sim = _load(tmp_path / 'run')
-    sim.a.eps = 0.2
-    memory.a.eps = 0.2
+    sim._clear_outputs()
     _assert_same_run(sim, memory)
 
 

@@ -5,7 +5,7 @@ from tambora.units import G_INTERNAL
 from tambora.dynamics import DirectSum, FalcON
 
 np.random.seed(42)
-direct_gravity = DirectSum(eps=0.0)
+direct_gravity = DirectSum()
 
 COMP1_NPTS = 50
 COMP1_POS = np.random.rand(COMP1_NPTS, 3)
@@ -21,11 +21,11 @@ multicomp = Sim(solver=FalcON(theta=0.3))
 multicomp.add_particles(name='comp1',
                     pos=COMP1_POS, 
                     vel=COMP1_VEL, 
-                    mass=COMP1_MASS)
+                    mass=COMP1_MASS, eps=0.1)
 multicomp.add_particles(name='comp2',
                     pos=COMP2_POS, 
                     vel=COMP2_VEL, 
-                    mass=COMP2_MASS)
+                    mass=COMP2_MASS, eps=0.1)
 
 # --- Basic attribute access ------------------------------------------------- #
 
@@ -82,7 +82,6 @@ def test_component_mass_is_read_only_property():
 
 # --- Shapes after run ------------------------------------------------------- #
 
-multicomp.eps = 0.1
 multicomp.run(t_end=1., dt=0.1, dt_out=0.1)
 _N_SNAP_MC = 11
 
@@ -628,10 +627,9 @@ def _iac_sim():
     """Two-component sim for include_all_components testing."""
     sim = Sim(solver=DirectSum())
     sim.add_particles(name='disk', pos=_IAC_COMP1_POS.copy(),
-                      vel=_IAC_COMP1_VEL.copy(), mass=_IAC_COMP1_MASS.copy())
+                      vel=_IAC_COMP1_VEL.copy(), mass=_IAC_COMP1_MASS.copy(), eps=0.0)
     sim.add_particles(name='sat', pos=_IAC_COMP2_POS.copy(),
-                      vel=_IAC_COMP2_VEL.copy(), mass=_IAC_COMP2_MASS.copy())
-    sim.eps = 0.0
+                      vel=_IAC_COMP2_VEL.copy(), mass=_IAC_COMP2_MASS.copy(), eps=0.0)
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, 
             cache_self_gravity_acc=True, cache_self_gravity_pot=True)
     return sim
@@ -650,10 +648,10 @@ def test_iac_self_gravity_all_components():
     all_pos = np.concatenate([_IAC_COMP1_POS, _IAC_COMP2_POS])
     all_mass = np.concatenate([_IAC_COMP1_MASS, _IAC_COMP2_MASS])
     
-    acc_all = direct_gravity.acc(all_pos, all_mass)
+    acc_all = direct_gravity.acc(all_pos, all_mass, 0.0)
     acc_disk_expected = acc_all[:2]
 
-    acc_disk = disk.self_gravity(t=0, solver=DirectSum(eps=0.0), include_all_components=True, return_internal=True)
+    acc_disk = disk.self_gravity(t=0, solver=DirectSum(), include_all_components=True, return_internal=True)
     np.testing.assert_allclose(acc_disk, acc_disk_expected, rtol=1e-15)
 
 
@@ -665,9 +663,9 @@ def test_iac_self_gravity_own_component_only():
     If this fails: include_all_components=False still includes other components.
     '''
     disk = _IAC_SIM.disk
-    acc_disk_only= direct_gravity.acc(_IAC_COMP1_POS, _IAC_COMP1_MASS)
+    acc_disk_only= direct_gravity.acc(_IAC_COMP1_POS, _IAC_COMP1_MASS, 0.0)
 
-    acc_disk = disk.self_gravity(t=0, solver=DirectSum(eps=0.0), include_all_components=False, return_internal=True)
+    acc_disk = disk.self_gravity(t=0, solver=DirectSum(), include_all_components=False, return_internal=True)
     np.testing.assert_allclose(acc_disk, acc_disk_only, rtol=1e-15)
 
 
@@ -678,8 +676,8 @@ def test_iac_self_gravity_all_differs_from_own():
     If this fails: include_all_components flag has no effect.
     '''
     disk = _IAC_SIM.disk
-    acc_all = disk.self_gravity(t=0, solver=DirectSum(eps=0.0), include_all_components=True)
-    acc_own = disk.self_gravity(t=0, solver=DirectSum(eps=0.0), include_all_components=False)
+    acc_all = disk.self_gravity(t=0, solver=DirectSum(), include_all_components=True)
+    acc_own = disk.self_gravity(t=0, solver=DirectSum(), include_all_components=False)
     assert not np.allclose(acc_all, acc_own, rtol=1e-5)
 
 
@@ -693,10 +691,10 @@ def test_iac_self_potential_all_components():
     disk = _IAC_SIM.disk
     all_pos = np.concatenate([_IAC_COMP1_POS, _IAC_COMP2_POS])
     all_mass = np.concatenate([_IAC_COMP1_MASS, _IAC_COMP2_MASS])
-    pot_all = direct_gravity.potential(all_pos, all_mass)
+    pot_all = direct_gravity.potential(all_pos, all_mass, 0.0)
     expected = _IAC_COMP1_MASS * pot_all[:2]
 
-    result = disk.self_potential(t=0, solver=DirectSum(eps=0.0), include_all_components=True, return_internal=True)
+    result = disk.self_potential(t=0, solver=DirectSum(), include_all_components=True, return_internal=True)
     np.testing.assert_allclose(result, expected, rtol=1e-15)
 
 
@@ -707,18 +705,18 @@ def test_iac_self_potential_own_component_only():
     If this fails: include_all_components=False still includes other particles.
     '''
     disk = _IAC_SIM.disk
-    pot_disk_only = direct_gravity.potential(_IAC_COMP1_POS, _IAC_COMP1_MASS)
+    pot_disk_only = direct_gravity.potential(_IAC_COMP1_POS, _IAC_COMP1_MASS, 0.0)
     expected = _IAC_COMP1_MASS * pot_disk_only
 
-    result = disk.self_potential(t=0, solver=DirectSum(eps=0.0), include_all_components=False, return_internal=True)
+    result = disk.self_potential(t=0, solver=DirectSum(), include_all_components=False, return_internal=True)
     np.testing.assert_allclose(result, expected, rtol=1e-15)
 
 
 def test_iac_self_potential_all_differs_from_own():
     '''Verify include_all_components=True and False differ for potential.'''
     disk = _IAC_SIM.disk
-    pot_all = disk.self_potential(t=0, solver=DirectSum(eps=0.0), include_all_components=True)
-    pot_own = disk.self_potential(t=0, solver=DirectSum(eps=0.0), include_all_components=False)
+    pot_all = disk.self_potential(t=0, solver=DirectSum(), include_all_components=True)
+    pot_own = disk.self_potential(t=0, solver=DirectSum(), include_all_components=False)
     assert not np.allclose(pot_all, pot_own, rtol=1e-1)
 
 
@@ -730,7 +728,7 @@ def test_iac_sat_self_gravity_own_is_zero():
     If this fails: Single-particle self-gravity is non-zero.
     '''
     sat = _IAC_SIM.sat
-    acc = sat.self_gravity(t=0, solver=DirectSum(eps=0.0), include_all_components=False)
+    acc = sat.self_gravity(t=0, solver=DirectSum(), include_all_components=False)
     np.testing.assert_allclose(acc, 0.0, atol=1e-30)
 
 
@@ -742,7 +740,7 @@ def test_iac_sat_self_gravity_all_is_nonzero():
     If this fails: include_all_components=True is not including disk particles.
     '''
     sat = _IAC_SIM.sat
-    acc = sat.self_gravity(t=0, solver=DirectSum(eps=0.0), include_all_components=True)
+    acc = sat.self_gravity(t=0, solver=DirectSum(), include_all_components=True)
     assert np.any(np.abs(acc) > 1e-30)
 
 
@@ -756,10 +754,10 @@ def test_iac_sat_self_gravity_all_analytical():
     sat = _IAC_SIM.sat
     all_pos = np.concatenate([_IAC_COMP1_POS, _IAC_COMP2_POS])
     all_mass = np.concatenate([_IAC_COMP1_MASS, _IAC_COMP2_MASS])
-    acc_all = direct_gravity.acc(all_pos, all_mass)
+    acc_all = direct_gravity.acc(all_pos, all_mass, 0.0)
     acc_sat_expected = acc_all[2:]  # sat is particle index 2
 
-    acc_sat = sat.self_gravity(t=0, solver=DirectSum(eps=0.0), include_all_components=True, return_internal=True)
+    acc_sat = sat.self_gravity(t=0, solver=DirectSum(), include_all_components=True, return_internal=True)
     np.testing.assert_allclose(acc_sat, acc_sat_expected, rtol=1e-15)
 
 
@@ -787,14 +785,14 @@ def test_iac_self_potential_analytical_two_body():
     phi_0_all = -G_INTERNAL * m1 / r01 - G_INTERNAL * m_sat / r0_sat
     phi_1_all = -G_INTERNAL * m0 / r01 - G_INTERNAL * m_sat / r1_sat
     expected_all = np.array([m0 * phi_0_all, m1 * phi_1_all])
-    result_all = disk.self_potential(t=0, solver=DirectSum(eps=0.0), include_all_components=True, return_internal=True)
+    result_all = disk.self_potential(t=0, solver=DirectSum(), include_all_components=True, return_internal=True)
     np.testing.assert_allclose(result_all, expected_all, rtol=1e-15)
 
     # Own component only
     phi_0_own = -G_INTERNAL * m1 / r01
     phi_1_own = -G_INTERNAL * m0 / r01
     expected_own = np.array([m0 * phi_0_own, m1 * phi_1_own])
-    result_own = disk.self_potential(t=0, solver=DirectSum(eps=0.0), include_all_components=False, return_internal=True)
+    result_own = disk.self_potential(t=0, solver=DirectSum(), include_all_components=False, return_internal=True)
     np.testing.assert_allclose(result_own, expected_own, rtol=1e-15)
 
 # --- saved values and include_all_components ------------------------------------ #
@@ -809,7 +807,7 @@ def test_iac_default_uses_cache_when_include_all():
     '''
     disk = _IAC_SIM.disk
     cached = disk.self_potential(t=0, return_internal=True)
-    recomputed = disk.self_potential(t=0, solver=DirectSum(eps=0.0),
+    recomputed = disk.self_potential(t=0, solver=DirectSum(),
                                      include_all_components=True, return_internal=True)
     np.testing.assert_allclose(cached, recomputed, rtol=1e-12)
 
@@ -839,7 +837,7 @@ def test_iac_not_include_all_with_method_still_works():
     If this fails: requiring a method also blocked the legitimate compute path.
     '''
     disk = _IAC_SIM.disk
-    expected = direct_gravity.acc(_IAC_COMP1_POS, _IAC_COMP1_MASS)
-    acc = disk.self_gravity(t=0, solver=DirectSum(eps=0.0),
+    expected = direct_gravity.acc(_IAC_COMP1_POS, _IAC_COMP1_MASS, 0.0)
+    acc = disk.self_gravity(t=0, solver=DirectSum(),
                             include_all_components=False, return_internal=True)
     np.testing.assert_allclose(acc, expected, rtol=1e-15)

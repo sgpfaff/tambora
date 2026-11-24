@@ -27,8 +27,9 @@ def _field(unit):
 
 
 class _Profile:
-    #: Marks tambora's own models: any installed backend may take one, even before its
-    #: package has been imported (see tambora.interop._registry).
+    #: Marks tambora's own models
+    # any installed backend may take one, even before its
+    # package has been imported (see tambora.interop._registry).
     _tambora_model = True
 
     def __post_init__(self):

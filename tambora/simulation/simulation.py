@@ -35,8 +35,6 @@ def _check_solver(solver):
         return NullSelfGravity()
     if not isinstance(solver, SelfGravityForce):
         raise TypeError(f"solver must be a self-gravity solver, e.g. FalcON(), or None. Got {type(solver).__name__!r}.")
-    if solver.eps is not None:
-        raise ValueError("The Sim's solver can't have its own softening. Give the softening to the particles.")
     return solver
 
 
@@ -326,7 +324,7 @@ class Sim(_ParticleView):
             where i is the component's position (from 0).
         eps : float or (N,) array, optional
             Softening length of the particles, one for all or one each. Required
-            to run with self-gravity; it can also be set later through ``eps``.
+            unless the Sim was made with ``solver=None``.
             Units: `kpc`
 
         Returns
@@ -336,8 +334,9 @@ class Sim(_ParticleView):
         Raises
         ------
         ValueError
-            If the component already exists, the name can't be used, or the input
-            arrays have incompatible shapes.
+            If the component already exists, the name can't be used, the input
+            arrays have incompatible shapes, or ``eps`` is missing and the Sim has
+            a self-gravity solver.
         TypeError
             If the input types are incorrect, or if a ParticleSet is given together with
             ``vel`` or ``mass``, or neither is given.
@@ -347,7 +346,7 @@ class Sim(_ParticleView):
         if isinstance(pos, ParticleSet):
             if vel is not None or mass is not None:
                 raise TypeError("Pass either a ParticleSet or pos, vel and mass, not both.")
-            pos, vel, mass = pos
+            pos, vel, mass = pos.pos, pos.vel, pos.mass
         elif vel is None or mass is None:
             raise TypeError("vel and mass are required unless pos is a ParticleSet.")
         # Copies: the simulation's initial state can't change through the caller's arrays,
@@ -380,6 +379,9 @@ class Sim(_ParticleView):
             raise ValueError(f"mass must be shape (N,), received {mass.shape}")
         if not (pos.shape[0] == vel.shape[0] == mass.shape[0]):
             raise ValueError(f"pos, vel, mass must have same number of particles, received {pos.shape[0]}, {vel.shape[0]}, {mass.shape[0]}.")
+        if eps is None and not isinstance(self._self_gravity_force, NullSelfGravity):
+            raise ValueError("Particles in a Sim with self-gravity need a softening. "
+                             "Give it with eps=..., or make the Sim with solver=None.")
         eps = np.full(pos.shape[0], np.nan) if eps is None else _check_eps(eps, pos.shape[0])
 
         # Build slice and append to flat arrays
@@ -404,14 +406,6 @@ class Sim(_ParticleView):
         self._velocities = self._init_vel.reshape(1, N, 3)
         self._times = np.array([0.0])
         self._steps = np.array([0])
-
-    def _set_eps(self, sl, eps):
-        """Set the softening of the particles in *sl*; a previous run's outputs are cleared."""
-        if self._eps is None:
-            raise RuntimeError("Add particles before setting their softening.")
-        self._eps[sl] = _check_eps(eps, len(self._eps[sl]))
-        if self._has_run:
-            self._clear_outputs()
 
     def _clear_outputs(self):
         """Back to the initial conditions, as before ``run()``."""
@@ -621,12 +615,6 @@ class Sim(_ParticleView):
             raise RuntimeError(f"This Sim was loaded from {self._output_dir!r} and can't run. "
                                "Make a new Sim to run again.")
         solver = self._self_gravity_force
-        if not isinstance(solver, NullSelfGravity):
-            unset = [name for name, sl in self._slices.items() if np.isnan(self._eps[sl]).any()]
-            if unset:
-                raise ValueError(
-                    f"Softening isn't set for {', '.join(repr(n) for n in unset)}. Give it with "
-                    f"add_particles(..., eps=...) or sim.<component>.eps = ..., or make the Sim with solver=None.")
         _check_dt_dt_out(dt, dt_out, t0, t_end)
         t0, t_end, dt, dt_out = float(t0), float(t_end), float(dt), float(dt_out)
         cache_self_gravity_acc, cache_self_gravity_pot = bool(cache_self_gravity_acc), bool(cache_self_gravity_pot)
@@ -1369,8 +1357,6 @@ class Sim(_ParticleView):
             If one of ``forces`` is neither a force nor a potential an installed backend can use.
         TypeError
             If ``solver`` is neither a self-gravity solver nor None.
-        ValueError
-            If ``solver`` has its own softening.
 
         Warns
         -----

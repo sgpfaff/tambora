@@ -256,6 +256,7 @@ def sim():
         pos=np.random.rand(20, 3),
         vel=np.random.rand(20, 3) * 100,  # 0-100 km/s
         mass=np.random.rand(20) * 1e6,
+        eps=0.01,
     )
     return s
 
@@ -323,8 +324,8 @@ class TestSimAccessorConversion:
     # --- acceleration (self-gravity) ----------------------------
 
     def test_self_gravity(self, sim):
-        user = sim.self_gravity(t=0, solver=DirectSum(eps=0.01))
-        internal = sim.self_gravity(t=0, solver=DirectSum(eps=0.01), return_internal=True)
+        user = sim.self_gravity(t=0, solver=DirectSum())
+        internal = sim.self_gravity(t=0, solver=DirectSum(), return_internal=True)
         assert_allclose(
             user, internal * INTERNAL_TO_USER_UNITS['acceleration'],
             rtol=1e-14,
@@ -332,8 +333,8 @@ class TestSimAccessorConversion:
 
     @pytest.mark.parametrize("method", ["self_ax", "self_ay", "self_az"])
     def test_self_acc_components(self, sim, method):
-        user = getattr(sim, method)(t=0, solver=DirectSum(eps=0.01))
-        internal = getattr(sim, method)(t=0, solver=DirectSum(eps=0.01), return_internal=True)
+        user = getattr(sim, method)(t=0, solver=DirectSum())
+        internal = getattr(sim, method)(t=0, solver=DirectSum(), return_internal=True)
         assert_allclose(
             user, internal * INTERNAL_TO_USER_UNITS['acceleration'],
             rtol=1e-14,
@@ -342,32 +343,32 @@ class TestSimAccessorConversion:
     # --- self potential (energy) --------------------------------
 
     def test_self_potential(self, sim):
-        user = sim.self_potential(t=0, solver=DirectSum(eps=0.01))
-        internal = sim.self_potential(t=0, solver=DirectSum(eps=0.01), return_internal=True)
+        user = sim.self_potential(t=0, solver=DirectSum())
+        internal = sim.self_potential(t=0, solver=DirectSum(), return_internal=True)
         assert_allclose(user, internal * INTERNAL_TO_USER_UNITS['energy'],
                         rtol=1e-14)
 
     # --- PE (total potential energy) ----------------------------
 
     def test_PE(self, sim):
-        user = sim.PE(t=0, solver=DirectSum(eps=0.01))
-        internal = sim.PE(t=0, solver=DirectSum(eps=0.01), return_internal=True)
+        user = sim.PE(t=0, solver=DirectSum())
+        internal = sim.PE(t=0, solver=DirectSum(), return_internal=True)
         assert_allclose(user, internal * INTERNAL_TO_USER_UNITS['energy'],
                         rtol=1e-14)
 
     # --- energy (total = KE + PE) -------------------------------
 
     def test_energy(self, sim):
-        user = sim.energy(t=0, solver=DirectSum(eps=0.01))
-        internal = sim.energy(t=0, solver=DirectSum(eps=0.01), return_internal=True)
+        user = sim.energy(t=0, solver=DirectSum())
+        internal = sim.energy(t=0, solver=DirectSum(), return_internal=True)
         assert_allclose(user, internal * INTERNAL_TO_USER_UNITS['energy'],
                         rtol=1e-14)
 
     # --- system_energy (scalar sum) -----------------------------
 
     def test_system_energy(self, sim):
-        user = sim.system_energy(t=0, solver=DirectSum(eps=0.01))
-        internal = sim.system_energy(t=0, solver=DirectSum(eps=0.01), return_internal=True)
+        user = sim.system_energy(t=0, solver=DirectSum())
+        internal = sim.system_energy(t=0, solver=DirectSum(), return_internal=True)
         assert_allclose(user, internal * INTERNAL_TO_USER_UNITS['energy'],
                         rtol=1e-14)
 
@@ -386,6 +387,7 @@ def sim_ext():
         pos=np.random.rand(10, 3) + 1.0,   # offset from origin to avoid R=0
         vel=np.random.rand(10, 3) * 100,
         mass=np.random.rand(10) * 1e6,
+        eps=0.01,
     )
     s.add_force(gp.PlummerPotential())
     return s
@@ -415,20 +417,20 @@ class TestExternalAccessorConversion:
                         rtol=1e-14)
 
     def test_PE_with_external(self, sim_ext):
-        user = sim_ext.PE(t=0, solver=DirectSum(eps=0.01))
-        internal = sim_ext.PE(t=0, solver=DirectSum(eps=0.01), return_internal=True)
+        user = sim_ext.PE(t=0, solver=DirectSum())
+        internal = sim_ext.PE(t=0, solver=DirectSum(), return_internal=True)
         assert_allclose(user, internal * INTERNAL_TO_USER_UNITS['energy'],
                         rtol=1e-14)
 
     def test_energy_with_external(self, sim_ext):
-        user = sim_ext.energy(t=0, solver=DirectSum(eps=0.01))
-        internal = sim_ext.energy(t=0, solver=DirectSum(eps=0.01), return_internal=True)
+        user = sim_ext.energy(t=0, solver=DirectSum())
+        internal = sim_ext.energy(t=0, solver=DirectSum(), return_internal=True)
         assert_allclose(user, internal * INTERNAL_TO_USER_UNITS['energy'],
                         rtol=1e-14)
 
     def test_system_energy_with_external(self, sim_ext):
-        user = sim_ext.system_energy(t=0, solver=DirectSum(eps=0.01))
-        internal = sim_ext.system_energy(t=0, solver=DirectSum(eps=0.01), return_internal=True)
+        user = sim_ext.system_energy(t=0, solver=DirectSum())
+        internal = sim_ext.system_energy(t=0, solver=DirectSum(), return_internal=True)
         assert_allclose(user, internal * INTERNAL_TO_USER_UNITS['energy'],
                         rtol=1e-14)
 
@@ -493,8 +495,8 @@ class TestComponentAccessorConversion:
 
     def test_self_potential(self, sim):
         comp = sim.stars
-        user = comp.self_potential(t=0, solver=DirectSum(eps=0.01))
-        internal = comp.self_potential(t=0, solver=DirectSum(eps=0.01), return_internal=True)
+        user = comp.self_potential(t=0, solver=DirectSum())
+        internal = comp.self_potential(t=0, solver=DirectSum(), return_internal=True)
         assert_allclose(user, internal * INTERNAL_TO_USER_UNITS['energy'],
                         rtol=1e-14)
 
@@ -502,8 +504,8 @@ class TestComponentAccessorConversion:
 
     def test_PE(self, sim):
         comp = sim.stars
-        user = comp.PE(t=0, solver=DirectSum(eps=0.01))
-        internal = comp.PE(t=0, solver=DirectSum(eps=0.01), return_internal=True)
+        user = comp.PE(t=0, solver=DirectSum())
+        internal = comp.PE(t=0, solver=DirectSum(), return_internal=True)
         assert_allclose(user, internal * INTERNAL_TO_USER_UNITS['energy'],
                         rtol=1e-14)
 
@@ -511,8 +513,8 @@ class TestComponentAccessorConversion:
 
     def test_energy(self, sim):
         comp = sim.stars
-        user = comp.energy(t=0, solver=DirectSum(eps=0.01))
-        internal = comp.energy(t=0, solver=DirectSum(eps=0.01), return_internal=True)
+        user = comp.energy(t=0, solver=DirectSum())
+        internal = comp.energy(t=0, solver=DirectSum(), return_internal=True)
         assert_allclose(user, internal * INTERNAL_TO_USER_UNITS['energy'],
                         rtol=1e-14)
 
@@ -520,16 +522,16 @@ class TestComponentAccessorConversion:
 
     def test_self_gravity(self, sim):
         comp = sim.stars
-        user = comp.self_gravity(t=0, solver=DirectSum(eps=0.01))
-        internal = comp.self_gravity(t=0, solver=DirectSum(eps=0.01), return_internal=True)
+        user = comp.self_gravity(t=0, solver=DirectSum())
+        internal = comp.self_gravity(t=0, solver=DirectSum(), return_internal=True)
         assert_allclose(user, internal * INTERNAL_TO_USER_UNITS['acceleration'],
                         rtol=1e-14)
 
     @pytest.mark.parametrize("method", ["self_ax", "self_ay", "self_az"])
     def test_self_acc_components(self, sim, method):
         comp = sim.stars
-        user = getattr(comp, method)(t=0, solver=DirectSum(eps=0.01))
-        internal = getattr(comp, method)(t=0, solver=DirectSum(eps=0.01), return_internal=True)
+        user = getattr(comp, method)(t=0, solver=DirectSum())
+        internal = getattr(comp, method)(t=0, solver=DirectSum(), return_internal=True)
         assert_allclose(user, internal * INTERNAL_TO_USER_UNITS['acceleration'],
                         rtol=1e-14)
 
@@ -561,15 +563,15 @@ class TestComponentExternalAccessorConversion:
 
     def test_PE_with_external(self, sim_ext):
         comp = sim_ext.stars
-        user = comp.PE(t=0, solver=DirectSum(eps=0.01))
-        internal = comp.PE(t=0, solver=DirectSum(eps=0.01), return_internal=True)
+        user = comp.PE(t=0, solver=DirectSum())
+        internal = comp.PE(t=0, solver=DirectSum(), return_internal=True)
         assert_allclose(user, internal * INTERNAL_TO_USER_UNITS['energy'],
                         rtol=1e-14)
 
     def test_energy_with_external(self, sim_ext):
         comp = sim_ext.stars
-        user = comp.energy(t=0, solver=DirectSum(eps=0.01))
-        internal = comp.energy(t=0, solver=DirectSum(eps=0.01), return_internal=True)
+        user = comp.energy(t=0, solver=DirectSum())
+        internal = comp.energy(t=0, solver=DirectSum(), return_internal=True)
         assert_allclose(user, internal * INTERNAL_TO_USER_UNITS['energy'],
                         rtol=1e-14)
 
@@ -584,7 +586,7 @@ class TestAddParticlesVelocityConversion:
         vel_kms = np.array([[100.0, 200.0, 300.0]])
         s = Sim()
         s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms,
-                        mass=np.ones(1))
+                        mass=np.ones(1), eps=0.1)
         # Internal storage should be kpc/Gyr
         assert_allclose(s._init_vel, vel_kms * KMS_TO_KPCGYR, rtol=1e-15)
 
@@ -592,7 +594,7 @@ class TestAddParticlesVelocityConversion:
         vel_kms = np.array([[100.0, 200.0, 300.0]])
         s = Sim()
         s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms,
-                        mass=np.ones(1))
+                        mass=np.ones(1), eps=0.1)
         # Default accessor should return km/s (round-trip)
         assert_allclose(s.vel(t=0), vel_kms, rtol=1e-14)
 
@@ -600,7 +602,7 @@ class TestAddParticlesVelocityConversion:
         vel_kms = np.array([[100.0, 200.0, 300.0]])
         s = Sim()
         s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms,
-                        mass=np.ones(1))
+                        mass=np.ones(1), eps=0.1)
         assert_allclose(s.vel(t=0, return_internal=True),
                         vel_kms * KMS_TO_KPCGYR, rtol=1e-15)
 
@@ -620,7 +622,7 @@ class TestAstropyPhysicalConsistency:
         vel_kms_input = np.array([[(1.0 * u.kpc / u.Gyr).to(u.km / u.s).value,
                                     0.0, 0.0]])
         s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms_input,
-                        mass=np.ones(1))
+                        mass=np.ones(1), eps=0.1)
         # Internal should be exactly 1 kpc/Gyr
         assert_allclose(s.vel(t=0, return_internal=True)[0, 0], 1.0, rtol=1e-10)
         # User output should match astropy conversion
@@ -633,7 +635,7 @@ class TestAstropyPhysicalConsistency:
         vel_kms = np.array([[100.0, 0.0, 0.0]])
         s = Sim()
         s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms,
-                        mass=np.array([mass_msun]))
+                        mass=np.array([mass_msun]), eps=0.1)
 
         KE_astropy = 0.5 * mass_msun * 100.0**2  # Msun (km/s)^2
         assert_allclose(s.KE(t=0), KE_astropy, rtol=1e-10)
@@ -644,7 +646,7 @@ class TestAstropyPhysicalConsistency:
         vel_kms = np.array([[100.0, 200.0, 300.0]])
         s = Sim()
         s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms,
-                        mass=np.array([mass_msun]))
+                        mass=np.array([mass_msun]), eps=0.1)
 
         # Expected: Msun * km/s
         expected_p = mass_msun * vel_kms  # Msun km/s
@@ -657,10 +659,10 @@ class TestAstropyPhysicalConsistency:
         pos = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])  # 1 kpc apart
         vel = np.zeros((2, 3))  # stationary in km/s
         s = Sim()
-        s.add_particles(name='test', pos=pos, vel=vel, mass=np.array([m1, m2]))
+        s.add_particles(name='test', pos=pos, vel=vel, mass=np.array([m1, m2]), eps=0.0)
 
         # Compute in internal units
-        acc_internal = s.self_gravity(t=0, solver=DirectSum(eps=0.0),
+        acc_internal = s.self_gravity(t=0, solver=DirectSum(),
                                      return_internal=True)  # kpc/Gyr^2
         # Particle 0 should be attracted toward particle 1 (+x direction)
         # |a| = G * m2 / r^2 = G_INTERNAL * 1e10 / 1.0^2
@@ -668,7 +670,7 @@ class TestAstropyPhysicalConsistency:
         assert_allclose(abs(acc_internal[0, 0]), expected_acc_x, rtol=1e-10)
 
         # Verify user-unit output matches internal * factor
-        acc_user = s.self_gravity(t=0, solver=DirectSum(eps=0.0))
+        acc_user = s.self_gravity(t=0, solver=DirectSum())
         assert_allclose(acc_user, acc_internal * INTERNAL_TO_USER_UNITS['acceleration'],
                         rtol=1e-14)
 
@@ -678,16 +680,16 @@ class TestAstropyPhysicalConsistency:
         pos = np.array([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]])  # 2 kpc apart
         vel = np.zeros((2, 3))
         s = Sim()
-        s.add_particles(name='test', pos=pos, vel=vel, mass=np.array([m1, m2]))
+        s.add_particles(name='test', pos=pos, vel=vel, mass=np.array([m1, m2]), eps=0.0)
 
-        pot_internal = s.self_potential(t=0, solver=DirectSum(eps=0.0),
+        pot_internal = s.self_potential(t=0, solver=DirectSum(),
                                        return_internal=True)
         # self_potential returns m_i * phi_i = m1 * (-G * m2 / r)
         expected_pot0 = m1 * (-G_INTERNAL * m2 / 2.0)
         assert_allclose(pot_internal[0], expected_pot0, rtol=1e-10)
 
         # User-unit consistency
-        pot_user = s.self_potential(t=0, solver=DirectSum(eps=0.0))
+        pot_user = s.self_potential(t=0, solver=DirectSum())
         assert_allclose(pot_user, pot_internal * INTERNAL_TO_USER_UNITS['energy'],
                         rtol=1e-14)
 
@@ -697,7 +699,7 @@ class TestAstropyPhysicalConsistency:
         vel_kms = np.array([[0.0, 100.0, 0.0]])  # km/s
         mass = np.array([1e6])
         s = Sim()
-        s.add_particles(name='test', pos=pos, vel=vel_kms, mass=mass)
+        s.add_particles(name='test', pos=pos, vel=vel_kms, mass=mass, eps=0.1)
 
         # Internal: L = r x (m * v_internal)
         # L_z = x * m * vy_internal = 1.0 * 1e6 * (100 * KMS_TO_KPCGYR)

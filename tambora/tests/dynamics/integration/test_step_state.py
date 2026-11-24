@@ -68,12 +68,12 @@ class SpyProgress:
         self.reported.update(fields)
 
 
-def make_state(self_pot=None, self_acc=None, sg=None, ext=None, progress=None, t=1.0, step=3):
+def make_state(self_pot=None, self_acc=None, sg=None, ext=None, progress=None, t=1.0, step=3, eps=None):
     """Build a StepState over the fixed system with the given stubs/overrides."""
     res = StepResult(POS.copy(), VEL.copy(), MASS.copy(), t,
                      self_acc=self_acc, self_pot=self_pot,
                      conserv_ext_acc=None, base_ext_acc=None, step=step)
-    ctx = StepContext(dict(SLICES), sg, ext, None, progress)
+    ctx = StepContext(dict(SLICES), sg, ext, None, progress, eps)
     return StepState(res, ctx)
 
 
@@ -301,12 +301,12 @@ def test_self_potential_custom_solver_computed_once_and_shared():
 
 def test_self_potential_isolated_uses_only_component_particles():
     from tambora.dynamics.forces.self_gravity import DirectSum
-    solver = DirectSum(eps=0.1)
-    _, full = DirectSum(eps=0.1).acc_and_potential(POS, MASS)
-    st = make_state(self_pot=full, sg=solver)
+    solver = DirectSum()
+    _, full = DirectSum().acc_and_potential(POS, MASS, 0.1)
+    st = make_state(self_pot=full, sg=solver, eps=0.1)
 
     iso = st.a.self_potential(include_all_components=False)
-    _, phi_a = DirectSum(eps=0.1).acc_and_potential(POS[0:3], MASS[0:3])
+    _, phi_a = DirectSum().acc_and_potential(POS[0:3], MASS[0:3], 0.1)
     np.testing.assert_allclose(iso, MASS[0:3] * phi_a)
     # Isolated (a's own gravity) differs from a's slice of the whole-system field.
     assert not np.allclose(iso, st.a.self_potential(include_all_components=True))
@@ -356,12 +356,12 @@ def test_self_gravity_custom_solver_computed_once_and_shared():
 
 def test_self_gravity_isolated_uses_only_component_particles():
     from tambora.dynamics.forces.self_gravity import DirectSum
-    solver = DirectSum(eps=0.1)
-    full_acc, full_pot = DirectSum(eps=0.1).acc_and_potential(POS, MASS)
-    st = make_state(self_acc=full_acc, self_pot=full_pot, sg=solver)
+    solver = DirectSum()
+    full_acc, full_pot = DirectSum().acc_and_potential(POS, MASS, 0.1)
+    st = make_state(self_acc=full_acc, self_pot=full_pot, sg=solver, eps=0.1)
 
     iso = st.a.self_gravity(include_all_components=False)
-    acc_a, _ = DirectSum(eps=0.1).acc_and_potential(POS[0:3], MASS[0:3])
+    acc_a, _ = DirectSum().acc_and_potential(POS[0:3], MASS[0:3], 0.1)
     np.testing.assert_allclose(iso, acc_a)
     # Isolated (a's own gravity) differs from a's slice of the whole-system field.
     assert not np.allclose(iso, st.a.self_gravity(include_all_components=True))
@@ -388,9 +388,9 @@ def test_external_pot_computed_once_and_shared():
 
 def test_PE_and_energy_forward_self_potential_options():
     from tambora.dynamics.forces.self_gravity import DirectSum
-    solver = DirectSum(eps=0.1)
-    _, full = DirectSum(eps=0.1).acc_and_potential(POS, MASS)
-    st = make_state(self_pot=full, sg=solver, ext=SpyExternal(phi=-2.0))
+    solver = DirectSum()
+    _, full = DirectSum().acc_and_potential(POS, MASS, 0.1)
+    st = make_state(self_pot=full, sg=solver, ext=SpyExternal(phi=-2.0), eps=0.1)
     a = st.a
 
     ext = MASS[0:3] * -2.0

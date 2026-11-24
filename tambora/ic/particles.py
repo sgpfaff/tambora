@@ -5,8 +5,6 @@ from typing import Any, Mapping
 
 import numpy as np
 
-
-# eq=False: the generated __eq__ would compare arrays and fail with "truth value is ambiguous".
 @dataclasses.dataclass(frozen=True, eq=False)
 class ParticleSet:
     """Positions, velocities and masses of N particles, and where they came from.
@@ -44,16 +42,13 @@ class ParticleSet:
             object.__setattr__(self, name, value)
         object.__setattr__(self, 'meta', dict(self.meta) if self.meta is not None else {})
 
-    def __iter__(self):
-        yield from (self.pos, self.vel, self.mass)
-
     def __len__(self):
         return len(self.mass)
 
     def __repr__(self):
         return f"ParticleSet(n={len(self)}, total mass={self.mass.sum():.4g} Msun, meta={self.meta!r})"
 
-    def shifted(self, pos=(0., 0., 0.), vel=(0., 0., 0.)):
+    def shift(self, pos=(0., 0., 0.), vel=(0., 0., 0.)):
         """A copy moved by ``pos`` [kpc] and ``vel`` [km/s], e.g. to place a cluster on its orbit."""
         pos, vel = np.asarray(pos, dtype=float), np.asarray(vel, dtype=float)
         if pos.shape != (3,) or vel.shape != (3,):
