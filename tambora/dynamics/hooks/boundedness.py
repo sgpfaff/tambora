@@ -58,8 +58,6 @@ class BoundednessHook(Hook):
     ----------
     component : str
         Component to test for boundedness.
-    eps : float, optional
-        Softening length [kpc] for the unbinding, instead of the component's own.
     track : sequence of str, optional
         Coordinate reductions to store each fire. Available: ``'com'``,
         ``'com_vel'``, ``'dispersion'``. Each becomes a list attribute of the
@@ -69,6 +67,8 @@ class BoundednessHook(Hook):
     solver : SelfGravityForce, optional
         Self-gravity solver for the unbinding. Default ``FalcON()``. Hooks share the
         cached ``bound_mask`` when given the same solver object, or none.
+    eps : float, optional
+        Softening length [kpc] for the unbinding, instead of the component's own.
     max_iter : int, optional
         Maximum unbinding iterations (must match across hooks to share the cached
         ``bound_mask``).
@@ -89,8 +89,8 @@ class BoundednessHook(Hook):
 
     default_cadence = EveryOutput()
 
-    def __init__(self, component, eps=None, track=(), capture_transitions=(),
-                 solver=None, max_iter=50):
+    def __init__(self, component, track=(), capture_transitions=(),
+                 solver=None, eps=None, max_iter=50):
         for name in track:
             if name not in _REDUCTIONS:
                 raise ValueError(
@@ -103,10 +103,10 @@ class BoundednessHook(Hook):
         if solver is not None:
             _check_solver(solver)
         self.component = component
-        self.eps = eps
         self.track = tuple(track)
         self.capture_transitions = tuple(capture_transitions)
         self.solver = solver
+        self.eps = eps
         self.max_iter = max_iter
         self.reset()
 
@@ -120,12 +120,12 @@ class BoundednessHook(Hook):
 
     def _dedup_key(self):
         # Full intentional config: only an exactly-identical hook is a duplicate.
-        return (type(self), self.component, self.eps, self.track,
-                self.capture_transitions, self.solver, self.max_iter)
+        return (type(self), self.component, self.track,
+                self.capture_transitions, self.solver, self.eps, self.max_iter)
 
     def __call__(self, state):
         c = state.component(self.component)
-        mask = state.bound_mask(self.component, eps=self.eps, solver=self.solver,
+        mask = state.bound_mask(self.component, solver=self.solver, eps=self.eps,
                                 max_iter=self.max_iter)
         self.t.append(state.t)
 

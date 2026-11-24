@@ -275,7 +275,7 @@ class StepState:
                 + np.sum(self.external_pot()))
 
     # -- boundedness (iterative unbinding), cached per step --
-    def bound_mask(self, component=None, *, eps=None, solver=None, max_iter=50):
+    def bound_mask(self, component=None, *, solver=None, eps=None, max_iter=50):
         '''
         Boolean mask of self-bound particles, via iterative unbinding.
 
@@ -290,10 +290,10 @@ class StepState:
         component : str, optional
             Component to test. None (default) uses this view's particles (the
             whole system for a top-level state).
-        eps : float, optional
-            Softening length [kpc] to use instead of the particles' own.
         solver : SelfGravityForce, optional
             Self-gravity solver. Default ``FalcON()``.
+        eps : float, optional
+            Softening length [kpc] to use instead of the particles' own.
         max_iter : int, optional
             Maximum unbinding iterations.
         '''
