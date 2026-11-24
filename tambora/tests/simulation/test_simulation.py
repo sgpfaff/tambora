@@ -415,7 +415,7 @@ def _run_with_solver(**sim_kwargs):
 
 def test_a_sim_uses_falcon_unless_told_otherwise():
     solver = Sim()._self_gravity_force
-    assert type(solver) is FalcON and (solver.theta, solver.kernel, solver.eps) == (0.6, 1, None)
+    assert type(solver) is FalcON and (solver.theta, solver.kernel) == (0.6, 1)
 
 
 def test_a_sim_keeps_the_solver_it_is_given_and_none_means_no_self_gravity():
@@ -428,8 +428,7 @@ def test_a_sim_keeps_the_solver_it_is_given_and_none_means_no_self_gravity():
     ('falcON', TypeError, "solver must be a self-gravity solver, e.g. FalcON\\(\\), or None. Got 'str'"),
     (FalcON, TypeError, "Got 'ABCMeta'"),
     (type('Drag', (), {})(), TypeError, "Got 'Drag'"),
-    (DirectSum(eps=0.1), ValueError, "The Sim's solver can't have its own softening. Give the softening to the particles."),
-], ids=['a method name', 'a solver class', 'another object', 'a solver with its own softening'])
+], ids=['a method name', 'a solver class', 'another object'])
 def test_a_sim_refuses_what_is_not_a_solver_it_can_use(solver, error, message):
     with pytest.raises(error, match=message):
         Sim(solver=solver)
@@ -513,25 +512,22 @@ def test_a_hook_gets_a_components_own_gravity_with_its_own_softening(solver):
 
 
 @pytest.mark.parametrize("accessor", ['self_gravity', 'self_potential'])
-def test_gravity_computed_again_uses_the_particles_softening_unless_given_one(accessor):
+def test_gravity_computed_again_uses_the_particles_softening(accessor):
     eps_b = np.linspace(0.02, 0.08, COMP2_NPTS)
     sim = _two_components(eps_a=0.1, eps_b=eps_b)
     _quick_run(sim)
     pos, mass = sim.pos(t=0, return_internal=True), sim.mass
     def expected(eps, sl=slice(None), everyone=True):
-        acc, phi = DirectSum(eps=eps).acc_and_potential(pos if everyone else pos[sl],
-                                                                    mass if everyone else mass[sl])
+        acc, phi = DirectSum().acc_and_potential(pos if everyone else pos[sl],
+                                                 mass if everyone else mass[sl], eps)
         out = acc if accessor == 'self_gravity' else (mass if everyone else mass[sl]) * phi
         return out[sl] if everyone else out
-    def get(obj, eps=None, **kw):
-        return getattr(obj, accessor)(t=0, solver=DirectSum(eps=eps), return_internal=True, **kw)
+    def get(obj, **kw):
+        return getattr(obj, accessor)(t=0, solver=DirectSum(), return_internal=True, **kw)
     np.testing.assert_allclose(get(sim), expected(sim.eps), rtol=1e-12)
-    np.testing.assert_allclose(get(sim, eps=0.3), expected(0.3), rtol=1e-12)
     b = sim._slices['b']
     np.testing.assert_allclose(get(sim.b), expected(sim.eps, b), rtol=1e-12)
     np.testing.assert_allclose(get(sim.b, include_all_components=False), expected(eps_b, b, everyone=False), rtol=1e-12)
-    np.testing.assert_allclose(get(sim.b, include_all_components=False, eps=0.3),
-                               expected(0.3, b, everyone=False), rtol=1e-12)
 
 
 def test_gravity_computed_again_needs_a_softening():
@@ -540,10 +536,9 @@ def test_gravity_computed_again_needs_a_softening():
     with pytest.raises(ValueError, match="Softening isn't set"):
         sim.self_gravity(t=0, solver=DirectSum())
     sim.a.self_gravity(t=0, solver=DirectSum(), include_all_components=False)
-    sim.self_gravity(t=0, solver=DirectSum(eps=0.1))
 
 
-def test_in_a_hook_gravity_computed_again_needs_a_softening_unless_the_solver_has_one():
+def test_in_a_hook_gravity_computed_again_needs_a_softening():
     sim = _two_components(eps_a=0.1, solver=None)
     seen = {}
     def hook(state):
@@ -553,15 +548,11 @@ def test_in_a_hook_gravity_computed_again_needs_a_softening_unless_the_solver_ha
             with pytest.raises(ValueError, match="Softening isn't set"):
                 view.self_gravity(include_all_components=everyone, solver=DirectSum())
         seen['a'] = state.a.self_gravity(include_all_components=False, solver=DirectSum())
-        seen['b'] = state.b.self_gravity(include_all_components=False, solver=DirectSum(eps=0.3))
-        seen['all'] = state.self_gravity(include_all_components=True, solver=DirectSum(eps=0.3))
     sim.add_hook(hook)
     _quick_run(sim)
     pos, mass = sim.pos(t=0, return_internal=True), sim.mass
-    a, b = sim._slices['a'], sim._slices['b']
-    np.testing.assert_array_equal(seen['a'], DirectSum(eps=0.1).acc(pos[a], mass[a]))
-    np.testing.assert_array_equal(seen['b'], DirectSum(eps=0.3).acc(pos[b], mass[b]))
-    np.testing.assert_array_equal(seen['all'], DirectSum(eps=0.3).acc(pos, mass))
+    a = sim._slices['a']
+    np.testing.assert_array_equal(seen['a'], DirectSum().acc(pos[a], mass[a], 0.1))
 
 
 def test_hooks_get_the_particles_softening_and_unbind_with_it(monkeypatch):

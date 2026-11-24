@@ -1,6 +1,5 @@
 """
-Tests for how the self-gravity solvers get their softening: passed to each call, unless
-the solver was built with its own.
+Tests that the self-gravity solvers get their softening through method arguments.
 """
 
 import numpy as np
@@ -17,14 +16,13 @@ EPS = _rng.uniform(0.05, 0.2, size=40)
     (FalcON(theta=0.3, kernel=2), {'theta': 0.3, 'kernel': 2}),
     (FalcON(), {'theta': 0.6, 'kernel': 1}),
     (DirectSum(use_C=False), {'use_C': False}),
-    (DirectSum(eps=0.1), {'use_C': True}),
     (NullSelfGravity(), {}),
-], ids=['falcON', 'falcON by default', 'direct in Python', 'direct with its own softening', 'none'])
+], ids=['falcON', 'falcON by default', 'direct in Python', 'none'])
 def test_a_solver_saves_what_it_was_made_with_and_loads_as_the_same_solver(solver, record):
     assert solver.save() == record
     as_read_from_a_file = {name: np.asarray(value)[()] for name, value in record.items()}
     loaded = type(solver).load(as_read_from_a_file)
-    assert type(loaded) is type(solver) and loaded.save() == record and loaded.eps is None
+    assert type(loaded) is type(solver) and loaded.save() == record
     assert all(type(value) in (float, int, bool) for value in loaded.save().values())
 
 
@@ -36,19 +34,18 @@ SOLVERS = [
 
 @pytest.mark.parametrize("make", SOLVERS)
 @pytest.mark.parametrize("eps", [0.1, EPS], ids=['one_value', 'per_particle'])
-def test_a_solver_without_its_own_softening_uses_the_calls(make, eps):
-    own = make(eps=eps).acc_and_potential(POS, MASS)
-    passed = make().acc_and_potential(POS, MASS, eps=eps)
-    for a, b in zip(own, passed):
-        np.testing.assert_array_equal(a, b)
-    np.testing.assert_array_equal(make().acc(POS, MASS, eps=eps), own[0])
-    np.testing.assert_array_equal(make().potential(POS, MASS, eps=eps), own[1])
-    assert not np.allclose(make().acc(POS, MASS, eps=0.5), own[0])
+def test_a_solver_uses_the_softening_of_the_call(make, eps):
+    acc, pot = make().acc_and_potential(POS, MASS, eps)
+    np.testing.assert_array_equal(make().acc(POS, MASS, eps=eps), acc)
+    np.testing.assert_array_equal(make().potential(POS, MASS, eps=eps), pot)
+    assert not np.allclose(make().acc(POS, MASS, eps=0.5), acc)
 
 
-@pytest.mark.parametrize("make", SOLVERS)
-def test_a_solvers_own_softening_replaces_the_calls(make):
-    np.testing.assert_array_equal(make(eps=0.1).acc(POS, MASS, eps=EPS), make(eps=0.1).acc(POS, MASS))
+@pytest.mark.parametrize("cls", [DirectSum, FalcON])
+def test_a_solver_has_no_softening_of_its_own(cls):
+    with pytest.raises(TypeError, match="unexpected keyword argument 'eps'"):
+        cls(eps=0.1)
+    assert not hasattr(cls(), 'eps')
 
 
 @pytest.mark.parametrize("make", SOLVERS)

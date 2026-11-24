@@ -35,8 +35,6 @@ def _check_solver(solver):
         return NullSelfGravity()
     if not isinstance(solver, SelfGravityForce):
         raise TypeError(f"solver must be a self-gravity solver, e.g. FalcON(), or None. Got {type(solver).__name__!r}.")
-    if solver.eps is not None:
-        raise ValueError("The Sim's solver can't have its own softening. Give the softening to the particles.")
     return solver
 
 
@@ -1369,8 +1367,6 @@ class Sim(_ParticleView):
             If one of ``forces`` is neither a force nor a potential an installed backend can use.
         TypeError
             If ``solver`` is neither a self-gravity solver nor None.
-        ValueError
-            If ``solver`` has its own softening.
 
         Warns
         -----

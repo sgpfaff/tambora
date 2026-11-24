@@ -1,7 +1,7 @@
 """Self-gravity solvers as :class:`InteractionForce` + :class:`Conservative` objects.
 
 These wrap the C-extension gravity functions in the Force-object API used at
-the integrator boundary. Construction params (eps, theta, kernel) are frozen
+the integrator boundary. Construction params (theta, kernel) are frozen
 at instantiation time so the solver instance is reusable across substeps.
 
 Until the Phase-4 C-wrapper split (gravity / gravity_force / gravity_pot) lands,
@@ -10,7 +10,7 @@ the output. The Python-side API is forward-compatible: when the wrappers gain
 dedicated force-only / pot-only paths, only the body of these methods changes.
 """
 
-from typing import Tuple, Union
+from typing import Tuple
 import numpy as np
 
 from ..Force import Force
@@ -20,12 +20,7 @@ from .directSummation import _direct_summation_C, _direct_summation_py
 from abc import abstractmethod
 
 class SelfGravityForce(Force, Conservative):
-    """Base class for self-gravity solvers.
-
-    ``eps``, the particles' softening, is passed to each call; a solver built with
-    its own ``eps`` uses that instead.
-    """
-    eps = None
+    """Base class for self-gravity solvers."""
 
     @abstractmethod
     def acc(self, pos: np.ndarray, mass: np.ndarray, eps=None) -> np.ndarray: ...
@@ -35,11 +30,10 @@ class SelfGravityForce(Force, Conservative):
     def acc_and_potential(self, pos: np.ndarray, mass: np.ndarray, eps=None) -> Tuple[np.ndarray, np.ndarray]:
         return self.acc(pos, mass, eps), self.potential(pos, mass, eps)
 
-    def _softening(self, eps):
-        """The solver's own softening if it has one, else ``eps``."""
-        eps = eps if self.eps is None else self.eps
+    @staticmethod
+    def _softening(eps):
         if eps is None:
-            raise ValueError("No softening: pass eps, or give the solver its own.")
+            raise ValueError("No softening. Pass eps.")
         return eps
 
     def _eval_acc(self, pos, vel, mass, t):
@@ -61,18 +55,14 @@ class FalcON(SelfGravityForce):
         Tree opening angle (default 0.6). Smaller = more accurate but slower.
     kernel : int, optional
         Softening kernel: 0=Plummer, 1=default (~r^-7), 2,3=faster decay.
-    eps : float or (N,) array, optional
-        Softening length(s) [kpc] to use instead of the ``eps`` passed to each call.
     """
 
-    def __init__(self, *, theta: float = 0.6, kernel: int = 1,
-                 eps: Union[float, np.ndarray, None] = None):
+    def __init__(self, *, theta: float = 0.6, kernel: int = 1):
         self.theta = theta
         self.kernel = kernel
-        self.eps = eps
 
     def save(self):
-        """What it was made with, without a softening of its own."""
+        """What it was made with."""
         return {'theta': self.theta, 'kernel': self.kernel}
 
     @classmethod
@@ -104,18 +94,17 @@ class DirectSum(SelfGravityForce):
     use_C : bool, optional
         Use the C extension (default ``True``). Set to ``False`` for the
         pure-Python reference implementation.
-    eps : float or (N,) array, optional
-        Softening length(s) [kpc] to use instead of the ``eps`` passed to each call.
-        With an array, pairwise softening uses the arithmetic mean
-        ``(eps_i + eps_j) / 2``.
+
+    Notes
+    -----
+    - With one softening per particle, a pair uses the mean ``(eps_i + eps_j) / 2``.
     """
 
-    def __init__(self, *, use_C: bool = True, eps: Union[float, np.ndarray, None] = None):
+    def __init__(self, *, use_C: bool = True):
         self.use_C = use_C
-        self.eps = eps
 
     def save(self):
-        """What it was made with, without a softening of its own."""
+        """What it was made with."""
         return {'use_C': self.use_C}
 
     @classmethod

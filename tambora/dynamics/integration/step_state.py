@@ -75,15 +75,15 @@ class StepState:
         return np.broadcast_to(eps, self.mass.shape) if np.ndim(eps) == 0 else eps[self._sl]
 
     def _softening(self, everyone=False):
-        """The softening for a solve over this view (or everyone): one number if shared."""
+        """The softening for a solve over this view (or everyone). One number if shared."""
         eps = self._ctx.eps
         if eps is None or np.ndim(eps) == 0:
             return eps
         eps = eps if everyone else eps[self._sl]
         if np.isnan(eps).any():
-            raise ValueError("Softening isn't set for every particle here: give it with "
-                             "add_particles(..., eps=...) or sim.<component>.eps, or give this "
-                             "calculation one (eps=..., or a solver with its own).")
+            raise ValueError("Softening isn't set for every particle here. Give it with "
+                             "add_particles(..., eps=...) or sim.<component>.eps, or pass eps=... "
+                             "to this calculation.")
         return eps
 
     # -- reporting: push display fields to the run's progress bar --
@@ -152,7 +152,6 @@ class StepState:
         '''
         run_solver = self._ctx.self_gravity_force
         solver = solver if solver is not None else run_solver
-        own_eps = getattr(solver, 'eps', None) is not None     # replaces the particles'
         sl = self._sl
         if include_all_components:
             if solver is run_solver:
@@ -160,13 +159,12 @@ class StepState:
             key = ("sg_all", id(solver))
             if key not in self._cache:
                 self._cache[key] = solver.acc_and_potential(
-                    self._result.pos, self._result.mass, None if own_eps else self._softening(everyone=True))
+                    self._result.pos, self._result.mass, self._softening(everyone=True))
             acc, pot = self._cache[key]
             return acc, pot, sl
         key = ("sg_iso", id(solver), (sl.start, sl.stop, sl.step))
         if key not in self._cache:
-            self._cache[key] = solver.acc_and_potential(self.pos(), self.mass,
-                                                        None if own_eps else self._softening())
+            self._cache[key] = solver.acc_and_potential(self.pos(), self.mass, self._softening())
         acc, pot = self._cache[key]
         return acc, pot, slice(None)
 
@@ -187,8 +185,8 @@ class StepState:
         solver : SelfGravityForce, optional
             Configured self-gravity solver to compute with. If None (default),
             the run's own solver, in which case the value is read from the step's precomputed acceleration. Pass a solver
-            instance (e.g. ``DirectSum(eps=...)``) to use a different
-            method/softening than the integration did.
+            instance (e.g. ``DirectSum()``) to use a different
+            method than the integration did.
 
         Notes
         -----
@@ -228,8 +226,8 @@ class StepState:
         solver : SelfGravityForce, optional
             Configured self-gravity solver to compute with. If None (default),
             the run's own solver, in which case the value is read from the step's precomputed potential. Pass a solver
-            instance (e.g. ``DirectSum(eps=...)``) to use a different
-            method/softening than the integration did.
+            instance (e.g. ``DirectSum()``) to use a different
+            method than the integration did.
 
         Notes
         -----

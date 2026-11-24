@@ -79,15 +79,6 @@ def test_a_solver_computes_with_the_particles_softening():
         sim.b.self_gravity(t=0, solver=solver, include_all_components=True, return_internal=True), acc[30:])
 
 
-def test_a_solvers_own_softening_replaces_the_particles_and_they_need_none():
-    solver = DirectSum(eps=0.3)
-    for sim in (_sim(), _sim(eps=False)):
-        expected = solver.acc(sim.pos(t=0, return_internal=True), sim.mass)
-        np.testing.assert_array_equal(sim.self_gravity(t=0, solver=solver, return_internal=True), expected)
-    with pytest.raises(ValueError, match="Softening isn't set for every particle here"):
-        _sim(eps=False).self_gravity(t=0, solver=DirectSum())
-
-
 def test_after_a_run_a_solver_computes_afresh_and_saves_nothing():
     sim, solver = _ran(), DirectSum()
     saved = sim._cached_self_acc.copy()
