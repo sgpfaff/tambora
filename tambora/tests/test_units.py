@@ -586,7 +586,7 @@ class TestAddParticlesVelocityConversion:
         vel_kms = np.array([[100.0, 200.0, 300.0]])
         s = Sim()
         s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms,
-                        mass=np.ones(1))
+                        mass=np.ones(1), eps=0.1)
         # Internal storage should be kpc/Gyr
         assert_allclose(s._init_vel, vel_kms * KMS_TO_KPCGYR, rtol=1e-15)
 
@@ -594,7 +594,7 @@ class TestAddParticlesVelocityConversion:
         vel_kms = np.array([[100.0, 200.0, 300.0]])
         s = Sim()
         s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms,
-                        mass=np.ones(1))
+                        mass=np.ones(1), eps=0.1)
         # Default accessor should return km/s (round-trip)
         assert_allclose(s.vel(t=0), vel_kms, rtol=1e-14)
 
@@ -602,7 +602,7 @@ class TestAddParticlesVelocityConversion:
         vel_kms = np.array([[100.0, 200.0, 300.0]])
         s = Sim()
         s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms,
-                        mass=np.ones(1))
+                        mass=np.ones(1), eps=0.1)
         assert_allclose(s.vel(t=0, return_internal=True),
                         vel_kms * KMS_TO_KPCGYR, rtol=1e-15)
 
@@ -622,7 +622,7 @@ class TestAstropyPhysicalConsistency:
         vel_kms_input = np.array([[(1.0 * u.kpc / u.Gyr).to(u.km / u.s).value,
                                     0.0, 0.0]])
         s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms_input,
-                        mass=np.ones(1))
+                        mass=np.ones(1), eps=0.1)
         # Internal should be exactly 1 kpc/Gyr
         assert_allclose(s.vel(t=0, return_internal=True)[0, 0], 1.0, rtol=1e-10)
         # User output should match astropy conversion
@@ -635,7 +635,7 @@ class TestAstropyPhysicalConsistency:
         vel_kms = np.array([[100.0, 0.0, 0.0]])
         s = Sim()
         s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms,
-                        mass=np.array([mass_msun]))
+                        mass=np.array([mass_msun]), eps=0.1)
 
         KE_astropy = 0.5 * mass_msun * 100.0**2  # Msun (km/s)^2
         assert_allclose(s.KE(t=0), KE_astropy, rtol=1e-10)
@@ -646,7 +646,7 @@ class TestAstropyPhysicalConsistency:
         vel_kms = np.array([[100.0, 200.0, 300.0]])
         s = Sim()
         s.add_particles(name='test', pos=np.zeros((1, 3)), vel=vel_kms,
-                        mass=np.array([mass_msun]))
+                        mass=np.array([mass_msun]), eps=0.1)
 
         # Expected: Msun * km/s
         expected_p = mass_msun * vel_kms  # Msun km/s
@@ -699,7 +699,7 @@ class TestAstropyPhysicalConsistency:
         vel_kms = np.array([[0.0, 100.0, 0.0]])  # km/s
         mass = np.array([1e6])
         s = Sim()
-        s.add_particles(name='test', pos=pos, vel=vel_kms, mass=mass)
+        s.add_particles(name='test', pos=pos, vel=vel_kms, mass=mass, eps=0.1)
 
         # Internal: L = r x (m * v_internal)
         # L_z = x * m * vy_internal = 1.0 * 1e6 * (100 * KMS_TO_KPCGYR)

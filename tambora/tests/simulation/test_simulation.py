@@ -54,7 +54,7 @@ def test_add_particles_stores_correct_shape():
     sim.add_particles(name='test', 
                       pos=COMP1_POS, 
                       vel=COMP1_VEL, 
-                      mass=COMP1_MASS)
+                      mass=COMP1_MASS, eps=0.1)
     assert sim._init_pos.shape == (COMP1_NPTS, 3)
     assert sim._init_vel.shape == (COMP1_NPTS, 3)
     assert sim._mass.shape == (COMP1_NPTS,)
@@ -68,11 +68,11 @@ def test_add_particles_multiple_components():
     sim.add_particles(name='comp1',
                       pos=COMP1_POS, 
                       vel=COMP1_VEL, 
-                      mass=COMP1_MASS)
+                      mass=COMP1_MASS, eps=0.1)
     sim.add_particles(name='comp2',
                       pos=COMP2_POS, 
                       vel=COMP2_VEL, 
-                      mass=COMP2_MASS)
+                      mass=COMP2_MASS, eps=0.1)
     assert sim._init_pos.shape == (COMP1_NPTS + COMP2_NPTS, 3)
     assert sim._init_vel.shape == (COMP1_NPTS + COMP2_NPTS, 3)
     assert sim._mass.shape == (COMP1_NPTS + COMP2_NPTS,)
@@ -86,7 +86,7 @@ def test_add_component_with_same_name():
     sim.add_particles(name='comp1',
                       pos=COMP1_POS, 
                       vel=COMP1_VEL, 
-                      mass=COMP1_MASS)
+                      mass=COMP1_MASS, eps=0.1)
     with pytest.raises(ValueError, match="Component 'comp1' already exists."):
         sim.add_particles(name='comp1',
                         pos=COMP2_POS, 
@@ -107,23 +107,23 @@ def test_add_component_with_non_string_name():
 
 def test_a_component_needs_no_name():
     sim = Sim()
-    sim.add_particles(ParticleSet(COMP1_POS, COMP1_VEL, COMP1_MASS))
+    sim.add_particles(ParticleSet(COMP1_POS, COMP1_VEL, COMP1_MASS), eps=0.1)
     np.testing.assert_array_equal(sim.pos(t=0), COMP1_POS)
     assert [c.name for c in sim.components] == ['component0']
     np.testing.assert_array_equal(sim.component0.pos(t=0), COMP1_POS)
 
 def test_unnamed_components_are_named_by_their_position():
     sim = Sim()
-    sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='host')
-    sim.add_particles(COMP2_POS, COMP2_VEL, COMP2_MASS)
-    sim.add_particles(COMP2_POS, COMP2_VEL, COMP2_MASS)
+    sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='host', eps=0.1)
+    sim.add_particles(COMP2_POS, COMP2_VEL, COMP2_MASS, eps=0.1)
+    sim.add_particles(COMP2_POS, COMP2_VEL, COMP2_MASS, eps=0.1)
     assert [c.name for c in sim.components] == ['host', 'component1', 'component2']
     np.testing.assert_array_equal(sim.component1.pos(t=0), COMP2_POS)
 
 def test_an_automatic_name_skips_one_already_taken():
     sim = Sim()
-    sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='component1')
-    sim.add_particles(COMP2_POS, COMP2_VEL, COMP2_MASS)
+    sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='component1', eps=0.1)
+    sim.add_particles(COMP2_POS, COMP2_VEL, COMP2_MASS, eps=0.1)
     assert [c.name for c in sim.components] == ['component1', 'component2']
 
 def test_the_name_must_be_given_by_keyword():
@@ -222,8 +222,8 @@ def test_add_particles_different_number_of_particles():
 
 def test_add_particles_takes_a_particle_set():
     by_arrays, by_set = Sim(), Sim()
-    by_arrays.add_particles(name='comp1', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS)
-    by_set.add_particles(ParticleSet(COMP1_POS, COMP1_VEL, COMP1_MASS), name='comp1')
+    by_arrays.add_particles(name='comp1', pos=COMP1_POS, vel=COMP1_VEL, mass=COMP1_MASS, eps=0.1)
+    by_set.add_particles(ParticleSet(COMP1_POS, COMP1_VEL, COMP1_MASS), name='comp1', eps=0.1)
     np.testing.assert_array_equal(by_set._init_pos, by_arrays._init_pos)
     np.testing.assert_array_equal(by_set._init_vel, by_arrays._init_vel)   # km/s converted once
     np.testing.assert_array_equal(by_set._mass, by_arrays._mass)
@@ -237,7 +237,7 @@ def test_add_particles_rejects_a_particle_set_with_arrays():
 def test_add_particles_copies_the_arrays(as_set):
     pos, vel, mass = COMP1_POS.copy(), COMP1_VEL.copy(), COMP1_MASS.copy()
     sim = Sim()
-    sim.add_particles(ParticleSet(pos, vel, mass), name='comp1') if as_set else sim.add_particles(pos, vel, mass, name='comp1')
+    sim.add_particles(ParticleSet(pos, vel, mass), name='comp1', eps=0.1) if as_set else sim.add_particles(pos, vel, mass, name='comp1', eps=0.1)
     pos[0, 0] = vel[0, 0] = mass[0] = 99.
     np.testing.assert_array_equal(sim._init_pos, COMP1_POS)
     np.testing.assert_array_equal(sim._init_vel, COMP1_VEL * KMS_TO_KPCGYR)
@@ -708,7 +708,7 @@ def test_external_BaseForce_contributes_to_acc():
     sim.add_particles(name='test',
                       pos=pos, 
                       vel=vel,
-                      mass=mass)
+                      mass=mass, eps=0.1)
     ground_truth_acc = ex_custom_base_force.acc(pos, vel*KMS_TO_KPCGYR, mass, t)
     np.testing.assert_allclose(sim.external_acc(t=t, return_internal=True), ground_truth_acc)
 
@@ -738,7 +738,7 @@ def test_external_ConservativeForce_contributes_to_acc():
     sim.add_particles(name='test',
                       pos=pos, 
                       vel=vel,
-                      mass=mass)
+                      mass=mass, eps=0.1)
     ground_truth_acc = ex_custom_conserv_force.acc(pos, t)
     np.testing.assert_allclose(sim.external_acc(t=t, return_internal=True), ground_truth_acc)
 
@@ -753,7 +753,7 @@ def test_external_ConservativeForce_contributes_to_potential():
     sim.add_particles(name='test',
                       pos=pos, 
                       vel=vel,
-                      mass=mass)
+                      mass=mass, eps=0.1)
     
     ground_truth_pot = ex_custom_conserv_force.potential(pos, t) * mass
     np.testing.assert_allclose(sim.compute_external_pot(t=t, return_internal=True), ground_truth_pot)
@@ -891,7 +891,7 @@ KEPLER_SIM = Sim()
 from galpy.potential import KeplerPotential
 kepler_pot = KeplerPotential(amp=1e9*u.Msun)
 KEPLER_SIM.add_force(kepler_pot)
-KEPLER_SIM.add_particles(name='a', pos=np.array([[0.1, 0.2, 0.3]]), vel=np.array([[0, 0.0, 0]]), mass=np.array([1e8]))
+KEPLER_SIM.add_particles(name='a', pos=np.array([[0.1, 0.2, 0.3]]), vel=np.array([[0, 0.0, 0]]), mass=np.array([1e8]), eps=0.1)
 KEPLER_ACC = -G_INTERNAL * 1e9 * np.array([[0.1, 0.2, 0.3]]) / (0.1**2 + 0.2**2 + 0.3**2)**(3/2)
 KEPLER_POT = -G_INTERNAL * 1e8 * 1e9 / np.sqrt(0.1**2 + 0.2**2 + 0.3**2)
 
@@ -1777,7 +1777,7 @@ def test_L_w_center_pos():
     pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
     vel = np.array([[0, 0.1, 0], [0.1, 0.0, 0]])
     mass = np.array([1e8, 1e9])
-    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass, eps=0.1)
     L = sim.L(center_pos=np.array([0.5, 0.5, 0]), return_internal=True)
     expected = mass[:, None] * np.cross(pos - np.array([0.5, 0.5, 0]), vel * KMS_TO_KPCGYR)
     np.testing.assert_allclose(L[0], expected, rtol=1e-15)
@@ -1790,7 +1790,7 @@ def test_L_w_center_vel():
     pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
     vel = np.array([[0, 0.1, 0], [0.1, 0.0, 0]])
     mass = np.array([1e8, 1e9])
-    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass, eps=0.1)
     L = sim.L(center_vel=np.array([0.05, 0.05, 0]), return_internal=True)
     expected = mass[:, None] * np.cross(pos, vel * KMS_TO_KPCGYR - np.array([0.05, 0.05, 0]))
     np.testing.assert_allclose(L[0], expected, rtol=1e-15)
@@ -1803,7 +1803,7 @@ def test_L_w_center_pos_and_vel():
     pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
     vel = np.array([[0, 0.1, 0], [0.1, 0.0, 0]])
     mass = np.array([1e8, 1e9])
-    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass, eps=0.1)
     L = sim.L(center_pos=np.array([0.5, 0.5, 0]), center_vel=np.array([0.05, 0.05, 0]), return_internal=True)
     expected = mass[:, None] * np.cross(pos - np.array([0.5, 0.5, 0]), vel * KMS_TO_KPCGYR - np.array([0.05, 0.05, 0]))
     np.testing.assert_allclose(L[0], expected, rtol=1e-15)
@@ -1818,7 +1818,7 @@ def _coord_test_sim():
     pos = rng.normal(loc=3.0, scale=1.0, size=(20, 3))
     vel = rng.normal(size=(20, 3))
     mass = np.abs(rng.normal(loc=1e9, scale=1e8, size=(20,)))
-    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass)
+    sim.add_particles(name='test', pos=pos, vel=vel, mass=mass, eps=0.1)
     return sim
 
 _COORD_SIM = _coord_test_sim()
@@ -1965,7 +1965,7 @@ def _axis_sim(pos, vel):
     sim = Sim()
     sim.add_particles(name='test', pos=np.atleast_2d(pos).astype(np.float64),
                       vel=np.atleast_2d(vel).astype(np.float64),
-                      mass=np.array([1e9]))
+                      mass=np.array([1e9]), eps=0.1)
     return sim
 
 def test_x_axis_positions():
@@ -2689,8 +2689,8 @@ class TestComponents:
 
     def _two_comp_sim(self):
         sim = Sim()
-        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='comp1')
-        sim.add_particles(COMP2_POS, COMP2_VEL, COMP2_MASS, name='comp2')
+        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='comp1', eps=0.1)
+        sim.add_particles(COMP2_POS, COMP2_VEL, COMP2_MASS, name='comp2', eps=0.1)
         return sim
 
     def test_components_empty_is_empty_tuple(self):
@@ -2720,7 +2720,7 @@ class TestComponentRepr:
 
     def test_repr_reports_name_count_and_mass(self):
         sim = Sim()
-        sim.add_particles(COMP1_POS, COMP1_VEL, np.full(COMP1_NPTS, 1e4), name='sat')
+        sim.add_particles(COMP1_POS, COMP1_VEL, np.full(COMP1_NPTS, 1e4), name='sat', eps=0.1)
         r = repr(sim.sat)
         assert r == f"Component('sat', {COMP1_NPTS} particles, {1e4 * COMP1_NPTS:.2e} Msun)"
 
@@ -2734,8 +2734,8 @@ class TestSimRepr:
 
     def test_multicomponent_repr_lists_components(self):
         sim = Sim()
-        sim.add_particles(COMP1_POS, COMP1_VEL, np.full(COMP1_NPTS, 1e4), name='sat')
-        sim.add_particles(COMP2_POS, COMP2_VEL, np.full(COMP2_NPTS, 1e5), name='host')
+        sim.add_particles(COMP1_POS, COMP1_VEL, np.full(COMP1_NPTS, 1e4), name='sat', eps=0.1)
+        sim.add_particles(COMP2_POS, COMP2_VEL, np.full(COMP2_NPTS, 1e5), name='host', eps=0.1)
         r = repr(sim)
         assert "2 components" in r
         assert f"{COMP1_NPTS + COMP2_NPTS} particles" in r
@@ -2745,7 +2745,7 @@ class TestSimRepr:
     def test_repr_lists_forces_and_hooks_by_name(self):
         # The forces/hooks tables name what's attached (not just counts).
         sim = Sim()
-        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='a')
+        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='a', eps=0.1)
         sim.add_force(CustomBaseForce())
         sim.add_hook(ConservationMonitor())
         r = repr(sim)
@@ -2754,7 +2754,7 @@ class TestSimRepr:
 
     def test_repr_empty_sections_show_none(self):
         sim = Sim()
-        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='a')
+        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='a', eps=0.1)
         r = repr(sim)
         assert "External forces" in r and "Hooks" in r
         assert "(none)" in r
