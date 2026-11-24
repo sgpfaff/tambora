@@ -5,8 +5,6 @@ from typing import Any, Mapping
 
 import numpy as np
 
-
-# eq=False: the generated __eq__ would compare arrays and fail with "truth value is ambiguous".
 @dataclasses.dataclass(frozen=True, eq=False)
 class ParticleSet:
     """Positions, velocities and masses of N particles, and where they came from.
