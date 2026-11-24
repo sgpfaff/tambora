@@ -16,11 +16,11 @@ def _ps(n=4, meta=None):
                        meta if meta is not None else {'seed': 7})
 
 
-def test_it_unpacks_like_tuple():
+def test_it_has_a_length_and_does_not_unpack():
     ps = _ps()
-    pos, vel, mass = ps
-    assert pos is ps.pos and vel is ps.vel and mass is ps.mass
     assert len(ps) == 4
+    with pytest.raises(TypeError, match="cannot unpack non-iterable ParticleSet"):
+        pos, vel, mass = ps
 
 
 def test_inputs_become_float_arrays():

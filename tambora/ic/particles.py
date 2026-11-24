@@ -44,9 +44,6 @@ class ParticleSet:
             object.__setattr__(self, name, value)
         object.__setattr__(self, 'meta', dict(self.meta) if self.meta is not None else {})
 
-    def __iter__(self):
-        yield from (self.pos, self.vel, self.mass)
-
     def __len__(self):
         return len(self.mass)
 

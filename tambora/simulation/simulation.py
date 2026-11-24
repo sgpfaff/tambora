@@ -346,7 +346,7 @@ class Sim(_ParticleView):
         if isinstance(pos, ParticleSet):
             if vel is not None or mass is not None:
                 raise TypeError("Pass either a ParticleSet or pos, vel and mass, not both.")
-            pos, vel, mass = pos
+            pos, vel, mass = pos.pos, pos.vel, pos.mass
         elif vel is None or mass is None:
             raise TypeError("vel and mass are required unless pos is a ParticleSet.")
         # Copies: the simulation's initial state can't change through the caller's arrays,
