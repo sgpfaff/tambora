@@ -75,7 +75,7 @@ class TestReturnOptions:
         pot = NFWPotential(amp=1e13*u.Msun, a=20*u.kpc)
         pot.turn_physical_on()
         cls.integrator = integrator
-        cls.self_gravity = DirectSum(eps=0.0)
+        cls.self_gravity = DirectSum()
         cls.ext_force = _CompositeConservative([]) + ExternalPotential(pot)
         cls.pos = np.array([[8., 0., 0.], [8., 0., 0.]])
         vel = np.array([[0.1, 220.0, 0.5], [0.2, 220.0, 0.5]])
@@ -88,7 +88,7 @@ class TestReturnOptions:
         '''
         out = _runner(self.pos, self.vel_internal, self.mass, self.integrator, self.self_gravity, self.ext_force, NullForce(), 
                       0.0, self.t_end.value, self.dt.value*10, self.dt.value*10,
-                      return_self_gravity_pot=True, return_self_gravity_acc=False)
+                      return_self_gravity_pot=True, return_self_gravity_acc=False, eps=0.0)
         assert out[-1].shape == (len(out[2]), self.mass.shape[0])
         assert out[-2] is None
 
@@ -99,7 +99,7 @@ class TestReturnOptions:
 
         out = _runner(self.pos, self.vel_internal, self.mass, self.integrator, self.self_gravity, self.ext_force, NullForce(), 
                       0.0, self.t_end.value, self.dt.value*10, self.dt.value*10,
-                                        return_self_gravity_pot=False, return_self_gravity_acc=True)
+                                        return_self_gravity_pot=False, return_self_gravity_acc=True, eps=0.0)
         assert out[-2].shape == (len(out[2]), self.mass.shape[0], 3)
         assert out[-1] is None
 
@@ -109,7 +109,7 @@ class TestReturnOptions:
         '''
         out = _runner(self.pos, self.vel_internal, self.mass, self.integrator, self.self_gravity, self.ext_force, NullForce(), 
                       0.0, self.t_end.value, self.dt.value*10, self.dt.value*10,
-                      return_self_gravity_pot=True, return_self_gravity_acc=True)
+                      return_self_gravity_pot=True, return_self_gravity_acc=True, eps=0.0)
         assert out[-2].shape == (len(out[2]), self.mass.shape[0], 3)
         assert out[-1].shape == (len(out[2]), self.mass.shape[0])
 
@@ -119,7 +119,7 @@ class TestReturnOptions:
         '''
         out = _runner(self.pos, self.vel_internal, self.mass, self.integrator, self.self_gravity, self.ext_force, NullForce(), 
                       0.0, self.t_end.value, self.dt.value*10, self.dt.value*10,
-                      return_self_gravity_pot=False, return_self_gravity_acc=False)
+                      return_self_gravity_pot=False, return_self_gravity_acc=False, eps=0.0)
         assert out[-1] is None
         assert out[-2] is None
 

@@ -5,7 +5,7 @@ from tambora.dynamics.forces.self_gravity.directSummation.directSummation import
 from tambora.units import G_INTERNAL
 
 np.random.seed(42)
-direct_gravity = DirectSum(eps=0.0)
+direct_gravity = DirectSum()
 
 def test_newtons_third_law():
     '''
@@ -15,7 +15,7 @@ def test_newtons_third_law():
     ''' 
     pos = np.array([[1.0, 0, 0], [0, 1.0, 0]])
     mass = np.array([1.0, 10.0])
-    acc = direct_gravity.acc(pos, mass)
+    acc = direct_gravity.acc(pos, mass, 0.0)
     assert np.allclose(mass[0] * acc[0], -mass[1] * acc[1], rtol=1e-15)
 
 def test_two_body_acceleration():
@@ -26,7 +26,7 @@ def test_two_body_acceleration():
     '''
     pos = np.random.normal(size=(2,3))
     mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
-    acc = direct_gravity.acc(pos, mass)
+    acc = direct_gravity.acc(pos, mass, 0.0)
     acc_analytical_0 = G_INTERNAL * mass[1] * (pos[1] - pos[0]) / np.linalg.norm(pos[1] - pos[0])**3
     acc_analytical_1 = G_INTERNAL * mass[0] * (pos[0] - pos[1]) / np.linalg.norm(pos[0] - pos[1])**3
     np.testing.assert_allclose(acc[0], acc_analytical_0, rtol=1e-15)
@@ -40,7 +40,7 @@ def test_two_body_potential():
     '''
     pos = np.random.normal(size=(2,3))
     mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
-    pot = direct_gravity.potential(pos, mass)
+    pot = direct_gravity.potential(pos, mass, 0.0)
     pot_analytical_0 = -G_INTERNAL * mass[1] / np.linalg.norm(pos[1] - pos[0])
     pot_analytical_1 = -G_INTERNAL * mass[0] / np.linalg.norm(pos[0] - pos[1])
     np.testing.assert_allclose(pot[0], pot_analytical_0, rtol=1e-15)
@@ -52,7 +52,7 @@ def test_zero_acceleration_for_single_particle():
     '''
     pos = np.random.normal(size=(1,3))
     mass = 10**np.random.normal(loc = 10, scale=1, size=(1,))
-    acc, pot = direct_gravity.acc_and_potential(pos, mass)
+    acc, pot = direct_gravity.acc_and_potential(pos, mass, 0.0)
     np.testing.assert_allclose(acc[0], np.zeros(3), rtol=1e-15)
     np.testing.assert_allclose(pot[0], 0.0, rtol=1e-15)
 
@@ -63,8 +63,8 @@ def test_acceleration_with_scalar_softening_length():
     pos = np.random.normal(size=(2,3))
     mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
     eps = 2.0
-    softened_direct_gravity = DirectSum(eps=eps)
-    acc = softened_direct_gravity.acc(pos, mass)
+    softened_direct_gravity = DirectSum()
+    acc = softened_direct_gravity.acc(pos, mass, eps)
     acc_analytical_0 = G_INTERNAL * mass[1] * (pos[1] - pos[0]) / (np.linalg.norm(pos[1] - pos[0])**2 + eps**2)**1.5
     acc_analytical_1 = G_INTERNAL * mass[0] * (pos[0] - pos[1]) / (np.linalg.norm(pos[0] - pos[1])**2 + eps**2)**1.5
     np.testing.assert_allclose(acc[0], acc_analytical_0, rtol=1e-15)
@@ -78,8 +78,8 @@ def test_acceleration_with_vector_softening_length():
     mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
     eps = np.array([2.0, 0.0])
     mean_eps = np.mean(eps)
-    softened_direct_gravity = DirectSum(eps=eps)
-    acc = softened_direct_gravity.acc(pos, mass)
+    softened_direct_gravity = DirectSum()
+    acc = softened_direct_gravity.acc(pos, mass, eps)
     acc_analytical_0 = G_INTERNAL * mass[1] * (pos[1] - pos[0]) / (np.linalg.norm(pos[1] - pos[0])**2 + mean_eps**2)**1.5
     acc_analytical_1 = G_INTERNAL * mass[0] * (pos[0] - pos[1]) / (np.linalg.norm(pos[0] - pos[1])**2 + mean_eps**2)**1.5
     np.testing.assert_allclose(acc[0], acc_analytical_0, rtol=1e-15)
@@ -92,8 +92,8 @@ def test_potential_with_scalar_softening_length():
     pos = np.random.normal(size=(2,3))
     mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
     eps = 2.0
-    softened_direct_gravity = DirectSum(eps=eps)
-    pot = softened_direct_gravity.potential(pos, mass)
+    softened_direct_gravity = DirectSum()
+    pot = softened_direct_gravity.potential(pos, mass, eps)
     pot_analytical_0 = - G_INTERNAL * mass[1] / np.sqrt(np.linalg.norm(pos[1] - pos[0])**2 + eps**2)
     pot_analytical_1 = - G_INTERNAL * mass[0] / np.sqrt(np.linalg.norm(pos[0] - pos[1])**2 + eps**2)
     np.testing.assert_allclose(pot[0], pot_analytical_0, rtol=1e-15)
@@ -107,8 +107,8 @@ def test_potential_with_vector_softening_length():
     mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
     eps = np.array([2.0, 0.0])
     mean_eps = np.mean(eps)
-    softened_direct_gravity = DirectSum(eps=eps)
-    pot = softened_direct_gravity.potential(pos, mass)
+    softened_direct_gravity = DirectSum()
+    pot = softened_direct_gravity.potential(pos, mass, eps)
     pot_analytic_0 = - G_INTERNAL * mass[1] / (np.linalg.norm(pos[1] - pos[0])**2 + mean_eps**2)**0.5
     pot_analytic_1 = - G_INTERNAL * mass[0] / (np.linalg.norm(pos[0] - pos[1])**2 + mean_eps**2)**0.5
     np.testing.assert_allclose(pot[0], pot_analytic_0, rtol=1e-15)
@@ -120,7 +120,7 @@ def test_zero_acceleration_for_single_particle():
     '''
     pos = np.random.normal(size=(1,3))
     mass = 10**np.random.normal(loc = 10, scale=1, size=(1,))
-    acc, pot = direct_gravity.acc_and_potential(pos, mass)
+    acc, pot = direct_gravity.acc_and_potential(pos, mass, 0.0)
     np.testing.assert_allclose(acc[0], np.zeros(3), rtol=1e-15)
     np.testing.assert_allclose(pot[0], 0.0, rtol=1e-15)
 
@@ -130,7 +130,7 @@ def test_acc_and_pot_shapes():
     '''
     pos = np.random.normal(size=(3,3))
     mass = 10**np.random.normal(loc = 10, scale=1, size=(3,))
-    acc, pot = direct_gravity.acc_and_potential(pos, mass)
+    acc, pot = direct_gravity.acc_and_potential(pos, mass, 0.0)
     assert acc.shape == (3, 3)
     assert pot.shape == (3,)
 
@@ -141,10 +141,10 @@ def test_Direct_Summation_python_matches_C():
     pos = np.random.normal(size=(2,3))
     mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
     eps = 2.0
-    direct_gravity_py = DirectSum(eps=eps, use_C=False)
-    direct_gravity_C = DirectSum(eps=eps, use_C=True)
-    acc_py, pot_py = direct_gravity_py.acc_and_potential(pos, mass)
-    acc_C, pot_C = direct_gravity_C.acc_and_potential(pos, mass)
+    direct_gravity_py = DirectSum(use_C=False)
+    direct_gravity_C = DirectSum(use_C=True)
+    acc_py, pot_py = direct_gravity_py.acc_and_potential(pos, mass, eps)
+    acc_C, pot_C = direct_gravity_C.acc_and_potential(pos, mass, eps)
     np.testing.assert_allclose(acc_py, acc_C, rtol=1e-15)
     np.testing.assert_allclose(pot_py, pot_C, rtol=1e-15)
     pot_analytical_0 = -G_INTERNAL * mass[1] / np.sqrt(np.linalg.norm(pos[1] - pos[0])**2 + eps**2)
