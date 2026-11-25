@@ -18,7 +18,7 @@ from tambora.dynamics import DirectSum, NullForce, NullSelfGravity
 from tambora.dynamics.forces.CompositeForce import _CompositeConservative
 from tambora.dynamics.hooks import EveryStep
 from tambora.dynamics.integration import _runner
-from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
+from tambora.dynamics import Leapfrog
 from tambora.dynamics.integration.recorder import _MemoryRecorder, _Recorder
 from tambora.io import run_files
 from tambora.io.run_files import UNITS, _FileRecorder, _read_settings, snapshot_name
@@ -32,7 +32,7 @@ def _run(recorder, method='direct', keep_acc=True, keep_pot=True, t_end=1.0, dt=
     rng = np.random.default_rng(0)
     pos, vel, mass = rng.normal(size=(N, 3)), rng.normal(size=(N, 3)) * 10, np.full(N, 1e5)
     solver = DirectSum() if method == 'direct' else NullSelfGravity()
-    return _runner(pos, vel, mass, LeapfrogIntegrator(), solver, _CompositeConservative([]), NullForce(),
+    return _runner(pos, vel, mass, Leapfrog(), solver, _CompositeConservative([]), NullForce(),
                    t0=0.0, t_end=t_end, dt=dt, dt_out=dt_out, return_self_gravity_acc=keep_acc,
                    return_self_gravity_pot=keep_pot, hooks=hooks, progress=False, eps=np.full(N, 0.05),
                    recorder=recorder)
@@ -412,10 +412,10 @@ import numpy as np
 from tambora.dynamics import NullForce, NullSelfGravity
 from tambora.dynamics.forces.CompositeForce import _CompositeConservative
 from tambora.dynamics.integration import _runner
-from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
+from tambora.dynamics import Leapfrog
 from tambora.io.run_files import _FileRecorder
 n = 200_000
-_runner(np.zeros((n, 3)), np.ones((n, 3)), np.ones(n), LeapfrogIntegrator(), NullSelfGravity(),
+_runner(np.zeros((n, 3)), np.ones((n, 3)), np.ones(n), Leapfrog(), NullSelfGravity(),
         _CompositeConservative([]), NullForce(), t0=0.0, t_end=1e6, dt=1.0, dt_out=1.0,
         return_self_gravity_acc=False, return_self_gravity_pot=False, progress=False,
         recorder=_FileRecorder(sys.argv[1], fsync=False))

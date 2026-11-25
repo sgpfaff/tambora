@@ -1,5 +1,5 @@
-from .LeapfrogIntegrator import LeapfrogIntegrator
+from .leapfrog import Leapfrog
 
 INTEGRATORS = {
-    'leapfrog': LeapfrogIntegrator
+    'leapfrog': Leapfrog
 }

@@ -7,7 +7,7 @@ from tambora.interop._galpy.bridge import _galpy_pot_to_acc_fn, _galpy_pot_to_po
 from tambora.simulation import Sim
 from tambora.dynamics import ExternalPotential, DirectSum, NullForce, NullSelfGravity
 from tambora.dynamics.forces.CompositeForce import _CompositeConservative
-from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
+from tambora.dynamics import Leapfrog
 from galpy.potential import NFWPotential
 from galpy.orbit import Orbit
 import astropy.units as u
@@ -17,7 +17,7 @@ class TestOrbitConservationLaws:
     def setup_class(cls):
         t_end = 0.01 * u.Gyr
         dt = 5e-6 * u.Gyr
-        integrator = LeapfrogIntegrator()
+        integrator = Leapfrog()
         cls.t_end = t_end
         cls.ts = np.arange(0, t_end.value + dt.value, dt.value) * u.Gyr
         pot = NFWPotential(amp=1e13*u.Msun, a=20*u.kpc)
@@ -56,7 +56,7 @@ class TestOrbitIntegrationAgainstGalpy:
     def setup_class(cls):
         t_end = 0.01 * u.Gyr
         dt = 5e-6 * u.Gyr
-        integrator = LeapfrogIntegrator()
+        integrator = Leapfrog()
         cls.t_end = t_end
         cls.ts = np.arange(0, t_end.value + dt.value, dt.value) * u.Gyr
         pot = NFWPotential(amp=1e13*u.Msun, a=20*u.kpc)
@@ -147,13 +147,13 @@ class TestTimeDependentForceAtNonzeroT0:
     mass = np.ones(1)
 
     def test_first_step_conservative_force_uses_t0(self):
-        result = LeapfrogIntegrator().step(
+        result = Leapfrog().step(
             self.pos, self.vel, self.mass, self.t0, self.dt,
             NullSelfGravity(), _CompositeConservative([_GrowingUniformField()]), NullForce())
         np.testing.assert_allclose(result.vel[0, 0], _leapfrog_kick_exact(self.t0, self.dt), rtol=1e-12)
 
     def test_first_step_base_force_uses_t0(self):
-        result = LeapfrogIntegrator().step(
+        result = Leapfrog().step(
             self.pos, self.vel, self.mass, self.t0, self.dt,
             NullSelfGravity(), _CompositeConservative([]), _GrowingUniformBaseForce())
         np.testing.assert_allclose(result.vel[0, 0], _leapfrog_kick_exact(self.t0, self.dt), rtol=1e-12)
@@ -163,7 +163,7 @@ class TestTimeDependentForceAtNonzeroT0:
         # velocity is the exact integral G/2 (t_end^2 - t0^2), for any step count.
         t_end = self.t0 + 1.0
         _, vel_out, _, _, _ = _runner(
-            self.pos, self.vel, self.mass, LeapfrogIntegrator(), NullSelfGravity(),
+            self.pos, self.vel, self.mass, Leapfrog(), NullSelfGravity(),
             _CompositeConservative([_GrowingUniformField()]), NullForce(),
             self.t0, t_end, self.dt, self.dt,
             return_self_gravity_pot=False, return_self_gravity_acc=False, progress=False)
