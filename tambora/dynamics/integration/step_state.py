@@ -66,9 +66,8 @@ class StepState:
         """Live particle masses. A property (time-independent), mirroring ``Sim.mass``."""
         return self._result.mass[self._sl]
 
-    @property
     def eps(self):
-        """Live particle softening [kpc], mirroring ``Sim.eps()``; None if the run has none."""
+        """Live particle softening [kpc], mirroring ``Sim.eps()``. None if the run has none."""
         eps = self._ctx.eps
         if eps is None:
             return None
