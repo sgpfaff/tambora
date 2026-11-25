@@ -567,7 +567,7 @@ def test_hooks_get_the_particles_softening_and_unbind_with_it(monkeypatch):
     sim = _two_components(eps_a=0.1, eps_b=eps_b)
     seen = {}
     def hook(state):
-        seen.setdefault('eps', (state.eps.copy(), state.b.eps.copy()))
+        seen.setdefault('eps', (state.eps().copy(), state.b.eps().copy()))
         seen.setdefault('mask', state.bound_mask('b'))
     sim.add_hook(hook)
     bounded = BoundednessHook('b')

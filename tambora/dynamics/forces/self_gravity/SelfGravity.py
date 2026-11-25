@@ -19,6 +19,9 @@ from .falcON import _falcON_gravity
 from .directSummation import _direct_summation_C, _direct_summation_py
 from abc import abstractmethod
 
+_NOT_A_FORCE = "A self-gravity solver isn't an external force."
+
+
 class SelfGravityForce(Force, Conservative):
     """Base class for self-gravity solvers."""
 
@@ -36,14 +39,15 @@ class SelfGravityForce(Force, Conservative):
             raise ValueError("No softening. Pass eps.")
         return eps
 
+    # Required by Force and Conservative, but a solver is never combined with forces.
     def _eval_acc(self, pos, vel, mass, t):
-        return self.acc(pos, mass)
+        raise TypeError(_NOT_A_FORCE)
 
     def _eval_potential(self, pos, vel, mass, t):
-        return self.potential(pos, mass)
+        raise TypeError(_NOT_A_FORCE)
 
     def _eval_acc_and_potential(self, pos, vel, mass, t):
-        return self.acc_and_potential(pos, mass)
+        raise TypeError(_NOT_A_FORCE)
     
 
 class FalcON(SelfGravityForce):
