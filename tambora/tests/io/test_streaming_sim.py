@@ -144,7 +144,7 @@ def test_run_h5_holds_the_components_particles_and_run_settings(tmp_path):
     np.testing.assert_array_equal(settings['particles']['eps'], sim._eps)
     assert settings['run'] == sim._run_settings == {
         't0': 0.0, 't_end': 1.0, 'dt': 0.01, 'dt_out': 0.05, 'n_steps': 100, 'steps_per_output': 5,
-        'integration_method': 'leapfrog', 'self_gravity': {'method': 'falcON', 'class': 'FalcON', 'kernel': 1, 'theta': 0.6},
+        'integrator': {'class': 'Leapfrog'}, 'self_gravity': {'method': 'falcON', 'class': 'FalcON', 'kernel': 1, 'theta': 0.6},
         'cache_self_gravity_acc': True, 'cache_self_gravity_pot': True, 'monitors': 'auto', 'forces': [],
         'hooks': {'names': ['ConservationMonitor'], 'cadences': ['EveryOutput']}}
     assert all(type(settings['run'][k]) is float for k in ('t0', 't_end', 'dt', 'dt_out'))
@@ -201,10 +201,10 @@ def test_a_run_without_forces_or_hooks_lists_none(tmp_path):
     (dict(t0=-1, t_end=1, dt=0.25, dt_out=0.5), 8, 2),
 ], ids=['later t0', 'backward', 'uneven end', 'ints'])
 def test_the_run_settings_are_the_arguments_given(tmp_path, times, n_steps, steps_per_output):
-    sim = _sim(output_dir=tmp_path / 'run')
+    sim = _sim(output_dir=tmp_path / 'run', t0=times['t0'])
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
-        sim.run(**{**RUN, **times})
+        sim.run(**{**RUN, **{k: v for k, v in times.items() if k != 't0'}})
     expected = {**{k: float(v) for k, v in times.items()}, 'n_steps': n_steps, 'steps_per_output': steps_per_output}
     for settings in (sim._run_settings, _settings(tmp_path / 'run')['run']):
         assert {k: settings[k] for k in expected} == expected
@@ -213,8 +213,8 @@ def test_the_run_settings_are_the_arguments_given(tmp_path, times, n_steps, step
 
 def test_the_times_are_those_the_settings_give(tmp_path):
     """float32 or int times are run in float64, as recorded; every snapshot's t is a float."""
-    sim = _sim(output_dir=tmp_path / 'run')
-    sim.run(**{**RUN, 't0': np.float32(0.1), 't_end': 2, 'dt': np.float32(0.25), 'dt_out': 0.5})
+    sim = _sim(output_dir=tmp_path / 'run', t0=np.float32(0.1))
+    sim.run(**{**RUN, 't_end': 2, 'dt': np.float32(0.25), 'dt_out': 0.5})
     settings = _settings(tmp_path / 'run')['run']
     assert sim.times.dtype == np.float64
     np.testing.assert_array_equal(sim.times, settings['t0'] + sim._steps * settings['dt'])

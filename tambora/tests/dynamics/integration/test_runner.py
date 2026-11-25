@@ -10,7 +10,7 @@ from tambora.interop._galpy.bridge import _galpy_pot_to_acc_fn, _galpy_pot_to_po
 from tambora.simulation import Sim
 from tambora.dynamics import ExternalPotential, DirectSum, NullForce, NullSelfGravity
 from tambora.dynamics.forces.CompositeForce import _CompositeConservative
-from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
+from tambora.dynamics import Leapfrog
 from tambora.dynamics.integration.integrate import _count_steps, _warn_uneven_end, _whole_steps
 from galpy.potential import NFWPotential
 from galpy.orbit import Orbit
@@ -22,7 +22,7 @@ class TestOrbitIntegrationOutputShapes:
         from galpy.util.coords import rect_to_cyl, rect_to_cyl_vec
         t_end = 0.01 * u.Gyr
         dt = 5e-6 * u.Gyr
-        integrator = LeapfrogIntegrator()
+        integrator = Leapfrog()
         cls.t_end = t_end
         cls.ts = np.arange(0, t_end.value + dt.value, dt.value) * u.Gyr
         pot = NFWPotential(amp=1e13*u.Msun, a=20*u.kpc)
@@ -68,7 +68,7 @@ class TestReturnOptions:
     def setup_class(cls):
         t_end = 0.01 * u.Gyr
         dt = 5e-6 * u.Gyr
-        integrator = LeapfrogIntegrator()
+        integrator = Leapfrog()
         cls.t_end = t_end
         cls.dt = dt
         cls.ts = np.arange(0, t_end.value + dt.value, dt.value) * u.Gyr
@@ -154,7 +154,7 @@ class TestTimeInputs:
         pos = np.zeros((1, 3))
         vel = np.zeros((1, 3))
         mass = np.ones(1)
-        _, _, ts_out, _, _ = _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+        _, _, ts_out, _, _ = _runner(pos, vel, mass, Leapfrog(), NullSelfGravity(),
                 _CompositeConservative([]), NullForce(), t0=0.0,
                 t_end=-1.0,
                 dt=-0.1,
@@ -168,7 +168,7 @@ class TestTimeInputs:
         pos = np.zeros((1, 3))
         vel = np.zeros((1, 3))
         mass = np.ones(1)
-        _, _, ts_out, _, _ = _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+        _, _, ts_out, _, _ = _runner(pos, vel, mass, Leapfrog(), NullSelfGravity(),
                 _CompositeConservative([]), NullForce(), t0=1.0,
                 t_end=2.0,
                 dt=0.1,
@@ -199,7 +199,7 @@ class TestTimeInputs:
         vel = np.zeros((1, 3))
         mass = np.ones(1)
         with pytest.warns(UserWarning, match="is not an exact multiple of dt=0.13 Gyr"):
-            _, _, ts_out, _, _ = _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+            _, _, ts_out, _, _ = _runner(pos, vel, mass, Leapfrog(), NullSelfGravity(),
                     _CompositeConservative([]), NullForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
@@ -214,7 +214,7 @@ class TestTimeInputs:
         vel = np.zeros((1, 3))
         mass = np.ones(1)
         with pytest.warns(UserWarning, match="Last output will be at t=0.8 Gyr instead of t=1.0 Gyr"):
-            _, _, ts_out, _, _ = _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+            _, _, ts_out, _, _ = _runner(pos, vel, mass, Leapfrog(), NullSelfGravity(),
                     _CompositeConservative([]), NullForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
@@ -233,7 +233,7 @@ class TestTimeInputs:
         pos = np.zeros((1, 3))
         vel = np.zeros((1, 3))
         mass = np.ones(1)
-        _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+        _runner(pos, vel, mass, Leapfrog(), NullSelfGravity(),
                     _CompositeConservative([]), NullForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
@@ -251,7 +251,7 @@ class TestTimeInputs:
         pos = np.zeros((1, 3))
         vel = np.zeros((1, 3))
         mass = np.ones(1)
-        _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+        _runner(pos, vel, mass, Leapfrog(), NullSelfGravity(),
                     _CompositeConservative([]), NullForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
@@ -268,7 +268,7 @@ class TestTimeInputs:
         pos = np.zeros((1, 3))
         vel = np.zeros((1, 3))
         mass = np.ones(1)
-        _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+        _runner(pos, vel, mass, Leapfrog(), NullSelfGravity(),
                     _CompositeConservative([]), NullForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
@@ -287,7 +287,7 @@ class TestTimeInputs:
         pos = np.zeros((1, 3))
         vel = np.zeros((1, 3))
         mass = np.ones(1)
-        _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+        _runner(pos, vel, mass, Leapfrog(), NullSelfGravity(),
                     _CompositeConservative([]), NullForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
@@ -305,7 +305,7 @@ class TestTimeInputs:
         vel = np.zeros((1, 3))
         mass = np.ones(1)
         with pytest.raises(ValueError, match="dt_out must be a multiple of dt."):
-            _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+            _runner(pos, vel, mass, Leapfrog(), NullSelfGravity(),
                         _CompositeConservative([]), NullForce(), t0=0.0,
                         t_end=t_end, 
                         dt=dt, 
@@ -324,7 +324,7 @@ class TestTimeInputs:
         mass = np.ones(1)
         with warnings.catch_warnings():
             warnings.simplefilter('error')
-            _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+            _runner(pos, vel, mass, Leapfrog(), NullSelfGravity(),
                         _CompositeConservative([]), NullForce(), t0=0.0,
                         t_end=t_end, 
                         dt=dt, 
@@ -335,7 +335,7 @@ class TestTimeStepInputs:
     def setup_class(cls):
         t_end = 0.01 * u.Gyr
         dt = 5e-6 * u.Gyr
-        cls.integrator = LeapfrogIntegrator()
+        cls.integrator = Leapfrog()
         cls.t_end = t_end
         cls.ts = np.arange(0, t_end.value + dt.value, dt.value) * u.Gyr
         pot = NFWPotential(amp=1e13*u.Msun, a=20*u.kpc)
@@ -409,7 +409,7 @@ def test_time_dependent_potential_matches_galpy():
     td_pos = np.array([cyl_to_rect(td_R, td_phi, td_z)])
     td_vel = np.array([(cyl_to_rect_vec(td_vR, td_vT, td_vz, td_phi) * u.km / u.s).to(u.kpc / u.Gyr).value])
 
-    integrator = LeapfrogIntegrator()
+    integrator = Leapfrog()
     # tambora integration
     td_force = _CompositeConservative([]) + ExternalPotential(smooth_pot)
     td_pos_out, td_vel_out, td_ts_out, _, _ = _runner(
@@ -461,7 +461,7 @@ def test_time_dependent_potential_differs_from_static():
     td2_pos = np.array([cyl_to_rect(td2_R, td2_phi, td2_z)])
     td2_vel = np.array([(cyl_to_rect_vec(td2_vR, td2_vT, td2_vz, td2_phi) * u.km / u.s).to(u.kpc / u.Gyr).value])
 
-    integrator = LeapfrogIntegrator()
+    integrator = Leapfrog()
 
     # Integrate in growing potential
     #acc_growing = _galpy_pot_to_acc_fn(nfw_growing)
@@ -518,7 +518,7 @@ def test_time_dependent_potential_energy_matches_galpy():
                        * u.km / u.s).to(u.kpc / u.Gyr).value])
 
     # --- tambora integration ---
-    integrator = LeapfrogIntegrator()
+    integrator = Leapfrog()
     ext_force = _CompositeConservative([]) + ExternalPotential(smooth_e)
     e_pos_out, e_vel_out, e_ts_out, _, _ = _runner(
         e_pos, e_vel, np.array([1.0]),
@@ -610,7 +610,7 @@ class _TimeRecordingField(_ExtCons):
 def _run_recording_times(t0, t_end, dt, dt_out, cadence):
     """Run one particle; return the snapshot times, the times hooks saw, and the times forces saw."""
     seen, field = [], _TimeRecordingField()
-    _, _, ts_out, _, _ = _runner(np.zeros((1, 3)), np.zeros((1, 3)), np.ones(1), LeapfrogIntegrator(),
+    _, _, ts_out, _, _ = _runner(np.zeros((1, 3)), np.zeros((1, 3)), np.ones(1), Leapfrog(),
                                  NullSelfGravity(), _CompositeConservative([field]), NullForce(),
                                  t0=t0, t_end=t_end, dt=dt, dt_out=dt_out, progress=False,
                                  hooks=[(lambda state: seen.append(state.t), cadence)])
@@ -694,7 +694,7 @@ class _LoggingRecorder(_MemoryRecorder):
 
 def test_runner_hands_each_output_to_the_recorder():
     rec = _LoggingRecorder()
-    out = _runner(np.zeros((2, 3)), np.ones((2, 3)), np.ones(2), LeapfrogIntegrator(), DirectSum(),
+    out = _runner(np.zeros((2, 3)), np.ones((2, 3)), np.ones(2), Leapfrog(), DirectSum(),
                   _CompositeConservative([]), NullForce(), t0=0.0, t_end=1.0, dt=0.1, dt_out=0.2,
                   return_self_gravity_pot=False, progress=False, eps=0.1, recorder=rec)
     assert rec.calls[0] == ('begin', 6, 2, True, False)
@@ -832,7 +832,7 @@ def test_each_output_is_recorded_after_the_hooks_due_at_its_step():
             log.append(('record', step))
             super().record(step, t, pos, vel, self_acc, self_pot)
 
-    _runner(np.zeros((1, 3)), np.ones((1, 3)), np.ones(1), LeapfrogIntegrator(), NullSelfGravity(),
+    _runner(np.zeros((1, 3)), np.ones((1, 3)), np.ones(1), Leapfrog(), NullSelfGravity(),
             _CompositeConservative([]), NullForce(), t0=0.0, t_end=1.0, dt=0.1, dt_out=0.2, progress=False,
             hooks=[(lambda state: log.append(('hook', state.step)), EveryOutput())], recorder=OrderRecorder())
     assert log == [(kind, step) for step in (0, 2, 4, 6, 8, 10) for kind in ('hook', 'record')]

@@ -68,3 +68,7 @@ class BaseIntegrator(ABC):
     def reset(self):
         """Clear cached state (e.g. previous-step accelerations)."""
         pass
+
+    def save(self):
+        """The integrator's own settings, as plain values for the run record."""
+        return {}

@@ -14,7 +14,7 @@ from tambora.dynamics import DirectSum, NullForce, NullSelfGravity
 from tambora.dynamics.forces.CompositeForce import _CompositeConservative
 from tambora.dynamics.forces.external_force import ExternalConservativeForce
 from tambora.dynamics.integration import _runner
-from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
+from tambora.dynamics import Leapfrog
 from tambora.dynamics.integration.recorder import _MemoryRecorder
 from tambora.io import run_files
 from tambora.io.run_files import _FileRecorder, _SnapshotArray, snapshot_name
@@ -26,7 +26,7 @@ N, NSNAPS = 50, 11
 def _run(recorder):
     rng = np.random.default_rng(0)
     pos, vel, mass = rng.normal(size=(N, 3)), rng.normal(size=(N, 3)) * 10, np.full(N, 1e5)
-    return _runner(pos, vel, mass, LeapfrogIntegrator(), DirectSum(), _CompositeConservative([]),
+    return _runner(pos, vel, mass, Leapfrog(), DirectSum(), _CompositeConservative([]),
                    NullForce(), t0=0.0, t_end=1.0, dt=0.01, dt_out=0.1, progress=False, eps=np.full(N, 0.05),
                    recorder=recorder)
 
@@ -218,7 +218,7 @@ def test_forked_workers_read_the_same_snapshot_correctly(tmp_path):
     # 20000 particles: more than HDF5 keeps of a dataset in memory, so every read goes to the file.
     n = 20_000
     recorder = _FileRecorder(tmp_path, fsync=False)
-    _runner(np.random.default_rng(0).normal(size=(n, 3)), np.ones((n, 3)), np.ones(n), LeapfrogIntegrator(),
+    _runner(np.random.default_rng(0).normal(size=(n, 3)), np.ones((n, 3)), np.ones(n), Leapfrog(),
             NullSelfGravity(), _CompositeConservative([]), NullForce(), t0=0.0, t_end=0.01, dt=0.01, dt_out=0.01,
             return_self_gravity_acc=False, return_self_gravity_pot=False, progress=False, recorder=recorder)
     pos = recorder.outputs()[0]

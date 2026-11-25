@@ -6,7 +6,9 @@ from .BaseIntegrator import BaseIntegrator, StepResult
 import dataclasses
 import numpy as np
 
-class LeapfrogIntegrator(BaseIntegrator):
+class Leapfrog(BaseIntegrator):
+    """Kick-drift-kick leapfrog, second order."""
+
     def __init__(self):
         self._last_conserv_acc = None
         self._last_base_acc = None
