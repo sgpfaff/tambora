@@ -30,8 +30,8 @@ def _load(directory):
 ], ids=['default', 'no caches', 'no pot', 'no self-gravity', 'falcON', 'backward', 'later t0, uneven end',
         'no monitor'])
 def test_a_loaded_run_is_the_run_kept_in_memory_bit_for_bit(tmp_path, run):
-    solver = {name: value for name, value in run.items() if name == 'solver'}
-    run = {name: value for name, value in run.items() if name != 'solver'}
+    solver = {name: value for name, value in run.items() if name in ('solver', 't0')}
+    run = {name: value for name, value in run.items() if name not in ('solver', 't0')}
     disk, memory = _sim(output_dir=tmp_path / 'run', **solver), _sim(**solver)
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')     # the uneven end
@@ -274,6 +274,14 @@ def test_a_loaded_sim_cant_run_again_or_take_particles_or_hooks(tmp_path):
     with pytest.raises(RuntimeError, match="can't run"):
         sim.run(**RUN)
     assert not (tmp_path / 'run').exists()
+
+
+def test_a_loaded_sim_keeps_its_start_time(tmp_path):
+    _sim(output_dir=tmp_path / 'run', t0=1.5).run(**{**RUN, 't_end': 1.7})
+    sim = _load(tmp_path / 'run')
+    assert sim.times[0] == 1.5
+    sim._clear_outputs()
+    np.testing.assert_array_equal(sim.times, [1.5])
 
 
 def test_clearing_a_loaded_sims_outputs_goes_back_to_the_first_output(tmp_path):

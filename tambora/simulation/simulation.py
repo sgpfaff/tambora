@@ -3,6 +3,7 @@ Simulation class for tambora.
 """
 
 import contextlib
+import numbers
 import os
 import numpy as np
 import warnings
@@ -95,6 +96,15 @@ def _check_monitors(monitors):
         raise TypeError(f"monitors must be 'auto', a quantity name, a sequence of names, or False; "
                         f"got {monitors!r}.")
     return names
+
+
+def _check_t0(t0):
+    """*t0*, the Sim's start time, as a float."""
+    if isinstance(t0, bool) or not isinstance(t0, numbers.Real):
+        raise TypeError(f"t0 must be a number, got {type(t0).__name__}.")
+    if not np.isfinite(t0):
+        raise ValueError(f"t0 must be finite, got {t0}.")
+    return float(t0)
 
 
 def _check_output_dir(output_dir, name='output_dir'):
@@ -220,6 +230,10 @@ class Sim(_ParticleView):
         in memory; the accessors then read the files. It must not hold a run
         already, and a Sim with an output_dir runs once. Default: None (in memory).
         ``Sim.load(path)`` reads the run back.
+    t0 : float, optional
+        Time of the initial conditions. The Sim's clock starts here, and ``run`` goes
+        from here to its ``t_end``. Default: 0.
+        Units: `Gyr`
     """
 
     _sl = slice(None)
@@ -228,8 +242,9 @@ class Sim(_ParticleView):
     def _sim(self):
         return self
 
-    def __init__(self, *, solver=_UNSET, output_dir=None):
+    def __init__(self, *, solver=_UNSET, output_dir=None, t0=0.0):
         solver = _check_solver(solver)
+        self._t0 = _check_t0(t0)
         self._output_dir = None if output_dir is None else _check_output_dir(output_dir)
         taken = self._run_in_output_dir()
         if taken:
@@ -414,7 +429,7 @@ class Sim(_ParticleView):
         N = self._mass.shape[0]
         self._positions = self._init_pos.reshape(1, N, 3)
         self._velocities = self._init_vel.reshape(1, N, 3)
-        self._times = np.array([0.0])
+        self._times = np.array([self._t0])
         self._steps = np.array([0])
 
     def _clear_outputs(self):
@@ -424,7 +439,7 @@ class Sim(_ParticleView):
             self._init_pos, self._init_vel = self._positions[0], self._velocities[0]
         self._positions = self._init_pos.reshape(1, N, 3)
         self._velocities = self._init_vel.reshape(1, N, 3)
-        self._times = np.array([0.0])
+        self._times = np.array([self._t0])
         self._steps = np.array([0])
         self._cached_self_acc = None
         self._cached_self_pot = None
@@ -569,8 +584,7 @@ class Sim(_ParticleView):
         
     # --- Running the Simulation ------------------------------------------------------------------------------------------
 
-    def run(self, t_end: float, dt: float, dt_out: float, t0: float=0.0,
-            integrator=None,
+    def run(self, t_end: float, dt: float, dt_out: float, integrator=None,
             cache_self_gravity_acc: bool = True, cache_self_gravity_pot: bool = True,
             progress: bool = True, monitors='auto'):
         """
@@ -579,7 +593,7 @@ class Sim(_ParticleView):
         Parameters
         ----------
         t_end : float
-            End time of the simulation.
+            The time to run to, on the Sim's clock, which starts at ``Sim(t0=...)``.
             Units: `Gyr`
         dt : float
             Timestep for integration.
@@ -625,8 +639,15 @@ class Sim(_ParticleView):
             raise RuntimeError(f"This Sim was loaded from {self._output_dir!r} and can't run. "
                                "Make a new Sim to run again.")
         solver = self._self_gravity_force
+        t0 = self._t0
+        if t_end < t0 and dt > 0:
+            raise ValueError(f"t_end = {t_end:g} is before the Sim's start time, t0 = {t0:g}. "
+                             "Give a later t_end, or a negative dt to run backwards.")
+        if t_end > t0 and dt < 0:
+            raise ValueError(f"t_end = {t_end:g} is after the Sim's start time, t0 = {t0:g}. "
+                             "Give a positive dt, or an earlier t_end to run backwards.")
         _check_dt_dt_out(dt, dt_out, t0, t_end)
-        t0, t_end, dt, dt_out = float(t0), float(t_end), float(dt), float(dt_out)
+        t_end, dt, dt_out = float(t_end), float(dt), float(dt_out)
         cache_self_gravity_acc, cache_self_gravity_pot = bool(cache_self_gravity_acc), bool(cache_self_gravity_pot)
         integrator = _check_integrator(integrator)
         # Outside state (e.g. Agama's global units) can invalidate a wrapped
@@ -1413,6 +1434,7 @@ class Sim(_ParticleView):
         sim._positions, sim._velocities, sim._cached_self_acc, sim._cached_self_pot = _snapshot_arrays(
             directory, n, run['n_particles'], run['keep_self_acc'], run['keep_self_pot'])
         sim._times, sim._steps = times, steps
+        sim._t0 = float(settings['run']['t0'])
         sim._run_settings, sim._run_forces = settings['run'], run['forces']
         sim._has_run = sim._loaded = True
         sim._output_dir = directory

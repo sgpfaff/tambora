@@ -43,8 +43,8 @@ def _assert_same_files(saved, streamed):
 ], ids=['default', 'no caches', 'no pot', 'no self-gravity', 'falcON', 'backward', 'later t0, uneven end',
         'no monitor'])
 def test_a_saved_run_is_what_streaming_writes(tmp_path, run):
-    solver = {name: value for name, value in run.items() if name == 'solver'}
-    run = {name: value for name, value in run.items() if name != 'solver'}
+    solver = {name: value for name, value in run.items() if name in ('solver', 't0')}
+    run = {name: value for name, value in run.items() if name not in ('solver', 't0')}
     memory, disk = _sim(**solver), _sim(output_dir=tmp_path / 'streamed', **solver)
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')     # the uneven end
