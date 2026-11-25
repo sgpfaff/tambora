@@ -10,7 +10,7 @@ from tambora.ic import ParticleSet
 import numpy as np
 from tambora.units import G_INTERNAL
 from tambora.units import KMS_TO_KPCGYR
-from tambora.dynamics import DirectSum, FalcON, NullSelfGravity
+from tambora.dynamics import DirectSum, FalcON, NullSelfGravity, Leapfrog
 from tambora.dynamics.diagnostics import bound_mask
 from tambora.dynamics.hooks import (Hook, ConservationMonitor, BoundednessHook,
                                     EveryOutput, EveryStep, EveryNSteps, EveryNOutputs)
@@ -594,8 +594,45 @@ def test_a_boundedness_hook_unbinds_with_the_solver_it_is_given():
     assert len(calls) >= len(bounded.t) > 0 and calls[0] == COMP2_NPTS
 
 
-@pytest.mark.parametrize("keyword", [dict(method='direct'), dict(method=None), dict(theta=0.3), dict(eps=0.5)],
-                         ids=['a method', 'no method', 'a solver setting', 'a softening'])
+class _CountingLeapfrog(Leapfrog):
+    def __init__(self, order=2):
+        super().__init__()
+        self.order, self.steps = order, 0
+
+    def step(self, *args, **kwargs):
+        self.steps += 1
+        return super().step(*args, **kwargs)
+
+    def save(self):
+        return {'order': self.order}
+
+
+def test_a_run_uses_the_integrator_it_is_given_and_records_it():
+    integrator = _CountingLeapfrog()
+    sim = _two_components(eps_a=0.1, eps_b=0.1)
+    sim.run(t_end=0.05, dt=0.01, dt_out=0.01, integrator=integrator, progress=False, monitors=False)
+    assert integrator.steps == 5
+    assert sim._run_settings['integrator'] == {'class': '_CountingLeapfrog', 'order': 2}
+
+
+def test_a_run_uses_leapfrog_unless_told_otherwise():
+    default, given = _two_components(eps_a=0.1, eps_b=0.1), _two_components(eps_a=0.1, eps_b=0.1)
+    _quick_run(default)
+    given.run(t_end=0.01, dt=0.01, dt_out=0.01, integrator=Leapfrog(), progress=False, monitors=False)
+    assert default._run_settings['integrator'] == given._run_settings['integrator'] == {'class': 'Leapfrog'}
+    np.testing.assert_array_equal(default.pos(), given.pos())
+
+
+def test_a_run_refuses_an_integrator_class():
+    sim = _two_components(eps_a=0.1, eps_b=0.1)
+    with pytest.raises(TypeError, match="^integrator must be an integrator, e.g. Leapfrog\\(\\). Got 'ABCMeta'.$"):
+        sim.run(t_end=0.01, dt=0.01, dt_out=0.01, integrator=Leapfrog)
+    assert not sim._has_run
+
+
+@pytest.mark.parametrize("keyword", [dict(method='direct'), dict(method=None), dict(theta=0.3), dict(eps=0.5),
+                                     dict(integration_method='leapfrog')],
+                         ids=['a method', 'no method', 'a solver setting', 'a softening', 'an integration method'])
 def test_run_takes_no_method_nor_what_went_with_it(keyword):
     sim = _two_components(eps_a=0.1, eps_b=0.1)
     with pytest.raises(TypeError, match="unexpected keyword argument"):
@@ -2462,7 +2499,7 @@ class _CanBeInvalidated(ExternalConservativeForce):
 @pytest.mark.parametrize("bad, error, match", [
     (dict(dt_out=0.15), ValueError, "multiple of dt"),
     (dict(dt=-0.1), ValueError, "dt must be positive"),
-    (dict(integration_method='rk4'), ValueError, r"Unknown integration_method 'rk4'.*\['leapfrog'\]"),
+    (dict(integrator='leapfrog'), TypeError, r"^integrator must be an integrator, e.g. Leapfrog\(\). Got 'str'.$"),
     ('invalid force', RuntimeError, "force invalidated"),
     (dict(monitors='bogus'), ValueError, "Unknown conserved quantity 'bogus'"),
     (dict(monitors=['energy', 1]), TypeError, "monitors must be 'auto', a quantity name"),

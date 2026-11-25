@@ -1,2 +1,2 @@
 from .forces import *
-from .integration import _runner, INTEGRATORS, Leapfrog
+from .integration import _runner, Leapfrog

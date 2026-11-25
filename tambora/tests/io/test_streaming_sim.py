@@ -144,7 +144,7 @@ def test_run_h5_holds_the_components_particles_and_run_settings(tmp_path):
     np.testing.assert_array_equal(settings['particles']['eps'], sim._eps)
     assert settings['run'] == sim._run_settings == {
         't0': 0.0, 't_end': 1.0, 'dt': 0.01, 'dt_out': 0.05, 'n_steps': 100, 'steps_per_output': 5,
-        'integration_method': 'leapfrog', 'self_gravity': {'method': 'falcON', 'class': 'FalcON', 'kernel': 1, 'theta': 0.6},
+        'integrator': {'class': 'Leapfrog'}, 'self_gravity': {'method': 'falcON', 'class': 'FalcON', 'kernel': 1, 'theta': 0.6},
         'cache_self_gravity_acc': True, 'cache_self_gravity_pot': True, 'monitors': 'auto', 'forces': [],
         'hooks': {'names': ['ConservationMonitor'], 'cadences': ['EveryOutput']}}
     assert all(type(settings['run'][k]) is float for k in ('t0', 't_end', 'dt', 'dt_out'))

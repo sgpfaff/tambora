@@ -9,7 +9,8 @@ import warnings
 from .component import Component
 from ._view import _ParticleView
 from ..dynamics import (_runner, Force, SelfGravityForce, FalcON, DirectSum, NullSelfGravity, Conservative,
-                        ExternalPotential, INTEGRATORS)
+                        ExternalPotential, Leapfrog)
+from ..dynamics.integration import BaseIntegrator
 
 from ..dynamics import forces as _forces
 from ..dynamics.forces.CompositeForce import _CompositeConservative, _CompositePlain
@@ -36,6 +37,15 @@ def _check_solver(solver):
     if not isinstance(solver, SelfGravityForce):
         raise TypeError(f"solver must be a self-gravity solver, e.g. FalcON(), or None. Got {type(solver).__name__!r}.")
     return solver
+
+
+def _check_integrator(integrator):
+    """The integrator a run is given; ``Leapfrog()`` when not given."""
+    if integrator is None:
+        return Leapfrog()
+    if not isinstance(integrator, BaseIntegrator):
+        raise TypeError(f"integrator must be an integrator, e.g. Leapfrog(). Got {type(integrator).__name__!r}.")
+    return integrator
 
 
 def _solver_settings(solver):
@@ -560,7 +570,7 @@ class Sim(_ParticleView):
     # --- Running the Simulation ------------------------------------------------------------------------------------------
 
     def run(self, t_end: float, dt: float, dt_out: float, t0: float=0.0,
-            integration_method: str = 'leapfrog',
+            integrator=None,
             cache_self_gravity_acc: bool = True, cache_self_gravity_pot: bool = True,
             progress: bool = True, monitors='auto'):
         """
@@ -577,8 +587,8 @@ class Sim(_ParticleView):
         dt_out : float
             Output interval. Must be a multiple of dt.
             Units: `Gyr`
-        integration_method: str, optional
-            Method to use for integration. Currently only leapfrog is available.
+        integrator : BaseIntegrator, optional
+            The time integrator. Default ``Leapfrog()``.
         cache_self_gravity_acc : bool, optional
             Whether to cache the self-gravity acceleration at each output snapshot. Default is True.
         cache_self_gravity_pot : bool, optional
@@ -618,9 +628,7 @@ class Sim(_ParticleView):
         _check_dt_dt_out(dt, dt_out, t0, t_end)
         t0, t_end, dt, dt_out = float(t0), float(t_end), float(dt), float(dt_out)
         cache_self_gravity_acc, cache_self_gravity_pot = bool(cache_self_gravity_acc), bool(cache_self_gravity_pot)
-        if integration_method not in INTEGRATORS:
-            raise ValueError(f"Unknown integration_method {integration_method!r}. "
-                             f"Supported: {sorted(INTEGRATORS)}.")
+        integrator = _check_integrator(integrator)
         # Outside state (e.g. Agama's global units) can invalidate a wrapped
         # potential after it was added; each backend checks for that here.
         for force in self._conserv_ext_force.members + self._base_ext_force.members:
@@ -643,7 +651,7 @@ class Sim(_ParticleView):
         run_settings = {
             't0': t0, 't_end': t_end, 'dt': dt, 'dt_out': dt_out,
             'n_steps': n_steps, 'steps_per_output': steps_per_output,
-            'integration_method': integration_method,
+            'integrator': {'class': type(integrator).__name__, **(integrator.save() or {})},
             'self_gravity': _solver_settings(solver),
             'cache_self_gravity_acc': cache_self_gravity_acc,
             'cache_self_gravity_pot': cache_self_gravity_pot,
@@ -662,8 +670,6 @@ class Sim(_ParticleView):
         for hook, _ in self._hooks:
             if isinstance(hook, Hook):
                 hook.reset()
-        integrator = INTEGRATORS[integration_method]()
-
         if self._output_dir is None:
             recorder = _MemoryRecorder()
         else:
