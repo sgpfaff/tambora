@@ -279,19 +279,21 @@ class Sim(_ParticleView):
         self._hooks = [] # (Hook, Cadence) pairs run during integration
         self._auto_monitor = None # the ConservationMonitor the last run attached itself
 
-    def _ti(self, t, vectorized=True):
+    def _ti(self, t=..., index=None):
         """
-        Resolve *t* to a snapshot index.
+        Resolve *t* or *index* to a snapshot index, or None for every snapshot.
 
-        int -> direct index, float -> nearest time.
+        int t -> direct index, float t -> nearest time.
         """
-        if isinstance(t, (int, np.integer)) or t == ...:
-            if t == ...:
-                if vectorized:
-                    return t
-                else:
-                    raise TypeError("This method is not vectorized, so t cannot be a list or ellipse. Please provide" \
-                    " an integer index or a float time.")
+        if index is not None:
+            if t is not ...:
+                raise TypeError("Give t or index, not both.")
+            if not isinstance(index, (int, np.integer)):
+                raise TypeError(f"index must be an int. Got {type(index).__name__}.")
+            t = index
+        if isinstance(t, (int, np.integer)) or t is ...:
+            if t is ...:
+                return None
             else:
                 if t > len(self._times) - 1 or t < -len(self._times):
                     print(f"Time index {t} is out of bounds for simulation with {len(self._times)} snapshots. Please provide an index within [-{len(self._times)}, {len(self._times)-1}].")
@@ -916,7 +918,7 @@ class Sim(_ParticleView):
     # --- Potential Energy --- #
 
     @unit_handler('energy')
-    def self_potential(self, t=..., solver=None) -> np.ndarray:
+    def self_potential(self, t=..., solver=None, *, index=None) -> np.ndarray:
         '''
         Self-gravitational potential of particles at *t*.
 
@@ -929,6 +931,8 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
             A solver to compute the self-gravity afresh with, one snapshot at a time.
             By default the values the run saved are used where they apply, and the
@@ -941,10 +945,11 @@ class Sim(_ParticleView):
 
             Units: `Msun km^2 / s^2`
         '''
-        return self._mass * self._self_gravity(t, solver, True, potential=True)
+        i = self._ti(t, index)
+        return self._mass * self._self_gravity(i, solver, True, potential=True)
 
     @unit_handler('energy')
-    def PE(self, t=..., solver=None) -> np.ndarray:
+    def PE(self, t=..., solver=None, *, index=None) -> np.ndarray:
         '''
         Total potential energy of particles at *t*.
 
@@ -957,6 +962,8 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
             A solver to compute the self-gravity afresh with, one snapshot at a time.
             By default the values the run saved are used where they apply, and the
@@ -968,13 +975,14 @@ class Sim(_ParticleView):
             Total potential energy of each particle at each snapshot.
             Units: `Msun km^2 / s^2`
         '''
-        return (self.self_potential(t=t, solver=solver, return_internal=True)
-                + self.compute_external_pot(t=t, return_internal=True))
+        i = self._ti(t, index)
+        return (self.self_potential(index=i, solver=solver, return_internal=True)
+                + self.compute_external_pot(index=i, return_internal=True))
 
     # --- Total Energy --- #
 
     @unit_handler('energy')
-    def energy(self, t=..., solver=None):
+    def energy(self, t=..., solver=None, *, index=None):
         """
         Energy of particles at *t*.
         
@@ -987,6 +995,8 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
             A solver to compute the self-gravity afresh with, one snapshot at a time.
             By default the values the run saved are used where they apply, and the
@@ -998,10 +1008,11 @@ class Sim(_ParticleView):
             Total energy of each particle at each snapshot.
             Units: `Msun km^2 / s^2`
         """
-        return self.KE(t=t, return_internal=True) + self.PE(t=t, solver=solver, return_internal=True)
+        i = self._ti(t, index)
+        return self.KE(index=i, return_internal=True) + self.PE(index=i, solver=solver, return_internal=True)
 
     @unit_handler('energy')
-    def system_energy(self, t=..., solver=None):
+    def system_energy(self, t=..., solver=None, *, index=None):
         r"""
         Total conserved system energy at *t*.
         
@@ -1019,6 +1030,8 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
             A solver to compute the self-gravity afresh with, one snapshot at a time.
             By default the values the run saved are used where they apply, and the
@@ -1030,16 +1043,24 @@ class Sim(_ParticleView):
             Total energy of the system at time t.
             Units: :math:`Msun km^2 / s^2`
         """
-        return (np.sum(self.KE(t=t, return_internal=True), axis=-1)
-                + 0.5 * np.sum(self.self_potential(t=t, solver=solver, return_internal=True), axis=-1)
-                + np.sum(self.compute_external_pot(t=t, return_internal=True), axis=-1))
+        i = self._ti(t, index)
+        return (np.sum(self.KE(index=i, return_internal=True), axis=-1)
+                + 0.5 * np.sum(self.self_potential(index=i, solver=solver, return_internal=True), axis=-1)
+                + np.sum(self.compute_external_pot(index=i, return_internal=True), axis=-1))
 
-    def dE(self, t=..., solver=None):
+    def dE(self, t=..., solver=None, *, index=None):
         '''
         Percent change in total energy over the simulation time.
 
         Parameters
         ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time (in Gyr).
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
             A solver to compute the self-gravity afresh with, one snapshot at a time.
             By default the values the run saved are used where they apply, and the
@@ -1050,19 +1071,20 @@ class Sim(_ParticleView):
         dE : (n_snaps,) array
             Percent change in total energy at each snapshot.
         '''
-        if t is ...:
+        i = self._ti(t, index)
+        if i is None:
             if solver is None and self._cached_self_pot is not None:
                 Es = self.system_energy(return_internal=True)
             else:
-                Es = np.array([self.system_energy(t=i, solver=solver, return_internal=True)
-                               for i in range(len(self._times))])
+                Es = np.array([self.system_energy(index=k, solver=solver, return_internal=True)
+                               for k in range(len(self._times))])
             return np.abs((Es - Es[0]) / Es[0])
-        E0 = self.system_energy(t=0, solver=solver, return_internal=True)
-        return np.abs((self.system_energy(t=t, solver=solver, return_internal=True) - E0) / E0)
+        E0 = self.system_energy(index=0, solver=solver, return_internal=True)
+        return np.abs((self.system_energy(index=i, solver=solver, return_internal=True) - E0) / E0)
 
     # --- Virial Ratio --- #
 
-    def virial_ratio(self, t=..., solver=None):
+    def virial_ratio(self, t=..., solver=None, *, index=None):
         r'''
         Virial ratio :math:`2K/|W|` of the particles at *t*: 1 in equilibrium.
 
@@ -1081,6 +1103,8 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
             A solver to compute the self-gravity afresh with, one snapshot at a time.
             By default the values the run saved are used where they apply, and the
@@ -1091,9 +1115,10 @@ class Sim(_ParticleView):
         virial_ratio : float or (n_snaps,) array
             Virial ratio at each snapshot.
         '''
-        acc = (self.external_acc(t, return_internal=True)
-               + self.self_gravity(t=t, solver=solver, return_internal=True))
-        return diagnostics.virial_ratio(self.pos(t, return_internal=True), self.vel(t, return_internal=True),
+        i = self._ti(t, index)
+        acc = (self.external_acc(index=i, return_internal=True)
+               + self.self_gravity(index=i, solver=solver, return_internal=True))
+        return diagnostics.virial_ratio(self.pos(index=i, return_internal=True), self.vel(index=i, return_internal=True),
                                         self._mass, acc)
 
     # --- Acceleration Accessors -----------------------------------------------------------------
@@ -1101,7 +1126,7 @@ class Sim(_ParticleView):
     # --- Self-Gravity --- #
 
     @unit_handler('acceleration')
-    def self_gravity(self, t=..., solver=None):
+    def self_gravity(self, t=..., solver=None, *, index=None):
         '''
         The self-gravity acceleration (ax, ay, az) 
         of each particle at *t*.
@@ -1115,6 +1140,8 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
             A solver to compute the self-gravity afresh with, one snapshot at a time.
             By default the values the run saved are used where they apply, and the
@@ -1127,10 +1154,11 @@ class Sim(_ParticleView):
             [ax, ay, az]
             Units: `km / s^2`
         '''
-        return self._self_gravity(t, solver, True)
+        i = self._ti(t, index)
+        return self._self_gravity(i, solver, True)
 
     @unit_handler('acceleration')
-    def self_ax(self, t=..., solver=None):
+    def self_ax(self, t=..., solver=None, *, index=None):
         '''
         x-component of self-gravity acceleration on each particle at *t*.
         
@@ -1143,6 +1171,8 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
             A solver to compute the self-gravity afresh with, one snapshot at a time.
             By default the values the run saved are used where they apply, and the
@@ -1155,10 +1185,11 @@ class Sim(_ParticleView):
             each particle at each snapshot.
             Units: `km / s^2`
         '''
-        return self.self_gravity(t=t, solver=solver, return_internal=True)[..., 0]
+        i = self._ti(t, index)
+        return self.self_gravity(index=i, solver=solver, return_internal=True)[..., 0]
 
     @unit_handler('acceleration')
-    def self_ay(self, t=..., solver=None):
+    def self_ay(self, t=..., solver=None, *, index=None):
         '''
         y-component of self-gravity acceleration on each particle at *t*.
         
@@ -1171,6 +1202,8 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
             A solver to compute the self-gravity afresh with, one snapshot at a time.
             By default the values the run saved are used where they apply, and the
@@ -1183,10 +1216,11 @@ class Sim(_ParticleView):
             each particle at each snapshot.
             Units: `km / s^2`
         '''
-        return self.self_gravity(t=t, solver=solver, return_internal=True)[..., 1]
+        i = self._ti(t, index)
+        return self.self_gravity(index=i, solver=solver, return_internal=True)[..., 1]
 
     @unit_handler('acceleration')
-    def self_az(self, t=..., solver=None):
+    def self_az(self, t=..., solver=None, *, index=None):
         '''
         z-component of self-gravity acceleration on each particle at *t*.
         
@@ -1199,6 +1233,8 @@ class Sim(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
             A solver to compute the self-gravity afresh with, one snapshot at a time.
             By default the values the run saved are used where they apply, and the
@@ -1211,7 +1247,8 @@ class Sim(_ParticleView):
             each particle at each snapshot.
             Units: `km / s^2`
         '''
-        return self.self_gravity(t=t, solver=solver, return_internal=True)[..., 2]
+        i = self._ti(t, index)
+        return self.self_gravity(index=i, solver=solver, return_internal=True)[..., 2]
 
     # --- Diagnostics -----------------------------------------------------------------
 
@@ -1270,10 +1307,10 @@ class Sim(_ParticleView):
         import matplotlib.pyplot as plt
         plt.figure(figsize=(7,5))
         if plot_components:
-            plt.plot(self.times, (np.sum(self.px(), axis=-1)-np.sum(self.px(t=0), axis=-1))/np.sum(self.px(t=0), axis=-1), alpha=0.5, lw=4, label='$p_x$')
-            plt.plot(self.times, (np.sum(self.py(), axis=-1)-np.sum(self.py(t=0), axis=-1))/np.sum(self.py(t=0), axis=-1), alpha=0.5, lw=4, label='$p_y$')
-            plt.plot(self.times, (np.sum(self.pz(), axis=-1)-np.sum(self.pz(t=0), axis=-1))/np.sum(self.pz(t=0), axis=-1), alpha=0.5, lw=4, label='$p_z$')
-        plt.plot(self.times, np.sum((np.sum(self.p(), axis=-1)-np.sum(self.p(t=0), axis=-1)), axis=-1)/ np.sum(self.p(t=0)), c='k', label='Total')
+            plt.plot(self.times, (np.sum(self.px(), axis=-1)-np.sum(self.px(index=0), axis=-1))/np.sum(self.px(index=0), axis=-1), alpha=0.5, lw=4, label='$p_x$')
+            plt.plot(self.times, (np.sum(self.py(), axis=-1)-np.sum(self.py(index=0), axis=-1))/np.sum(self.py(index=0), axis=-1), alpha=0.5, lw=4, label='$p_y$')
+            plt.plot(self.times, (np.sum(self.pz(), axis=-1)-np.sum(self.pz(index=0), axis=-1))/np.sum(self.pz(index=0), axis=-1), alpha=0.5, lw=4, label='$p_z$')
+        plt.plot(self.times, np.sum((np.sum(self.p(), axis=-1)-np.sum(self.p(index=0), axis=-1)), axis=-1)/ np.sum(self.p(index=0)), c='k', label='Total')
         plt.xlabel("Time (Gyr)")
         plt.ylabel("$|\\Delta p / p_0|$")
         plt.legend()

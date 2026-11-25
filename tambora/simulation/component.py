@@ -15,15 +15,12 @@ class Component(_ParticleView):
     def _has_run(self):
         return self._sim._has_run
 
-    def _ti(self, t, vectorized=True):
-        return self._sim._ti(t, vectorized=vectorized)
-
     # --- Energy Accessors -----------------------------------------------------------------
 
     # --- Potential Energy --- #
 
     @unit_handler('energy')
-    def self_potential(self, t=..., include_all_components=True, solver=None):
+    def self_potential(self, t=..., include_all_components=True, solver=None, *, index=None):
         '''
         Self-gravitational potential energy of the 
         particles in the component at *t*. 
@@ -39,6 +36,8 @@ class Component(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         include_all_components : bool, optional
             Whether to include all components in the simulation when computing the self-potential.
             If False, will only include the particles in this component when computing the self-potential.
@@ -55,10 +54,11 @@ class Component(_ParticleView):
 
             Units: `Msun km^2 / s^2`
         '''
-        return self.mass * self._self_gravity(t, solver, include_all_components, potential=True)
+        i = self._sim._ti(t, index)
+        return self.mass * self._self_gravity(i, solver, include_all_components, potential=True)
 
     @unit_handler('energy')
-    def PE(self, t=..., include_all_components=True, solver=None):
+    def PE(self, t=..., include_all_components=True, solver=None, *, index=None):
         '''
         Total potential energy of particles 
         in the component at *t*.
@@ -72,6 +72,8 @@ class Component(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         include_all_components : bool, optional
             Whether to include all components in the simulation when computing 
             the self-gravity acceleration. If False, only the particles in this
@@ -88,12 +90,13 @@ class Component(_ParticleView):
             Units: `Msun km^2 / s^2`
         
         '''
-        return (self.self_potential(t=t, include_all_components=include_all_components, solver=solver, return_internal=True)
-                + self.compute_external_pot(t=t, return_internal=True))
+        i = self._sim._ti(t, index)
+        return (self.self_potential(index=i, include_all_components=include_all_components, solver=solver, return_internal=True)
+                + self.compute_external_pot(index=i, return_internal=True))
 
     # --- Total Energy --- #
     @unit_handler('energy')
-    def energy(self, t=..., include_all_components=True, solver=None):
+    def energy(self, t=..., include_all_components=True, solver=None, *, index=None):
         """
         Energy of the particles in the component at time t.
         
@@ -106,6 +109,8 @@ class Component(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         include_all_components : bool, optional
             Whether to include all components in the simulation when computing 
             the self-gravity acceleration. If False, only the particles in this
@@ -121,12 +126,13 @@ class Component(_ParticleView):
             Total energy of each particle at each snapshot.
             Units: `Msun km^2 / s^2`
         """
-        return (self.KE(t=t, return_internal=True)
-                + self.PE(t=t, include_all_components=include_all_components, solver=solver, return_internal=True))
+        i = self._sim._ti(t, index)
+        return (self.KE(index=i, return_internal=True)
+                + self.PE(index=i, include_all_components=include_all_components, solver=solver, return_internal=True))
 
     # --- Virial Ratio --- #
 
-    def virial_ratio(self, t=..., include_all_components=True, solver=None):
+    def virial_ratio(self, t=..., include_all_components=True, solver=None, *, index=None):
         r'''
         Virial ratio :math:`2K/|W|` of the particles in the component at *t*: 1 in equilibrium.
 
@@ -145,6 +151,8 @@ class Component(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         include_all_components : bool, optional
             Whether to include all components in the simulation when computing
             the self-gravity acceleration. If False, only the particles in this
@@ -159,16 +167,17 @@ class Component(_ParticleView):
         virial_ratio : float or (n_snaps,) array
             Virial ratio at each snapshot.
         '''
-        acc = (self.external_acc(t, return_internal=True)
-               + self.self_gravity(t=t, include_all_components=include_all_components, solver=solver, return_internal=True))
-        return diagnostics.virial_ratio(self.pos(t, return_internal=True), self.vel(t, return_internal=True),
+        i = self._sim._ti(t, index)
+        acc = (self.external_acc(index=i, return_internal=True)
+               + self.self_gravity(index=i, include_all_components=include_all_components, solver=solver, return_internal=True))
+        return diagnostics.virial_ratio(self.pos(index=i, return_internal=True), self.vel(index=i, return_internal=True),
                                         self.mass, acc)
 
     # --- Acceleration Accessors -----------------------------------------------------------------
 
 
     @unit_handler('acceleration')
-    def self_gravity(self, t=..., include_all_components=True, solver=None):
+    def self_gravity(self, t=..., include_all_components=True, solver=None, *, index=None):
         '''
         Compute the self-gravity acceleration of each 
         particle in the component at *t*.
@@ -182,6 +191,8 @@ class Component(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         include_all_components : bool, optional
             Whether to include all components in the simulation when computing 
             the self-gravity acceleration. If False, only the particles in this
@@ -198,10 +209,11 @@ class Component(_ParticleView):
             [ax, ay, az]
             Units: `km / s^2`
         '''
-        return self._self_gravity(t, solver, include_all_components)
+        i = self._sim._ti(t, index)
+        return self._self_gravity(i, solver, include_all_components)
 
     @unit_handler('acceleration')
-    def self_ax(self, t=..., include_all_components=True, solver=None):
+    def self_ax(self, t=..., include_all_components=True, solver=None, *, index=None):
         '''
         x-component of self-gravity acceleration on each particle in the component at *t*.
         
@@ -214,6 +226,8 @@ class Component(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         include_all_components : bool, optional
             Whether to include all components in the simulation when computing 
             the self-gravity acceleration. If False, only the particles in this
@@ -230,10 +244,11 @@ class Component(_ParticleView):
             each particle at each snapshot.
             Units: `km / s^2`
         '''
-        return self.self_gravity(t=t, include_all_components=include_all_components, solver=solver, return_internal=True)[..., 0]
+        i = self._sim._ti(t, index)
+        return self.self_gravity(index=i, include_all_components=include_all_components, solver=solver, return_internal=True)[..., 0]
 
     @unit_handler('acceleration')
-    def self_ay(self, t=..., include_all_components=True, solver=None):
+    def self_ay(self, t=..., include_all_components=True, solver=None, *, index=None):
         '''
         y-component of self-gravity acceleration on each particle in the component at *t*.
         
@@ -246,6 +261,8 @@ class Component(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         include_all_components : bool, optional
             Whether to include all components in the simulation when computing 
             the self-gravity acceleration. If False, only the particles in this
@@ -262,10 +279,11 @@ class Component(_ParticleView):
             each particle at each snapshot.
             Units: `km / s^2`
         '''
-        return self.self_gravity(t=t, include_all_components=include_all_components, solver=solver, return_internal=True)[..., 1]
+        i = self._sim._ti(t, index)
+        return self.self_gravity(index=i, include_all_components=include_all_components, solver=solver, return_internal=True)[..., 1]
 
     @unit_handler('acceleration')
-    def self_az(self, t=..., include_all_components=True, solver=None):
+    def self_az(self, t=..., include_all_components=True, solver=None, *, index=None):
         '''
         z-component of self-gravity acceleration on each particle in the component at *t*.
         
@@ -278,6 +296,8 @@ class Component(_ParticleView):
             If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        index : int, optional
+            Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         include_all_components : bool, optional
             Whether to include all components in the simulation when computing 
             the self-gravity acceleration. If False, only the particles in this
@@ -294,7 +314,8 @@ class Component(_ParticleView):
             each particle at each snapshot.
             Units: `km / s^2`
         '''
-        return self.self_gravity(t=t, include_all_components=include_all_components, solver=solver, return_internal=True)[..., 2]
+        i = self._sim._ti(t, index)
+        return self.self_gravity(index=i, include_all_components=include_all_components, solver=solver, return_internal=True)[..., 2]
 
     # --- Properties ---------------------------------------------------------------------- #
 

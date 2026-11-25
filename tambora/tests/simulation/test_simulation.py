@@ -356,14 +356,13 @@ def test_ti_fails_with_list():
     Test that passing a list raises an error.
     '''
     with pytest.raises(TypeError, match="t must be an int index, a float time, or ellipsis."):
-        multicomp._ti([0, 5], vectorized=False)
+        multicomp._ti([0, 5])
 
-def test_ti_vectorized_false_fails_with_ellipsis():
+def test_ti_ellipsis_means_every_snapshot():
     '''
-    Test that passing an ellipsis when vectorized=False raises an error.
+    Test that an ellipsis resolves to None, every snapshot.
     '''
-    with pytest.raises(TypeError, match="This method is not vectorized, so t cannot be a list or ellipse. Please provide an integer index or a float time."):
-        multicomp._ti(..., vectorized=False)
+    assert multicomp._ti(...) is None
 
 # --- output shapes ------------------------------------------------------------------------ #
 
