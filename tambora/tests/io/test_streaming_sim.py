@@ -13,7 +13,7 @@ from galpy import potential as gp
 
 from tambora.dynamics import DirectSum, FalcON
 from tambora.dynamics.forces.Force import Force
-from tambora.dynamics.hooks import EveryStep, Hook
+from tambora.dynamics.hooks import Hook
 from tambora.io import run_files
 from tambora.io.run_files import RUN_FILE, _read_settings, _SnapshotArray, snapshot_name
 from tambora.simulation import Sim
@@ -161,31 +161,32 @@ class _Drag(Force):
         return -0.1 * vel
 
 
-def _note(state):
-    pass
+class _Note(Hook):
+    def __call__(self, state):
+        pass
 
 
 def test_run_h5_lists_the_forces_and_hooks_as_repr_does(tmp_path):
     sim = _sim(output_dir=tmp_path / 'run')
     sim.add_force(_Drag())
     sim.add_force([gp.NFWPotential(ro=8, vo=220), gp.MiyamotoNagaiPotential(ro=8, vo=220)])
-    sim.add_hook(_note, EveryStep())
+    sim.add_hook(_Note(every=1))
     sim.run(**RUN)
     assert _settings(tmp_path / 'run')['run'] == sim._run_settings
     assert sim._run_settings['forces'] == ['ExternalPotential(NFWPotential+MiyamotoNagaiPotential)', '_Drag']
-    assert sim._run_settings['hooks'] == {'names': ['function', 'ConservationMonitor'],
-                                          'cadences': ['EveryStep', 'EveryOutput']}
+    assert sim._run_settings['hooks'] == {'names': ['_Note', 'ConservationMonitor'],
+                                          'cadences': ['EveryNSteps(1)', 'EveryOutput']}
     assert all(label in repr(sim) for label in sim._run_settings['forces'] + sim._run_settings['hooks']['names'])
 
 
 def test_run_h5_lists_the_hooks_the_run_had():
     sim = _sim()
-    sim.add_hook(_note)
+    sim.add_hook(_Note())
     sim.run(**RUN)
-    assert sim._run_settings['hooks']['names'] == ['function', 'ConservationMonitor']
+    assert sim._run_settings['hooks']['names'] == ['_Note', 'ConservationMonitor']
     sim._clear_outputs()                            # the Sim can run again
     sim.run(**RUN, monitors=False)
-    assert sim._run_settings['hooks'] == {'names': ['function'], 'cadences': ['EveryOutput']}
+    assert sim._run_settings['hooks'] == {'names': ['_Note'], 'cadences': ['EveryOutput']}
 
 
 def test_a_run_without_forces_or_hooks_lists_none(tmp_path):

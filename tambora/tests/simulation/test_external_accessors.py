@@ -21,6 +21,7 @@ import numpy as np
 import pytest
 
 from tambora.simulation import Sim
+from tambora.dynamics.hooks import Hook
 
 galpy = pytest.importorskip("galpy")
 from galpy.potential import MWPotential2014                     # noqa: E402
@@ -174,8 +175,11 @@ def test_step_state_agrees_with_sim_at_the_same_time(external):
     if external:
         s.add_force(ExternalPotential(MWPotential2014))
     seen = {}
-    s.add_hook(lambda st: seen.setdefault(
-        st.t, (st.external_acc().copy(), st.c.external_acc().copy())))
+
+    class _Record(Hook):
+        def __call__(self, st):
+            seen.setdefault(st.t, (st.external_acc().copy(), st.c.external_acc().copy()))
+    s.add_hook(_Record())
     s.run(t_end=0.2, dt=0.1, dt_out=0.1, progress=False)
 
     # Shape contract holds at every fire, including t0.
@@ -192,7 +196,11 @@ def _run_capturing_external_acc(t_end=0.2, external=True):
     if external:
         s.add_force(ExternalPotential(MWPotential2014))
     seen = {}
-    s.add_hook(lambda st: seen.setdefault(st.t, st.external_acc().copy()))
+
+    class _Record(Hook):
+        def __call__(self, st):
+            seen.setdefault(st.t, st.external_acc().copy())
+    s.add_hook(_Record())
     s.run(t_end=t_end, dt=0.1, dt_out=0.1, progress=False)
     return s, seen
 

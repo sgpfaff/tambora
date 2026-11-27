@@ -510,7 +510,11 @@ def test_a_hook_gets_a_components_own_gravity_with_its_own_softening(solver):
     # This raised "eps array must have shape (N,)" when softening differed by component.
     sim = _two_components(eps_a=0.1, eps_b=np.linspace(0.02, 0.08, COMP2_NPTS), solver=solver)
     seen = {}
-    sim.add_hook(lambda state: seen.setdefault('acc', state.b.self_gravity(include_all_components=False)))
+
+    class _Record(Hook):
+        def __call__(self, state):
+            seen.setdefault('acc', state.b.self_gravity(include_all_components=False))
+    sim.add_hook(_Record())
     _quick_run(sim)
     expected = solver.acc(COMP2_POS, COMP2_MASS * 1e6, eps=sim.b.eps())
     np.testing.assert_array_equal(seen['acc'], expected)
@@ -546,14 +550,16 @@ def test_gravity_computed_again_needs_a_softening():
 def test_in_a_hook_gravity_computed_again_needs_a_softening():
     sim = _two_components(eps_a=0.1, solver=None)
     seen = {}
-    def hook(state):
-        if seen:
-            return
-        for view, everyone in [(state.b, False), (state, True)]:
-            with pytest.raises(ValueError, match="Softening isn't set"):
-                view.self_gravity(include_all_components=everyone, solver=DirectSum())
-        seen['a'] = state.a.self_gravity(include_all_components=False, solver=DirectSum())
-    sim.add_hook(hook)
+
+    class _Check(Hook):
+        def __call__(self, state):
+            if seen:
+                return
+            for view, everyone in [(state.b, False), (state, True)]:
+                with pytest.raises(ValueError, match="Softening isn't set"):
+                    view.self_gravity(include_all_components=everyone, solver=DirectSum())
+            seen['a'] = state.a.self_gravity(include_all_components=False, solver=DirectSum())
+    sim.add_hook(_Check())
     _quick_run(sim)
     pos, mass = sim.pos(t=0, return_internal=True), sim.mass
     a = sim._slices['a']
@@ -567,10 +573,12 @@ def test_hooks_get_the_particles_softening_and_unbind_with_it(monkeypatch):
     eps_b = np.linspace(0.02, 0.08, COMP2_NPTS)
     sim = _two_components(eps_a=0.1, eps_b=eps_b)
     seen = {}
-    def hook(state):
-        seen.setdefault('eps', (state.eps().copy(), state.b.eps().copy()))
-        seen.setdefault('mask', state.bound_mask('b'))
-    sim.add_hook(hook)
+
+    class _Record(Hook):
+        def __call__(self, state):
+            seen.setdefault('eps', (state.eps().copy(), state.b.eps().copy()))
+            seen.setdefault('mask', state.bound_mask('b'))
+    sim.add_hook(_Record())
     bounded = BoundednessHook('b')
     sim.add_hook(bounded)
     _quick_run(sim)

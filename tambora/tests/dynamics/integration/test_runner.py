@@ -556,28 +556,29 @@ def test_time_dependent_potential_energy_matches_galpy():
     )
 
 
-# --- bare-function hooks fire end-to-end through Sim.add_hook / run ------------- #
+# --- hooks fire end-to-end through Sim.add_hook / run ------------------------- #
 
-def test_bare_function_hook_fires_during_run_with_step_state():
-    '''A plain function (no default_cadence) registered via add_hook is invoked
-    each output during the run, receiving a live StepState.
+def test_a_hook_fires_during_run_with_step_state():
+    '''A hook registered via add_hook is invoked each output during the run,
+    receiving a live StepState.
 
-    Exercises the full documented path Sim.add_hook -> run -> _fire -> hook(state)
-    for the "any bare callable" case, and confirms the argument is a real
-    StepState view (its accessors work and carry the component's shape). The
-    StepState object is reused across fires, so per-fire data must be copied out
-    inside the hook rather than by stashing the state itself.
+    Exercises the full documented path Sim.add_hook -> run -> _fire -> hook(state),
+    and confirms the argument is a real StepState view (its accessors work and
+    carry the component's shape). The StepState object is reused across fires,
+    so per-fire data must be copied out inside the hook rather than by stashing
+    the state itself.
     '''
     seen_t, seen_shapes, seen_is_state = [], [], []
 
-    def record(state):
-        seen_t.append(state.t)
-        seen_shapes.append(state.pos().shape)
-        seen_is_state.append(isinstance(state, StepState))
+    class _Record(Hook):
+        def __call__(self, state):
+            seen_t.append(state.t)
+            seen_shapes.append(state.pos().shape)
+            seen_is_state.append(isinstance(state, StepState))
 
     sim = Sim(solver=None)
     sim.add_particles(np.zeros((4, 3)), np.zeros((4, 3)), np.ones(4), name='c')
-    sim.add_hook(record)                 # bare callable -> EveryOutput cadence
+    sim.add_hook(_Record())              # no every -> at each output
 
     sim.run(t_end=1.0, dt=0.5, dt_out=0.5, progress=False)
 
@@ -591,7 +592,7 @@ def test_bare_function_hook_fires_during_run_with_step_state():
 # --- times come from the step count, so every part of a run agrees on them ------ #
 
 from tambora.dynamics.forces.external_force import ExternalConservativeForce as _ExtCons
-from tambora.dynamics.hooks import EveryOutput, EveryStep, BoundednessHook
+from tambora.dynamics.hooks import EveryOutput, EveryStep, BoundednessHook, Hook
 
 
 class _TimeRecordingField(_ExtCons):

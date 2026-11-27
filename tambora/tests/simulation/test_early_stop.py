@@ -7,7 +7,7 @@ import pytest
 
 from tambora.simulation import Sim
 from tambora.dynamics import DirectSum
-from tambora.dynamics.hooks import EveryStep
+from tambora.dynamics.hooks import Hook
 from tambora.dynamics.forces.external_force import ExternalConservativeForce
 import tambora.dynamics.integration.integrate as integrate
 
@@ -38,13 +38,15 @@ def _sim(t_stop=np.inf):
 
 
 def _raise_at(step, exc, once=False):
+    """A hook that raises *exc* at *step*, firing every step."""
     fired = []
 
-    def hook(state):
-        if state.step == step and not (once and fired):
-            fired.append(step)
-            raise exc
-    return hook
+    class _RaiseAt(Hook):
+        def __call__(self, state):
+            if state.step == step and not (once and fired):
+                fired.append(step)
+                raise exc
+    return _RaiseAt(every=1)
 
 
 @pytest.fixture(scope='module')
@@ -64,7 +66,7 @@ def _assert_first_outputs_match(sim, full, n):
 @pytest.mark.parametrize("step, n_kept", [(35, 4), (40, 4)])     # at an output step, its hooks fire first
 def test_an_interrupted_run_keeps_the_outputs_recorded_so_far(full, step, n_kept):
     sim = _sim()
-    sim.add_hook(_raise_at(step, KeyboardInterrupt()), EveryStep())
+    sim.add_hook(_raise_at(step, KeyboardInterrupt()))
     with pytest.warns(UserWarning, match=f"stopped early: the {n_kept} outputs up to t = 0.3 Gyr"):
         with pytest.raises(KeyboardInterrupt) as err:
             sim.run(**RUN)
@@ -75,7 +77,7 @@ def test_an_interrupted_run_keeps_the_outputs_recorded_so_far(full, step, n_kept
 
 def test_an_error_in_a_hook_keeps_the_outputs_and_is_raised_again(full):
     sim = _sim()
-    sim.add_hook(_raise_at(55, ValueError("boom")), EveryStep())
+    sim.add_hook(_raise_at(55, ValueError("boom")))
     with pytest.warns(UserWarning, match="the 6 outputs up to t = 0.5 Gyr"):
         with pytest.raises(ValueError, match="boom"):
             sim.run(**RUN)
@@ -92,7 +94,7 @@ def test_an_interrupt_from_inside_a_force_keeps_the_outputs(full):
 
 def test_a_run_that_stops_before_its_first_output_keeps_nothing():
     sim = _sim()
-    sim.add_hook(_raise_at(0, ValueError("at t0")), EveryStep())
+    sim.add_hook(_raise_at(0, ValueError("at t0")))
     with warnings.catch_warnings():
         warnings.simplefilter('error')                 # no "stopped early" warning either
         with pytest.raises(ValueError, match="at t0"):
@@ -103,7 +105,7 @@ def test_a_run_that_stops_before_its_first_output_keeps_nothing():
 
 def test_a_rerun_after_an_interrupt_runs_normally(full):
     sim = _sim()
-    sim.add_hook(_raise_at(35, KeyboardInterrupt(), once=True), EveryStep())
+    sim.add_hook(_raise_at(35, KeyboardInterrupt(), once=True))
     with pytest.warns(UserWarning), pytest.raises(KeyboardInterrupt):
         sim.run(**RUN)
     sim.run(**RUN)
@@ -112,7 +114,7 @@ def test_a_rerun_after_an_interrupt_runs_normally(full):
 
 def test_warnings_made_errors_dont_replace_the_interrupt():
     sim = _sim()
-    sim.add_hook(_raise_at(35, KeyboardInterrupt()), EveryStep())
+    sim.add_hook(_raise_at(35, KeyboardInterrupt()))
     with warnings.catch_warnings():
         warnings.simplefilter('error')
         with pytest.raises(KeyboardInterrupt):
@@ -139,7 +141,7 @@ def test_the_progress_bar_is_closed_when_a_run_stops_early(monkeypatch):
 
     monkeypatch.setattr(integrate, 'tqdm', FakeBar)
     sim = _sim()
-    sim.add_hook(_raise_at(35, ValueError("boom")), EveryStep())
+    sim.add_hook(_raise_at(35, ValueError("boom")))
     with pytest.warns(UserWarning), pytest.raises(ValueError):
         sim.run(**RUN)
     assert bars and bars[-1].closed

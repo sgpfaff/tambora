@@ -13,7 +13,7 @@ from tambora.dynamics import DirectSum, FalcON
 from tambora.io import run_files
 from tambora.io.run_files import RUN_FILE, snapshot_name
 from tambora.simulation import Sim
-from tambora.tests.io.test_streaming_sim import RUN, _assert_same_run, _Drag, _files, _sim, _Stop
+from tambora.tests.io.test_streaming_sim import RUN, _assert_same_run, _Drag, _files, _Note, _sim, _Stop
 
 
 def _load(directory):
@@ -267,7 +267,7 @@ def test_a_loaded_sim_cant_run_again_or_take_particles_or_hooks(tmp_path):
     with pytest.raises(RuntimeError, match="after run"):
         sim.add_particles(np.zeros((1, 3)), np.zeros((1, 3)), np.ones(1), name='c')
     with pytest.raises(RuntimeError, match="after run"):
-        sim.add_hook(lambda state: None)
+        sim.add_hook(_Note())
     assert _files(tmp_path / 'run') == files
     shutil.rmtree(tmp_path / 'run')
     with pytest.raises(RuntimeError, match="can't run"):
