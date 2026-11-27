@@ -230,7 +230,7 @@ def test_forked_workers_read_the_same_snapshot_correctly(tmp_path):
 
 def test_a_sim_on_disk_can_be_pickled_and_copied_after_it_was_read(sims):
     on_disk, in_memory = sims
-    on_disk.a.pos(t=3)
+    on_disk.a.pos(index=3)
     for clone in (pickle.loads(pickle.dumps(on_disk)), copy.deepcopy(on_disk)):
         np.testing.assert_array_equal(clone.a.pos(), in_memory.a.pos())
 

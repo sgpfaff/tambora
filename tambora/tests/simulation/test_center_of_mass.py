@@ -40,8 +40,8 @@ def test_it_is_the_mass_weighted_mean_at_every_snapshot(component):
 
 
 def test_one_snapshot_gives_one_point():
-    assert SIM.com_pos(t=1).shape == SIM.stars.com_vel(t=0.02).shape == (3,)
-    np.testing.assert_array_equal(SIM.com_pos(t=1), SIM.com_pos()[1])
+    assert SIM.com_pos(index=1).shape == SIM.stars.com_vel(t=0.02).shape == (3,)
+    np.testing.assert_array_equal(SIM.com_pos(index=1), SIM.com_pos()[1])
     np.testing.assert_array_equal(SIM.stars.com_vel(t=0.02), SIM.stars.com_vel()[2])
 
 
