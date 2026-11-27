@@ -123,15 +123,6 @@ def _check_output_dir(output_dir, name='output_dir'):
     return path
 
 
-def _hook_dedup_key(hook):
-    """A hook's configuration-identity key, or ``None`` if it opts out of dedup.
-
-    Bare callables (e.g. a plain function) have no ``_dedup_key`` and so always
-    opt out; ``Hook`` subclasses return ``None`` by default until they override.
-    """
-    getter = getattr(hook, "_dedup_key", None)
-    return getter() if callable(getter) else None
-
 
 def _render_table(headers, rows, align=None):
     """Render a Unicode box-drawn table as a list of lines.
@@ -208,20 +199,11 @@ def _warn_not_saved(label, error, stacklevel):
                   "Pass save_with_run=False to skip saving it.", stacklevel=stacklevel + 1)
 
 
-def _hook_cadence(hook):
-    """The cadence a hook fires at when ``add_hook`` is given none."""
-    from ..dynamics.hooks import EveryNSteps, EveryOutput
-    every = getattr(hook, "every", None)
-    if every is not None:
-        return EveryNSteps(every)
-    return getattr(hook, "default_cadence", None) or EveryOutput()
-
-
-def _cadence_label(cadence):
-    """Readable label for a cadence, including its interval where it has one."""
-    name = type(cadence).__name__
-    n = getattr(cadence, "n", None)
-    return f"{name}({n})" if n is not None else name
+def _every_label(every):
+    """How often a hook with this ``every`` fires, for the Sim's repr."""
+    if every is None:
+        return "each output"
+    return "every step" if every == 1 else f"every {every} steps"
 
 
 class Sim(_ParticleView):
@@ -285,7 +267,7 @@ class Sim(_ParticleView):
         self._base_ext_force = _CompositePlain([]) # non-conservative external forces
         self._not_saved = [] # external forces added with save_with_run=False
         self._loaded = False # made by Sim.load: can't run
-        self._hooks = [] # (Hook, Cadence) pairs run during integration
+        self._hooks = [] # hooks run during integration
         self._auto_monitor = None # the ConservationMonitor the last run attached itself
 
     def _ti(self, t, vectorized=True):
@@ -690,16 +672,14 @@ class Sim(_ParticleView):
         }
 
         # Every check passed: only now change the Sim.
-        self._hooks[:] = [(h, c) for h, c in self._hooks if h is not self._auto_monitor]
+        self._hooks[:] = [h for h in self._hooks if h is not self._auto_monitor]
         self._auto_monitor = monitor
         if monitor is not None:
-            self._hooks.append((monitor, _hook_cadence(monitor)))
-        run_settings['hooks'] = {'names': [type(h).__name__ for h, _ in self._hooks],
-                                 'cadences': [_cadence_label(c) for _, c in self._hooks]}
-        from ..dynamics.hooks import Hook
-        for hook, _ in self._hooks:
-            if isinstance(hook, Hook):
-                hook.reset()
+            self._hooks.append(monitor)
+        run_settings['hooks'] = {'names': [type(h).__name__ for h in self._hooks],
+                                 'every': [h.every or 0 for h in self._hooks]}
+        for hook in self._hooks:
+            hook.reset()
         if self._output_dir is None:
             recorder = _MemoryRecorder()
         else:
@@ -763,23 +743,20 @@ class Sim(_ParticleView):
 
     # --- Hooks -----------------------------------------------------------------------------------
 
-    def add_hook(self, hook, cadence=None):
+    def add_hook(self, hook):
         '''
         Register a hook to run during integration.
 
-        A hook is a callable ``hook(state)`` receiving a ``StepState`` view of
-        the simulation at the current step. Results are typically accumulated on
+        A hook is called as ``hook(state)`` with a ``StepState`` view of the
+        simulation at the current step. Results are typically accumulated on
         the hook object for inspection after ``run()``.
 
         Parameters
         ----------
-        hook : callable
-            The hook to run. Subclass ``tambora.dynamics.hooks.Hook`` for a hook
-            with a ``default_cadence``, or pass any bare callable.
-        cadence : Cadence, optional
-            When the hook fires. If None, every ``hook.every`` steps when it is
-            set, else the hook's ``default_cadence`` if it has one, else
-            ``EveryOutput()``.
+        hook : Hook
+            The hook to run, e.g. ``ConservationMonitor()`` or a subclass of
+            ``tambora.dynamics.hooks.Hook``. It fires every ``hook.every`` steps,
+            or at each output if that is None.
 
         Returns
         -------
@@ -790,33 +767,28 @@ class Sim(_ParticleView):
         RuntimeError
             If the simulation has already been run.
         TypeError
-            If ``hook`` is not callable, or the resolved ``cadence`` (supplied or
-            from the hook's ``default_cadence``) is not a ``Cadence`` instance.
+            If ``hook`` is not a ``Hook``.
         ValueError
             If this exact hook instance has already been registered, or if an
             equivalently-configured hook is already registered (see the hook's
             ``_dedup_key``).
         '''
-        from ..dynamics.hooks import Cadence
+        from ..dynamics.hooks import Hook
         if self._has_run:
             raise RuntimeError("Cannot add hooks after run()")
-        if not callable(hook):
-            raise TypeError(f"hook must be callable, got {type(hook).__name__!r}.")
-        if any(existing is hook for existing, _ in self._hooks):
+        if not isinstance(hook, Hook):
+            raise TypeError(f"hook must be a Hook, e.g. ConservationMonitor() or a subclass of Hook. "
+                            f"Got {type(hook).__name__!r}.")
+        if any(existing is hook for existing in self._hooks):
             raise ValueError("This hook instance is already registered. Construct a "
                              "separate instance to run it more than once.")
-        key = _hook_dedup_key(hook)
-        if key is not None and any(_hook_dedup_key(h) == key for h, _ in self._hooks):
+        key = hook._dedup_key()
+        if key is not None and any(h._dedup_key() == key for h in self._hooks):
             # two hooks with equal non-None keys are duplicates.
             raise ValueError(
                 f"An equivalently-configured {type(hook).__name__} is already "
                 f"registered. Change its configuration, or reuse the existing hook.")
-        if cadence is None:
-            cadence = _hook_cadence(hook)
-        if not isinstance(cadence, Cadence):
-            raise TypeError(f"cadence must be a Cadence instance, got "
-                            f"{type(cadence).__name__!r}.")
-        self._hooks.append((hook, cadence))
+        self._hooks.append(hook)
 
     def _default_monitor(self, monitors):
         '''This run's default ``ConservationMonitor``, or None (called from ``run``).
@@ -830,7 +802,7 @@ class Sim(_ParticleView):
         if monitors is False or monitors is None:
             return None
         if any(isinstance(hook, ConservationMonitor) and hook is not self._auto_monitor
-               for hook, _ in self._hooks):
+               for hook in self._hooks):
             return None
         if isinstance(monitors, str):
             track = ('energy',) if monitors == 'auto' else (monitors,)
@@ -840,7 +812,7 @@ class Sim(_ParticleView):
 
     @property
     def hooks(self):
-        '''Registered ``(hook, cadence)`` pairs, in registration order.
+        '''Registered hooks, in registration order.
 
         Read-only: returns a shallow copy, so the returned sequence cannot be
         used to add or remove hooks. Use ``add_hook`` for that.
@@ -857,7 +829,7 @@ class Sim(_ParticleView):
             sim.monitor.drift['energy'][-1]
         '''
         from ..dynamics.hooks import ConservationMonitor
-        for hook, _ in self._hooks:
+        for hook in self._hooks:
             if isinstance(hook, ConservationMonitor):
                 return hook
         return None
@@ -915,9 +887,9 @@ class Sim(_ParticleView):
         lines.append("")
 
         # -- hooks --
-        hook_rows = [(type(h).__name__, _cadence_label(c)) for h, c in self._hooks]
+        hook_rows = [(type(h).__name__, _every_label(h.every)) for h in self._hooks]
         _section("Hooks",
-                 _render_table(["hook", "cadence"], hook_rows) if hook_rows else None)
+                 _render_table(["hook", "fires"], hook_rows) if hook_rows else None)
 
         return "\n".join(lines)
 

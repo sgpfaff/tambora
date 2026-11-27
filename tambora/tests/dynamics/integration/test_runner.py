@@ -592,7 +592,7 @@ def test_a_hook_fires_during_run_with_step_state():
 # --- times come from the step count, so every part of a run agrees on them ------ #
 
 from tambora.dynamics.forces.external_force import ExternalConservativeForce as _ExtCons
-from tambora.dynamics.hooks import EveryOutput, EveryStep, BoundednessHook, Hook
+from tambora.dynamics.hooks import BoundednessHook, Hook
 
 
 class _TimeRecordingField(_ExtCons):
@@ -608,14 +608,24 @@ class _TimeRecordingField(_ExtCons):
         return np.zeros(len(pos))
 
 
-def _run_recording_times(t0, t_end, dt, dt_out, cadence):
+class _Times(Hook):
+    """Records the time of each fire."""
+    def __init__(self, every=None):
+        super().__init__(every=every)
+        self.t = []
+
+    def __call__(self, state):
+        self.t.append(state.t)
+
+
+def _run_recording_times(t0, t_end, dt, dt_out, every=None):
     """Run one particle; return the snapshot times, the times hooks saw, and the times forces saw."""
-    seen, field = [], _TimeRecordingField()
+    hook, field = _Times(every=every), _TimeRecordingField()
     _, _, ts_out, _, _ = _runner(np.zeros((1, 3)), np.zeros((1, 3)), np.ones(1), Leapfrog(),
                                  NullSelfGravity(), _CompositeConservative([field]), NullForce(),
                                  t0=t0, t_end=t_end, dt=dt, dt_out=dt_out, progress=False,
-                                 hooks=[(lambda state: seen.append(state.t), cadence)])
-    return ts_out, np.array(seen), np.array(field.times)
+                                 hooks=[hook])
+    return ts_out, np.array(hook.t), np.array(field.times)
 
 
 class TestStepClock:
@@ -631,19 +641,19 @@ class TestStepClock:
         assert drifted
 
     def test_hooks_at_outputs_see_the_snapshot_times_exactly(self):
-        ts_out, seen, _ = _run_recording_times(self.t0, self.t_end, self.dt, self.dt_out, EveryOutput())
+        ts_out, seen, _ = _run_recording_times(self.t0, self.t_end, self.dt, self.dt_out)
         np.testing.assert_array_equal(seen, ts_out)
 
     def test_hooks_see_t0_plus_step_times_dt_at_every_step(self):
-        _, seen, _ = _run_recording_times(self.t0, self.t_end, self.dt, self.dt_out, EveryStep())
+        _, seen, _ = _run_recording_times(self.t0, self.t_end, self.dt, self.dt_out, every=1)
         np.testing.assert_array_equal(seen, self.t0 + np.arange(len(seen)) * self.dt)
 
     def test_forces_are_evaluated_at_exactly_the_step_times(self):
-        _, _, forced = _run_recording_times(self.t0, self.t_end, self.dt, self.dt_out, EveryStep())
+        _, _, forced = _run_recording_times(self.t0, self.t_end, self.dt, self.dt_out, every=1)
         assert set(forced) == set(self.t0 + np.arange(1001) * self.dt)
 
     def test_backward_runs_count_steps_too(self):
-        ts_out, seen, _ = _run_recording_times(0.0, -1.0, -self.dt, -self.dt_out, EveryOutput())
+        ts_out, seen, _ = _run_recording_times(0.0, -1.0, -self.dt, -self.dt_out)
         np.testing.assert_array_equal(seen, ts_out)
         np.testing.assert_array_equal(ts_out, np.arange(len(ts_out)) * 10 * -self.dt)
 
@@ -719,13 +729,13 @@ def test_a_recorder_must_implement_the_interface():
 class TestOutputCount:
     def test_no_phantom_output_when_t_end_falls_just_short(self):
         # (t_end - t0)/dt_out rounds to 2, but only 19 steps fit: one output after t0.
-        ts_out, seen, _ = _run_recording_times(0.0, 0.019999999999, 1e-3, 1e-2, EveryOutput())
+        ts_out, seen, _ = _run_recording_times(0.0, 0.019999999999, 1e-3, 1e-2)
         np.testing.assert_array_equal(ts_out, [0.0, 0.01])
         np.testing.assert_array_equal(seen, ts_out)
 
     def test_last_output_is_kept_when_dt_out_is_a_hair_over_a_multiple(self):
         # (t_end - t0)/dt_out rounds down to 299, but 3000 steps make 300 outputs after t0.
-        ts_out, seen, _ = _run_recording_times(0.0, 3.0, 1e-3, 0.0100000000001, EveryOutput())
+        ts_out, seen, _ = _run_recording_times(0.0, 3.0, 1e-3, 0.0100000000001)
         assert len(ts_out) == 301
         assert ts_out[-1] == 3.0
         np.testing.assert_array_equal(seen, ts_out)
@@ -733,7 +743,7 @@ class TestOutputCount:
     @pytest.mark.parametrize("t_end, dt, dt_out", [(1.0, 0.1, 0.2), (1.0, 0.13, 0.13), (1.0, 0.2, 0.4),
                                                    (0.5, 0.1, 0.1), (-1.0, -0.1, -0.3)])
     def test_outputs_are_exactly_where_output_hooks_fire(self, t_end, dt, dt_out):
-        ts_out, seen, _ = _run_recording_times(0.0, t_end, dt, dt_out, EveryOutput())
+        ts_out, seen, _ = _run_recording_times(0.0, t_end, dt, dt_out)
         np.testing.assert_array_equal(seen, ts_out)
 
 
@@ -743,7 +753,7 @@ def _warnings_and_ends(t0, t_end, dt, dt_out):
     """A run's warnings, the time of its last output and the time of its last step."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
-        ts_out, _, force_ts = _run_recording_times(t0, t_end, dt, dt_out, EveryOutput())
+        ts_out, _, force_ts = _run_recording_times(t0, t_end, dt, dt_out)
     return [str(w.message) for w in caught], ts_out[-1], force_ts[-1]
 
 
@@ -833,7 +843,11 @@ def test_each_output_is_recorded_after_the_hooks_due_at_its_step():
             log.append(('record', step))
             super().record(step, t, pos, vel, self_acc, self_pot)
 
+    class LogHook(Hook):
+        def __call__(self, state):
+            log.append(('hook', state.step))
+
     _runner(np.zeros((1, 3)), np.ones((1, 3)), np.ones(1), Leapfrog(), NullSelfGravity(),
             _CompositeConservative([]), NullForce(), t0=0.0, t_end=1.0, dt=0.1, dt_out=0.2, progress=False,
-            hooks=[(lambda state: log.append(('hook', state.step)), EveryOutput())], recorder=OrderRecorder())
+            hooks=[LogHook()], recorder=OrderRecorder())
     assert log == [(kind, step) for step in (0, 2, 4, 6, 8, 10) for kind in ('hook', 'record')]

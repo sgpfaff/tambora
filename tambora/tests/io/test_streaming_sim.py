@@ -116,7 +116,7 @@ def test_a_streamed_run_that_stops_before_its_first_output_leaves_no_run_behind(
         sim.run(**RUN)
     assert os.listdir(tmp_path) == ['notes.txt']
     assert not sim._has_run
-    sim._hooks.remove((hook, sim._hooks[0][1]))
+    sim._hooks.remove(hook)
     sim.run(**RUN)              # the directory is free again
     assert (tmp_path / snapshot_name(len(sim.times) - 1)).exists()
 
@@ -147,7 +147,7 @@ def test_run_h5_holds_the_components_particles_and_run_settings(tmp_path):
         't0': 0.0, 't_end': 1.0, 'dt': 0.01, 'dt_out': 0.05, 'n_steps': 100, 'steps_per_output': 5,
         'integrator': {'class': 'Leapfrog'}, 'self_gravity': {'method': 'falcON', 'class': 'FalcON', 'kernel': 1, 'theta': 0.6},
         'cache_self_gravity_acc': True, 'cache_self_gravity_pot': True, 'monitors': 'auto', 'forces': [],
-        'hooks': {'names': ['ConservationMonitor'], 'cadences': ['EveryOutput']}}
+        'hooks': {'names': ['ConservationMonitor'], 'every': [0]}}
     assert all(type(settings['run'][k]) is float for k in ('t0', 't_end', 'dt', 'dt_out'))
     with h5py.File(tmp_path / 'run' / RUN_FILE, 'r') as f:
         assert (f.attrs['expected_outputs'], f.attrs['n_particles']) == (21, 50)
@@ -174,8 +174,7 @@ def test_run_h5_lists_the_forces_and_hooks_as_repr_does(tmp_path):
     sim.run(**RUN)
     assert _settings(tmp_path / 'run')['run'] == sim._run_settings
     assert sim._run_settings['forces'] == ['ExternalPotential(NFWPotential+MiyamotoNagaiPotential)', '_Drag']
-    assert sim._run_settings['hooks'] == {'names': ['_Note', 'ConservationMonitor'],
-                                          'cadences': ['EveryNSteps(1)', 'EveryOutput']}
+    assert sim._run_settings['hooks'] == {'names': ['_Note', 'ConservationMonitor'], 'every': [1, 0]}
     assert all(label in repr(sim) for label in sim._run_settings['forces'] + sim._run_settings['hooks']['names'])
 
 
@@ -186,13 +185,13 @@ def test_run_h5_lists_the_hooks_the_run_had():
     assert sim._run_settings['hooks']['names'] == ['_Note', 'ConservationMonitor']
     sim._clear_outputs()                            # the Sim can run again
     sim.run(**RUN, monitors=False)
-    assert sim._run_settings['hooks'] == {'names': ['_Note'], 'cadences': ['EveryOutput']}
+    assert sim._run_settings['hooks'] == {'names': ['_Note'], 'every': [0]}
 
 
 def test_a_run_without_forces_or_hooks_lists_none(tmp_path):
     sim = _sim(output_dir=tmp_path / 'run')
     sim.run(**RUN, monitors=False)
-    assert sim._run_settings['forces'] == [] and sim._run_settings['hooks'] == {'names': [], 'cadences': []}
+    assert sim._run_settings['forces'] == [] and sim._run_settings['hooks'] == {'names': [], 'every': []}
     assert _settings(tmp_path / 'run')['run'] == sim._run_settings
 
 
@@ -404,7 +403,7 @@ def test_a_run_into_a_directory_another_sim_filled_is_refused_and_changes_nothin
         second.run(**RUN)
     assert _files(tmp_path / 'run') == files
     assert second._self_gravity_force is solver and second.monitor is None
-    assert hook.steps == ['before'] and second.hooks == ((hook, second.hooks[0][1]),)
+    assert hook.steps == ['before'] and second.hooks == (hook,)
     assert not second._has_run and second._run_settings is None
     np.testing.assert_array_equal(second.times, [0.0])
 

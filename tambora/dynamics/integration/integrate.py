@@ -61,9 +61,8 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
     slices : dict, optional
         Mapping of component name to slice, used to expose components to hooks
         via ``StepState``. Default is None (no named components).
-    hooks : sequence of (Hook, Cadence), optional
-        Hooks to run during integration, each paired with the cadence that
-        decides when it fires. Default is empty (no hooks).
+    hooks : sequence of Hook, optional
+        Hooks to run during integration. Default is empty (no hooks).
     recorder : _Recorder, optional
         Receives each output as it is made (``begin``, then ``record`` per output);
         the return value is its ``outputs()``. Default: a new ``_MemoryRecorder``.
@@ -142,12 +141,12 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
 
 def _fire(hooks, state, result, step, steps_per_output):
     """
-    Run any hooks whose cadence is due at this step.
+    Run any hooks due at this step.
 
     Refreshes the shared ``state`` view once (only when something fires), then
     calls each due hook on it.
     """
-    due = [hook for hook, cadence in hooks if cadence.due(step, steps_per_output)]
+    due = [hook for hook in hooks if step % (hook.every or steps_per_output) == 0]
     if not due:
         return
     state._update(result)

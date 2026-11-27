@@ -18,7 +18,6 @@ undefined).
 import numpy as np
 
 from .base import Hook
-from .cadence import EveryOutput
 
 
 # -- per-quantity reductions and their scales --------------------------------
@@ -74,8 +73,6 @@ class ConservationMonitor(Hook):
     >>> sim.run(t_end=1., dt=0.01, dt_out=0.1)    # doctest: +SKIP
     >>> mon.drift['energy'][-1]                   # doctest: +SKIP
     """
-
-    default_cadence = EveryOutput()
 
     def __init__(self, track=('energy',), every=None):
         super().__init__(every=every)

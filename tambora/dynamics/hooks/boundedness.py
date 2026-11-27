@@ -13,7 +13,6 @@ per fire.
 
 import numpy as np
 from .base import Hook
-from .cadence import EveryOutput
 from ..diagnostics import _check_solver, reconstruct_mask
 
 
@@ -90,8 +89,6 @@ class BoundednessHook(Hook):
     -   A particle is bound if its specific energy in the component's COM frame is
     negative (i.e. bound to the component *in isolation*).
     """
-
-    default_cadence = EveryOutput()
 
     def __init__(self, component, track=(), capture_transitions=(),
                  solver=None, eps=None, max_iter=50, every=None):

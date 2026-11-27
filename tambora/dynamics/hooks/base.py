@@ -1,7 +1,6 @@
 import numbers
 from abc import ABC, abstractmethod
 from ..integration import StepState
-from .cadence import EveryOutput
 
 
 class Hook(ABC):
@@ -13,11 +12,6 @@ class Hook(ABC):
     every : int, optional
         Fire every this many steps. Default None, at each output.
 
-    Attributes
-    ----------
-    default_cadence : Cadence
-        Cadence used if none is supplied to ``Sim.add_hook``.
-
     Notes
     -----
     -   A hook is a callable that receives a :class:`StepState` (a live, read-only
@@ -26,7 +20,6 @@ class Hook(ABC):
     
     """
 
-    default_cadence = EveryOutput()
     every = None
 
     def __init__(self, every=None):

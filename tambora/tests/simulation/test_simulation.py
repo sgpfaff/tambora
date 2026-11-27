@@ -13,8 +13,7 @@ from tambora.units import G_INTERNAL
 from tambora.units import KMS_TO_KPCGYR
 from tambora.dynamics import DirectSum, FalcON, NullSelfGravity, Leapfrog
 from tambora.dynamics.diagnostics import bound_mask
-from tambora.dynamics.hooks import (Hook, ConservationMonitor, BoundednessHook,
-                                    EveryOutput, EveryStep, EveryNSteps, EveryNOutputs)
+from tambora.dynamics.hooks import Hook, ConservationMonitor, BoundednessHook
 import astropy.units as u
 
 
@@ -2370,13 +2369,7 @@ def test_external_acc_uses_physical_time():
 # --- add_hook ----------------------------------------------------------------------------------- #
 
 class _StubHook(Hook):
-    """Minimal concrete Hook carrying a distinctive default cadence.
-
-    The default (``EveryNSteps(7)``) is deliberately *not* ``EveryOutput`` so a
-    test can tell "used the hook's default" apart from "fell back to
-    ``EveryOutput()``" -- the two would be indistinguishable otherwise.
-    """
-    default_cadence = EveryNSteps(7)
+    """Minimal concrete Hook. It doesn't call ``Hook.__init__``."""
 
     def __init__(self):
         self.steps = []          # step index of every fire
@@ -2385,14 +2378,6 @@ class _StubHook(Hook):
     def __call__(self, state):
         self.steps.append(state.step)
         self.times.append(state.t)
-
-
-class _BadCadenceHook(Hook):
-    """A hook whose ``default_cadence`` is not a Cadence, to test validation."""
-    default_cadence = "every step, please"      # not a Cadence instance
-
-    def __call__(self, state):                  # never reached: registration raises
-        raise AssertionError("_BadCadenceHook must never be fired")
 
 
 class _KeyedHook(Hook):
@@ -2450,12 +2435,12 @@ class TestHooksFireAtTheirCadence:
     """The register -> run -> fire path.
 
     ``TestAddHook`` below checks only what ``add_hook`` *stores*. That leaves the
-    part users actually care about untested: that the stored cadence governs when
-    the hook is called. These run a real (tiny, self-gravity-free) sim and check
+    part users actually care about untested: that the hook's ``every`` governs
+    when it is called. These run a real (tiny, self-gravity-free) sim and check
     which steps each hook saw.
 
-    Cadences are evaluated as ``step % n == 0`` against the *step index*, and the
-    runner also fires once on the initial state at step 0 -- so 0 is always due.
+    ``every`` is evaluated as ``step % every == 0`` against the *step index*, and
+    the runner also fires once on the initial state at step 0 -- so 0 is always due.
     """
 
     def _sim(self):
@@ -2468,22 +2453,12 @@ class TestHooksFireAtTheirCadence:
         sim.run(t_end=t_end, dt=1.0, dt_out=2.0,
                 progress=False, monitors=False)
 
-    def test_hook_fires_at_its_own_default_cadence(self):
-        # _StubHook's default is EveryNSteps(7), deliberately not EveryOutput,
-        # so this cannot pass by accidentally falling back to the default.
+    def test_a_hook_that_doesnt_call_hook_init_fires_at_each_output(self):
         sim = self._sim()
         hook = _StubHook()
-        sim.add_hook(hook)                      # no cadence -> use the hook's own
-        self._run(sim, t_end=14.0)
-        assert hook.steps == [0, 7, 14]
-
-    def test_explicit_cadence_overrides_the_hook_default(self):
-        # The stored cadence must be the one that fires -- not the hook's default.
-        sim = self._sim()
-        hook = _StubHook()
-        sim.add_hook(hook, EveryNSteps(2))
+        sim.add_hook(hook)
         self._run(sim)
-        assert hook.steps == [0, 2, 4, 6]       # not [0, 7] from EveryNSteps(7)
+        assert hook.steps == [0, 2, 4, 6]
 
     def test_every_step_fires_on_every_step(self):
         sim = self._sim()
@@ -2499,13 +2474,6 @@ class TestHooksFireAtTheirCadence:
         sim.add_hook(hook)
         self._run(sim)
         assert hook.steps == [0, 2, 4, 6]
-
-    def test_every_n_outputs_multiplies_the_output_interval(self):
-        sim = self._sim()
-        hook = _StubHook()
-        sim.add_hook(hook, EveryNOutputs(2))    # every 2 outputs = every 4 steps
-        self._run(sim)
-        assert hook.steps == [0, 4]
 
     def test_hooks_with_different_cadences_fire_independently(self):
         sim = self._sim()
@@ -2642,44 +2610,17 @@ def test_an_uneven_end_is_warned_about_once():
 
 
 class TestAddHook:
-    """``Sim.add_hook``: cadence resolution, ordering, and the after-run guard.
+    """``Sim.add_hook``: what it accepts, ordering, and the after-run guard.
 
     ``add_hook`` only touches ``_hooks`` and ``_has_run``, so a bare ``Sim()``
-    (no particles) exercises every branch. Cadences define no ``__eq__``, so the
-    stored cadence is checked by identity (``is``) for objects passed in, and by
-    ``isinstance`` for the ``EveryOutput`` fallback.
+    (no particles) exercises every branch.
     """
 
-    def test_registers_hook_with_explicit_cadence(self):
-        sim = Sim()
-        hook, cad = _StubHook(), EveryNSteps(3)
-        sim.add_hook(hook, cad)
-        assert len(sim._hooks) == 1
-        stored_hook, stored_cad = sim._hooks[0]
-        assert stored_hook is hook
-        assert stored_cad is cad
-
-    def test_explicit_cadence_overrides_default(self):
-        sim = Sim()
-        hook, cad = _StubHook(), EveryNOutputs(2)
-        sim.add_hook(hook, cad)
-        # The explicit cadence wins over the hook's own default_cadence.
-        assert sim._hooks[0][1] is cad
-        assert sim._hooks[0][1] is not hook.default_cadence
-
-    def test_uses_hook_default_cadence_when_none_given(self):
+    def test_registers_the_hook(self):
         sim = Sim()
         hook = _StubHook()
-        sim.add_hook(hook)                      # no cadence supplied
-        assert sim._hooks[0][1] is hook.default_cadence
-
-    def test_bare_callable_falls_back_to_every_output(self):
-        sim = Sim()
-        hook = lambda state: None               # no default_cadence attribute
         sim.add_hook(hook)
-        stored_hook, stored_cad = sim._hooks[0]
-        assert stored_hook is hook
-        assert isinstance(stored_cad, EveryOutput)
+        assert sim._hooks == [hook]
 
     def test_registers_multiple_hooks_in_order(self):
         sim = Sim()
@@ -2687,7 +2628,7 @@ class TestAddHook:
         sim.add_hook(h1)
         sim.add_hook(h2)
         sim.add_hook(h3)
-        assert [h for h, _ in sim._hooks] == [h1, h2, h3]
+        assert sim._hooks == [h1, h2, h3]
 
     def test_add_hook_after_run_raises(self):
         sim = Sim()
@@ -2697,22 +2638,22 @@ class TestAddHook:
 
     # -- input validation: fail fast at add_hook, not deep inside the run --
 
-    def test_rejects_non_callable_hook(self):
-        sim = Sim()
-        with pytest.raises(TypeError, match="hook must be callable"):
-            sim.add_hook(42)
+    def _function(state):
+        pass
 
-    def test_rejects_non_cadence_argument(self):
+    @pytest.mark.parametrize("hook, name", [
+        (_function, 'function'),
+        (lambda state: None, 'function'),
+        (ConservationMonitor, 'ABCMeta'),
+        (42, 'int'),
+    ], ids=['function', 'lambda', 'hook_class', 'number'])
+    def test_rejects_anything_but_a_hook(self, hook, name):
         sim = Sim()
-        with pytest.raises(TypeError, match="cadence must be a Cadence"):
-            sim.add_hook(_StubHook(), "every step")
-
-    def test_rejects_invalid_default_cadence(self):
-        # A custom hook whose default_cadence is not a Cadence is caught at
-        # registration rather than surfacing as an AttributeError mid-run.
-        sim = Sim()
-        with pytest.raises(TypeError, match="cadence must be a Cadence"):
-            sim.add_hook(_BadCadenceHook())
+        message = (f"hook must be a Hook, e.g. ConservationMonitor() or a subclass of Hook. "
+                   f"Got '{name}'.")
+        with pytest.raises(TypeError, match=re.escape(message)):
+            sim.add_hook(hook)
+        assert sim._hooks == []
 
     # -- duplicate guard: same instance twice is almost always a mistake --
 
@@ -2771,13 +2712,12 @@ class TestAddHook:
 
     # -- hooks property: read-only introspection --
 
-    def test_hooks_property_returns_registered_pairs(self):
+    def test_hooks_property_returns_the_registered_hooks(self):
         sim = Sim()
-        h1, c1 = _StubHook(), EveryNSteps(2)
-        h2, c2 = _StubHook(), EveryNOutputs(3)
-        sim.add_hook(h1, c1)
-        sim.add_hook(h2, c2)
-        assert sim.hooks == ((h1, c1), (h2, c2))
+        h1, h2 = _StubHook(), _EveryHook(every=3)
+        sim.add_hook(h1)
+        sim.add_hook(h2)
+        assert sim.hooks == (h1, h2)
         assert isinstance(sim.hooks, tuple)
 
     def test_hooks_property_is_a_readonly_snapshot(self):
@@ -2859,6 +2799,15 @@ class TestSimRepr:
         r = repr(sim)
         assert "External forces" in r and "CustomBaseForce" in r
         assert "Hooks" in r and "ConservationMonitor" in r
+
+    def test_repr_says_how_often_each_hook_fires(self):
+        sim = Sim()
+        sim.add_particles(COMP1_POS, COMP1_VEL, COMP1_MASS, name='a', eps=0.1)
+        for every in (None, 1, 3):
+            sim.add_hook(_EveryHook(every=every))
+        rows = [line for line in repr(sim).splitlines() if '_EveryHook' in line]
+        assert len(rows) == 3
+        assert 'each output' in rows[0] and 'every step' in rows[1] and 'every 3 steps' in rows[2]
 
     def test_repr_empty_sections_show_none(self):
         sim = Sim()
@@ -3063,7 +3012,7 @@ class TestDefaultMonitors:
         sim.add_hook(mine)
         self._run(sim)
         self._run(sim, monitors=monitors)
-        assert sim.hooks == ((mine, ConservationMonitor.default_cadence),)
+        assert sim.hooks == (mine,)
         assert mine.t == list(sim.times)
 
     def test_the_default_monitor_fires_after_your_hooks(self):
@@ -3072,8 +3021,8 @@ class TestDefaultMonitors:
         sim.add_hook(hook)
         for _ in range(2):
             self._run(sim)
-            assert [h for h, _ in sim.hooks] == [hook, sim.monitor]
+            assert sim.hooks == (hook, sim.monitor)
         sim._clear_outputs()                # so hooks can be added again
         sim.add_hook(later)
         self._run(sim)
-        assert [h for h, _ in sim.hooks] == [hook, later, sim.monitor]
+        assert sim.hooks == (hook, later, sim.monitor)

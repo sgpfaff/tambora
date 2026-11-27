@@ -16,7 +16,7 @@ import pytest
 import tambora
 from tambora.dynamics import DirectSum, NullForce, NullSelfGravity
 from tambora.dynamics.forces.CompositeForce import _CompositeConservative
-from tambora.dynamics.hooks import EveryStep
+from tambora.dynamics.hooks import Hook
 from tambora.dynamics.integration import _runner
 from tambora.dynamics import Leapfrog
 from tambora.dynamics.integration.recorder import _MemoryRecorder, _Recorder
@@ -320,12 +320,13 @@ def test_an_interrupt_just_after_a_rename_still_counts_the_file(tmp_path, monkey
 
 
 def test_a_run_stopped_early_keeps_the_files_written_so_far(tmp_path):
-    def interrupt_at_35(state):
-        if state.step == 35:
-            raise KeyboardInterrupt
+    class InterruptAt35(Hook):
+        def __call__(self, state):
+            if state.step == 35:
+                raise KeyboardInterrupt
     recorder = _FileRecorder(tmp_path / 'run')
     with pytest.raises(KeyboardInterrupt):
-        _run(recorder, hooks=[(interrupt_at_35, EveryStep())])
+        _run(recorder, hooks=[InterruptAt35(every=1)])
     assert recorder.n == 4
     assert sorted(os.listdir(tmp_path / 'run')) == ['run.h5'] + [snapshot_name(i) for i in range(4)]
     full = _run(_MemoryRecorder())
