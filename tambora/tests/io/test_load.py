@@ -43,7 +43,7 @@ def test_a_loaded_run_is_the_run_kept_in_memory_bit_for_bit(tmp_path, run):
     for name in ('_mass', '_eps'):
         a, b = getattr(sim, name), getattr(memory, name)
         assert a.dtype == b.dtype and np.array_equal(a, b, equal_nan=True), name
-    np.testing.assert_array_equal(sim.b.vel(t=2), memory.b.vel(t=2))
+    np.testing.assert_array_equal(sim.b.vel(index=2), memory.b.vel(index=2))
     np.testing.assert_array_equal(sim.a.KE(), memory.a.KE())
     if memory._cached_self_pot is not None:
         np.testing.assert_array_equal(sim.system_energy(), memory.system_energy())
@@ -63,7 +63,7 @@ def test_a_run_without_softening_loads(tmp_path):
     sim = _load(tmp_path / 'run')
     assert np.isnan(sim._eps).all()
     _assert_same_run(sim, memory)
-    np.testing.assert_array_equal(sim.external_acc(t=2), memory.external_acc(t=2))
+    np.testing.assert_array_equal(sim.external_acc(index=2), memory.external_acc(index=2))
 
 
 def test_load_takes_a_path_as_sim_does(tmp_path, monkeypatch):
@@ -78,7 +78,7 @@ def test_load_reads_only_run_h5_and_the_last_snapshots_clock(tmp_path, monitor_r
     sim = Sim.load(str(tmp_path / 'run'))
     assert monitor_reads == [RUN_FILE, snapshot_name(4)]
     monitor_reads.clear()
-    sim.a.pos(t=1)
+    sim.a.pos(index=1)
     assert monitor_reads == [snapshot_name(1)]
 
 
@@ -149,9 +149,9 @@ def test_load_names_only_the_forces_it_wasnt_given(tmp_path, give, still_missing
 
 
 @pytest.mark.parametrize("compute", [
-    lambda sim: sim.compute_external_pot(t=1), lambda sim: sim.external_acc(t=1),
-    lambda sim: sim.a.external_acc(), lambda sim: sim.energy(t=1), lambda sim: sim.PE(t=1),
-    lambda sim: sim.system_energy(), lambda sim: sim.b.energy(t=0), lambda sim: sim.virial_ratio(t=1),
+    lambda sim: sim.compute_external_pot(index=1), lambda sim: sim.external_acc(index=1),
+    lambda sim: sim.a.external_acc(), lambda sim: sim.energy(index=1), lambda sim: sim.PE(index=1),
+    lambda sim: sim.system_energy(), lambda sim: sim.b.energy(t=0), lambda sim: sim.virial_ratio(index=1),
 ], ids=['compute_external_pot', 'external_acc', 'component external_acc', 'energy', 'PE', 'system_energy',
         'component energy', 'virial_ratio'])
 def test_with_the_forces_it_couldnt_load_given_again_a_loaded_run_gives_what_the_run_gave(tmp_path, compute):
@@ -226,8 +226,8 @@ def test_a_solver_given_to_load_is_the_sims_in_place_of_the_runs(tmp_path, monke
         warnings.simplefilter('error')      # the run's solver isn't asked for
         sim = Sim.load(tmp_path / 'run', solver=given)
     assert sim._self_gravity_force is given
-    np.testing.assert_array_equal(sim.self_potential(t=1), ran.self_potential(t=1, solver=DirectSum()))
-    assert not np.array_equal(sim.self_potential(t=1), ran.self_potential(t=1))
+    np.testing.assert_array_equal(sim.self_potential(index=1), ran.self_potential(index=1, solver=DirectSum()))
+    assert not np.array_equal(sim.self_potential(index=1), ran.self_potential(index=1))
     np.testing.assert_array_equal(sim.self_gravity(), ran.self_gravity())      # what the run saved
     assert sim._run_settings['self_gravity']['method'] == 'falcON'
 
@@ -236,7 +236,7 @@ def test_loading_with_solver_none_gives_a_sim_without_self_gravity(tmp_path):
     _sim(output_dir=tmp_path / 'run').run(**{**RUN, 'cache_self_gravity_acc': False})
     sim = Sim.load(tmp_path / 'run', solver=None)
     assert type(sim._self_gravity_force).__name__ == 'NullSelfGravity'
-    assert not sim.self_gravity(t=1).any()
+    assert not sim.self_gravity(index=1).any()
 
 
 @pytest.mark.parametrize("solver, error, message", [

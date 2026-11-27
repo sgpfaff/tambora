@@ -3,6 +3,7 @@ Test the Sim class and its methods.
 '''
 
 import os
+import re
 import pytest 
 from tambora.simulation import Sim
 from tambora.simulation.simulation import _force_label, Component
@@ -315,55 +316,68 @@ singlecomp.run(t_end=1., dt=0.1, dt_out=0.1)
 
 # --- ._ti time indexing ------------------------------------------------------------------------ #
 
-def test_ti_int_passthrough():
+def test_ti_int_and_float_are_the_same_time():
     '''
-    Test that passing an integer to _ti returns the same integer.
+    Test that an int t is a time in Gyr, as a float is.
     '''
-    assert multicomp._ti(5) == 5
+    assert multicomp._ti(1) == multicomp._ti(1.0) == 10
+    assert multicomp._ti(0) == multicomp._ti(0.0) == 0
 
-def test_ti_float_to_int():
+def test_ti_output_time_to_index():
     '''
-    Test that passing a float returns that index of the nearest
-    snapshot.
+    Test that an output time gives its snapshot, allowing for round-off.
     '''
     assert multicomp._ti(0.2) == 2
-    assert multicomp._ti(0.25) == 2
-    assert multicomp._ti(0.26) == 3
+    assert multicomp._ti(0.3) == 3     # stored as 0.30000000000000004
+    assert multicomp._ti(multicomp.times[7]) == 7
 
-def test_ti_positive_int_out_of_bounds():
+def test_ti_time_between_outputs():
     '''
-    Test that passing a positive integer out of bounds raises an error.
+    Test that a time between outputs raises, naming the nearest.
     '''
-    with pytest.raises(IndexError, match=r"Time index 100 is out of bounds for simulation with 11 snapshots. Please provide an index within \[-11, 10\]."):
-        multicomp._ti(100)
+    with pytest.raises(ValueError, match=re.escape("t=0.26 Gyr isn't an output time. The nearest is 0.3 Gyr. "
+                                                   "Use t=sim.nearest_t(0.26) to pick it.")):
+        multicomp._ti(0.26)
 
-def test_ti_negative_int_out_of_bounds():
+def test_ti_positive_index_out_of_bounds():
     '''
-    Test that passing a negative integer out of bounds raises an error.
+    Test that a positive index out of bounds raises an error.
     '''
-    with pytest.raises(IndexError, match=r"Time index -100 is out of bounds for simulation with 11 snapshots. Please provide an index within \[-11, 10\]."):
-        multicomp._ti(-100)
+    assert multicomp._ti(index=10) == 10
+    with pytest.raises(IndexError, match=re.escape("index=11 is out of range. The run has 11 outputs.")):
+        multicomp._ti(index=11)
 
-def test_ti_float_out_of_bounds():
+def test_ti_negative_index_out_of_bounds():
     '''
-    Test that passing a float out of bounds raises an error.
+    Test that a negative index out of bounds raises an error.
     '''
-    with pytest.raises(ValueError, match=r"t=100.0 Gyr is out of bounds for simulation time range \[0.0, 1.0\] Gyr."):
-        multicomp._ti(100.0)
+    assert multicomp._ti(index=-11) == -11
+    with pytest.raises(IndexError, match=re.escape("index=-12 is out of range. The run has 11 outputs.")):
+        multicomp._ti(index=-12)
 
-def test_ti_fails_with_list():
+@pytest.mark.parametrize("t", [100.0, -1])
+def test_ti_time_out_of_bounds(t):
     '''
-    Test that passing a list raises an error.
+    Test that a time outside the run raises an error that points to index=.
     '''
-    with pytest.raises(TypeError, match="t must be an int index, a float time, or ellipsis."):
-        multicomp._ti([0, 5], vectorized=False)
+    with pytest.raises(ValueError, match=re.escape(f"t={t} Gyr is outside the run, which covers 0 to 1 Gyr. "
+                                                   "To pick a snapshot by position, use index=.")):
+        multicomp._ti(t)
 
-def test_ti_vectorized_false_fails_with_ellipsis():
+@pytest.mark.parametrize("t", [[0, 5], ..., True])
+def test_ti_fails_without_a_number(t):
     '''
-    Test that passing an ellipsis when vectorized=False raises an error.
+    Test that a list, an ellipsis or a bool raises an error.
     '''
-    with pytest.raises(TypeError, match="This method is not vectorized, so t cannot be a list or ellipse. Please provide an integer index or a float time."):
-        multicomp._ti(..., vectorized=False)
+    with pytest.raises(TypeError, match=f"t must be a time in Gyr. Got {type(t).__name__}."):
+        multicomp._ti(t)
+
+def test_ti_none_means_every_snapshot():
+    '''
+    Test that no t and no index resolves to None, every snapshot.
+    '''
+    assert multicomp._ti() is None
+    assert multicomp._ti(None) is None
 
 # --- output shapes ------------------------------------------------------------------------ #
 
@@ -696,7 +710,7 @@ def test_clearing_the_outputs_goes_back_to_before_the_run():
     assert len(sim.times) == 2
     sim._clear_outputs()
     assert not sim._has_run and len(sim.times) == 1
-    np.testing.assert_array_equal(sim.pos(-1), COMP1_POS.tolist() + COMP2_POS.tolist())
+    np.testing.assert_array_equal(sim.pos(index=-1), COMP1_POS.tolist() + COMP2_POS.tolist())
     _quick_run(sim)
     expected = DirectSum().acc(sim.pos(t=0, return_internal=True), sim.mass, sim.eps())
     np.testing.assert_allclose(sim.self_gravity(t=0, return_internal=True), expected, rtol=1e-12)
@@ -908,11 +922,11 @@ def test_add_force_wraps_a_potential_and_keeps_a_force_as_given():
 def test_add_force_after_run_is_refused(force):
     sim = _two_components(eps_a=0.1, eps_b=0.1)
     _quick_run(sim)
-    energy = sim.system_energy(t=-1)
+    energy = sim.system_energy(index=-1)
     with pytest.raises(RuntimeError, match=r"Cannot add forces after run\(\)"):
         sim.add_force(force())
     assert sim._conserv_ext_force.members == [] and sim._base_ext_force.members == []
-    assert sim.system_energy(t=-1) == energy
+    assert sim.system_energy(index=-1) == energy
 
 # --- self-gravity acceleration accessors ------------------------------------------------------------------------ #
 
@@ -936,7 +950,7 @@ def test_external_acc_zero_without_pot():
     sim = Sim(solver=DirectSum())
     sim.add_particles(np.random.normal(size=(30, 3)) * 0.5, np.zeros((30, 3)), np.ones(30) * 1e4, name='a', eps=0.0)
     sim.run(t_end=2, dt=1, dt_out=2)
-    np.testing.assert_array_equal(sim.external_acc(-1), 0)
+    np.testing.assert_array_equal(sim.external_acc(index=-1), 0)
 
 KEPLER_SIM = Sim()
 from galpy.potential import KeplerPotential
@@ -1346,8 +1360,8 @@ class TestARunThatSavedNoSelfGravity:
     def test_one_snapshot_is_computed_with_the_sims_solver(self, name, of):
         sim = self._unsaved()
         view = sim if of == 'the Sim' else sim.test
-        value = getattr(view, name)(t=3)
-        np.testing.assert_array_equal(value, getattr(view, name)(t=3, solver=DirectSum()))
+        value = getattr(view, name)(index=3)
+        np.testing.assert_array_equal(value, getattr(view, name)(index=3, solver=DirectSum()))
         assert value.shape == ((10, 3) if name == 'self_gravity' else (10,)) and np.any(value != 0)
 
     @pytest.mark.parametrize("name", ['self_gravity', 'self_potential'])
@@ -1383,7 +1397,7 @@ class TestARunThatSavedNoSelfGravity:
         assert sim.self_gravity().shape == (len(sim.times), 10, 3)
         with pytest.raises(TypeError, match="Cannot compute on-the-fly for all times"):
             sim.self_potential()
-        np.testing.assert_array_equal(sim.self_potential(t=2), sim.self_potential(t=2, solver=DirectSum()))
+        np.testing.assert_array_equal(sim.self_potential(index=2), sim.self_potential(index=2, solver=DirectSum()))
 
 
 def test_no_self_gravity_pot_or_acc_caching_after_run():
@@ -1477,7 +1491,7 @@ def test_vectorized_t_fails_without_cached_results():
     sim = _caching_test_sim()
     _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=False)
     with pytest.raises(TypeError, match="Cannot compute on-the-fly for all times"):
-        sim.self_gravity(t=...)
+        sim.self_gravity()
     
 def test_vectorized_t_works_with_cache():
     '''
@@ -1485,7 +1499,7 @@ def test_vectorized_t_works_with_cache():
     '''
     sim = _caching_test_sim()
     _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=False)
-    acc = sim.self_gravity(t=...)
+    acc = sim.self_gravity()
     assert acc.shape == (len(sim._times), sim._positions.shape[1], 3)
 
 def test_vectorized_t_fails_if_method_provided():
@@ -1496,10 +1510,10 @@ def test_vectorized_t_fails_if_method_provided():
     sim = _caching_test_sim()
     _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=False)
     with pytest.raises((ValueError, TypeError), match="Cannot compute on-the-fly for all times."):
-        sim.self_gravity(t=..., solver=DirectSum())
+        sim.self_gravity(solver=DirectSum())
 
 
-# --- Output shape tests: single t vs. ellipsis -------------------------------------------- #
+# --- Output shape tests: single t vs. every output -------------------------------------------- #
 
 def _shape_test_sim():
     '''Create and run a sim for shape testing.'''
@@ -1522,8 +1536,8 @@ def test_self_potential_single_t_shape():
     result = _SHAPE_SIM.self_potential(t=0)
     assert result.shape == (_N_PART,)
 
-def test_self_potential_ellipsis_shape():
-    result = _SHAPE_SIM.self_potential(t=...)
+def test_self_potential_every_output_shape():
+    result = _SHAPE_SIM.self_potential()
     assert result.shape == (_N_SNAP, _N_PART)
 
 # --- self_gravity shapes ---
@@ -1532,8 +1546,8 @@ def test_self_gravity_single_t_shape():
     result = _SHAPE_SIM.self_gravity(t=0)
     assert result.shape == (_N_PART, 3)
 
-def test_self_gravity_ellipsis_shape():
-    result = _SHAPE_SIM.self_gravity(t=...)
+def test_self_gravity_every_output_shape():
+    result = _SHAPE_SIM.self_gravity()
     assert result.shape == (_N_SNAP, _N_PART, 3)
 
 # --- KE shapes ---
@@ -1542,8 +1556,8 @@ def test_KE_single_t_shape():
     result = _SHAPE_SIM.KE(t=0)
     assert result.shape == (_N_PART,)
 
-def test_KE_ellipsis_shape():
-    result = _SHAPE_SIM.KE(t=...)
+def test_KE_every_output_shape():
+    result = _SHAPE_SIM.KE()
     assert result.shape == (_N_SNAP, _N_PART)
 
 # --- PE shapes ---
@@ -1552,8 +1566,8 @@ def test_PE_single_t_shape():
     result = _SHAPE_SIM.PE(t=0)
     assert result.shape == (_N_PART,)
 
-def test_PE_ellipsis_shape():
-    result = _SHAPE_SIM.PE(t=...)
+def test_PE_every_output_shape():
+    result = _SHAPE_SIM.PE()
     assert result.shape == (_N_SNAP, _N_PART)
 
 # --- energy (per-particle) shapes ---
@@ -1562,8 +1576,8 @@ def test_energy_single_t_shape():
     result = _SHAPE_SIM.energy(t=0)
     assert result.shape == (_N_PART,)
 
-def test_energy_ellipsis_shape():
-    result = _SHAPE_SIM.energy(t=...)
+def test_energy_every_output_shape():
+    result = _SHAPE_SIM.energy()
     assert result.shape == (_N_SNAP, _N_PART)
 
 # --- system_energy shapes ---
@@ -1572,8 +1586,8 @@ def test_system_energy_single_t_shape():
     result = _SHAPE_SIM.system_energy(t=0)
     assert np.isscalar(result) or result.shape == ()
 
-def test_system_energy_ellipsis_shape():
-    result = _SHAPE_SIM.system_energy(t=...)
+def test_system_energy_every_output_shape():
+    result = _SHAPE_SIM.system_energy()
     assert result.shape == (_N_SNAP,)
 
 # --- dE shapes ---
@@ -1723,64 +1737,64 @@ def test_linear_momentum_single_t_shape():
     result = _SHAPE_SIM.p(t=0)
     assert result.shape == (_N_PART, 3)
 
-def test_linear_momentum_ellipsis_shape():
-    result = _SHAPE_SIM.p(t=...)
+def test_linear_momentum_every_output_shape():
+    result = _SHAPE_SIM.p()
     assert result.shape == (_N_SNAP, _N_PART, 3)
 
 def test_px_shape():
     result = _SHAPE_SIM.px(t=0)
     assert result.shape == (_N_PART,)
 
-def test_px_ellipsis_shape():
-    result = _SHAPE_SIM.px(t=...)
+def test_px_every_output_shape():
+    result = _SHAPE_SIM.px()
     assert result.shape == (_N_SNAP, _N_PART)
 
 def test_py_shape():
     result = _SHAPE_SIM.py(t=0)
     assert result.shape == (_N_PART,)
 
-def test_py_ellipsis_shape():
-    result = _SHAPE_SIM.py(t=...)
+def test_py_every_output_shape():
+    result = _SHAPE_SIM.py()
     assert result.shape == (_N_SNAP, _N_PART)
 
 def test_pz_shape():
     result = _SHAPE_SIM.pz(t=0)
     assert result.shape == (_N_PART,)
 
-def test_pz_ellipsis_shape():
-    result = _SHAPE_SIM.pz(t=...)
+def test_pz_every_output_shape():
+    result = _SHAPE_SIM.pz()
     assert result.shape == (_N_SNAP, _N_PART)
 
 def test_L_shape():
     result = _SHAPE_SIM.L(t=0)
     assert result.shape == (_N_PART, 3)
 
-def test_L_ellipsis_shape():
-    result = _SHAPE_SIM.L(t=...)
+def test_L_every_output_shape():
+    result = _SHAPE_SIM.L()
     assert result.shape == (_N_SNAP, _N_PART, 3)
 
 def test_Lx_shape():
     result = _SHAPE_SIM.Lx(t=0)
     assert result.shape == (_N_PART,)
 
-def test_Lx_ellipsis_shape():
-    result = _SHAPE_SIM.Lx(t=...)
+def test_Lx_every_output_shape():
+    result = _SHAPE_SIM.Lx()
     assert result.shape == (_N_SNAP, _N_PART)
 
 def test_Ly_shape():
     result = _SHAPE_SIM.Ly(t=0)
     assert result.shape == (_N_PART,)
 
-def test_Ly_ellipsis_shape():
-    result = _SHAPE_SIM.Ly(t=...)
+def test_Ly_every_output_shape():
+    result = _SHAPE_SIM.Ly()
     assert result.shape == (_N_SNAP, _N_PART)
 
 def test_Lz_shape():
     result = _SHAPE_SIM.Lz(t=0)
     assert result.shape == (_N_PART,)
 
-def test_Lz_ellipsis_shape():
-    result = _SHAPE_SIM.Lz(t=...)
+def test_Lz_every_output_shape():
+    result = _SHAPE_SIM.Lz()
     assert result.shape == (_N_SNAP, _N_PART)
 
 # --- consistency --- #
@@ -2215,7 +2229,7 @@ def test_dE_uncached_single_t():
                       vel=np.random.normal(size=(10, 3)) * 0.01,
                       mass=np.abs(np.random.normal(loc=1e9, scale=1e8, size=10)), eps=0.05)
     sim.run(t_end=0.2, dt=0.1, dt_out=0.1)
-    dE = sim.dE(t=-1, solver=DirectSum())
+    dE = sim.dE(index=-1, solver=DirectSum())
     assert isinstance(dE, (float, np.floating))
 
 def test_self_ax_simulation(two_component_sim):
@@ -2252,7 +2266,7 @@ def test_no_zero_position_rows_exact():
     '''
     sim = _simple_sim()
     sim.run(t_end=0.5, dt=0.1, dt_out=0.2)
-    last_pos = sim.pos(-1, return_internal=True)
+    last_pos = sim.pos(index=-1, return_internal=True)
     assert not np.allclose(last_pos, 0.0), "Last snapshot is all zeros — arange overshoot bug"
 
 
@@ -2263,7 +2277,7 @@ def test_no_zero_position_rows_tricky():
     '''
     sim = _simple_sim()
     sim.run(t_end=0.002, dt=0.0001, dt_out=0.002)
-    last_pos = sim.pos(-1, return_internal=True)
+    last_pos = sim.pos(index=-1, return_internal=True)
     assert not np.allclose(last_pos, 0.0), "Last snapshot is all zeros — arange overshoot bug"
 
 
@@ -2321,7 +2335,7 @@ def test_compute_external_pot_uses_physical_time():
 
     # At index 2, the physical time is 1.0 Gyr.
     # Get potential via integer index
-    pot_idx = sim.compute_external_pot(2, return_internal=True)
+    pot_idx = sim.compute_external_pot(index=2, return_internal=True)
     # Get potential via float time (unambiguously physical time)
     pot_time = sim.compute_external_pot(1.0, return_internal=True)
 
@@ -2352,7 +2366,7 @@ def test_external_acc_uses_physical_time():
     sim.run(t_end=1.0, dt=0.1, dt_out=0.5)
 
     # At index 2, the physical time is 1.0 Gyr.
-    acc_idx = sim.external_acc(2, return_internal=True)
+    acc_idx = sim.external_acc(index=2, return_internal=True)
     acc_time = sim.external_acc(1.0, return_internal=True)
 
     np.testing.assert_allclose(acc_idx, acc_time, rtol=1e-14)

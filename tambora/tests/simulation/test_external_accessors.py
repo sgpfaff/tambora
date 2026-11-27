@@ -127,11 +127,11 @@ def test_component_slices_reassemble_the_sim(sim):
 def test_all_snapshot_path_matches_the_single_snapshot_path(sim):
     # The two branches of compute_external_pot and external_acc must not disagree.
     n_snap = len(sim.times)
-    stacked = np.vstack([sim.c.compute_external_pot(t=i) for i in range(n_snap)])
+    stacked = np.vstack([sim.c.compute_external_pot(index=i) for i in range(n_snap)])
     np.testing.assert_allclose(sim.c.compute_external_pot(), stacked)
     for obj in (sim, sim.c):
-        stacked = np.stack([obj.external_acc(t=i) for i in range(n_snap)])
-        np.testing.assert_allclose(obj.external_acc(t=...), stacked)
+        stacked = np.stack([obj.external_acc(index=i) for i in range(n_snap)])
+        np.testing.assert_allclose(obj.external_acc(), stacked)
 
 
 class _GrowingField(ExternalConservativeForce):
@@ -154,12 +154,12 @@ def test_the_field_is_evaluated_at_each_snapshots_time():
                                    np.broadcast_to(expected, (len(s.times), N_C, 3)))
 
 
-@pytest.mark.parametrize("t", [0, ...], ids=['one_snapshot', 'every_snapshot'])
-def test_axis_accessors_are_columns_of_external_acc(sim, t):
+@pytest.mark.parametrize("index", [0, None], ids=['one_snapshot', 'every_snapshot'])
+def test_axis_accessors_are_columns_of_external_acc(sim, index):
     for obj in (sim, sim.c):
-        acc = obj.external_acc(t=t)
+        acc = obj.external_acc(index=index)
         for i, name in enumerate(('external_ax', 'external_ay', 'external_az')):
-            np.testing.assert_allclose(getattr(obj, name)(t=t), acc[..., i])
+            np.testing.assert_allclose(getattr(obj, name)(index=index), acc[..., i])
 
 
 @pytest.mark.parametrize("external", [False, True], ids=['no_external_force', 'with_galpy_host'])

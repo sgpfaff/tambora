@@ -144,37 +144,37 @@ def test_comp1_data_differs_from_comp2():
 
 # --- Time indexing through Component ---------------------------------------- #
 
-def test_component_int_time_index():
+def test_component_int_time():
     comp1 = multicomp.comp1
     assert comp1.pos(0).shape == (COMP1_NPTS, 3)
-    assert comp1.pos(-1).shape == (COMP1_NPTS, 3)
+    np.testing.assert_array_equal(comp1.pos(1), comp1.pos(index=-1))
 
 def test_component_float_time_index():
     comp1 = multicomp.comp1
     np.testing.assert_array_equal(comp1.pos(0.0), comp1.pos(0))
     np.testing.assert_array_equal(comp1.vel(0.0), comp1.vel(0))
 
-def test_component_ellipsis_returns_all_snapshots():
+def test_component_default_returns_all_snapshots():
     comp1 = multicomp.comp1
     all_pos = comp1.pos()
     assert all_pos.shape == (11, COMP1_NPTS, 3)
     np.testing.assert_array_equal(all_pos[0], comp1.pos(0))
-    np.testing.assert_array_equal(all_pos[-1], comp1.pos(-1))
+    np.testing.assert_array_equal(all_pos[-1], comp1.pos(index=-1))
 
 # --- Component data matches parent Sim sliced data ------------------------- #
 
 def test_component_pos_matches_sim_sliced():
     comp1 = multicomp.comp1
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(comp1.pos(t), multicomp.pos(t)[sl])
-        np.testing.assert_array_equal(comp1.vel(t), multicomp.vel(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(comp1.pos(index=i), multicomp.pos(index=i)[sl])
+        np.testing.assert_array_equal(comp1.vel(index=i), multicomp.vel(index=i)[sl])
 
 def test_component_vel_matches_sim_sliced():
     comp2 = multicomp.comp2
     sl = multicomp._slices['comp2']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(comp2.vel(t), multicomp.vel(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(comp2.vel(index=i), multicomp.vel(index=i)[sl])
 
 # --- KE -------------------------------------------------------------------- #
 
@@ -201,25 +201,25 @@ def test_component_KE_sums_to_sim_KE():
 def test_comp_r_shape_single_t():
     assert multicomp.comp1.r(t=0).shape == (COMP1_NPTS,)
 
-def test_comp_r_shape_ellipsis():
+def test_comp_r_shape_every_output():
     assert multicomp.comp1.r().shape == (_N_SNAP_MC, COMP1_NPTS)
 
 def test_comp_phi_shape_single_t():
     assert multicomp.comp1.phi(t=0).shape == (COMP1_NPTS,)
 
-def test_comp_phi_shape_ellipsis():
+def test_comp_phi_shape_every_output():
     assert multicomp.comp1.phi().shape == (_N_SNAP_MC, COMP1_NPTS)
 
 def test_comp_theta_shape_single_t():
     assert multicomp.comp1.theta(t=0).shape == (COMP1_NPTS,)
 
-def test_comp_theta_shape_ellipsis():
+def test_comp_theta_shape_every_output():
     assert multicomp.comp1.theta().shape == (_N_SNAP_MC, COMP1_NPTS)
 
 def test_comp_cylR_shape_single_t():
     assert multicomp.comp1.cylR(t=0).shape == (COMP1_NPTS,)
 
-def test_comp_cylR_shape_ellipsis():
+def test_comp_cylR_shape_every_output():
     assert multicomp.comp1.cylR().shape == (_N_SNAP_MC, COMP1_NPTS)
 
 # --- Coordinate velocity shapes --- #
@@ -227,25 +227,25 @@ def test_comp_cylR_shape_ellipsis():
 def test_comp_vr_shape_single_t():
     assert multicomp.comp1.vr(t=0).shape == (COMP1_NPTS,)
 
-def test_comp_vr_shape_ellipsis():
+def test_comp_vr_shape_every_output():
     assert multicomp.comp1.vr().shape == (_N_SNAP_MC, COMP1_NPTS)
 
 def test_comp_vphi_shape_single_t():
     assert multicomp.comp1.vphi(t=0).shape == (COMP1_NPTS,)
 
-def test_comp_vphi_shape_ellipsis():
+def test_comp_vphi_shape_every_output():
     assert multicomp.comp1.vphi().shape == (_N_SNAP_MC, COMP1_NPTS)
 
 def test_comp_vtheta_shape_single_t():
     assert multicomp.comp1.vtheta(t=0).shape == (COMP1_NPTS,)
 
-def test_comp_vtheta_shape_ellipsis():
+def test_comp_vtheta_shape_every_output():
     assert multicomp.comp1.vtheta().shape == (_N_SNAP_MC, COMP1_NPTS)
 
 def test_comp_cylvR_shape_single_t():
     assert multicomp.comp1.cylvR(t=0).shape == (COMP1_NPTS,)
 
-def test_comp_cylvR_shape_ellipsis():
+def test_comp_cylvR_shape_every_output():
     assert multicomp.comp1.cylvR().shape == (_N_SNAP_MC, COMP1_NPTS)
 
 # --- Momentum shapes --- #
@@ -253,25 +253,25 @@ def test_comp_cylvR_shape_ellipsis():
 def test_comp_p_shape_single_t():
     assert multicomp.comp1.p(t=0).shape == (COMP1_NPTS, 3)
 
-def test_comp_p_shape_ellipsis():
+def test_comp_p_shape_every_output():
     assert multicomp.comp1.p().shape == (_N_SNAP_MC, COMP1_NPTS, 3)
 
 def test_comp_px_shape_single_t():
     assert multicomp.comp1.px(t=0).shape == (COMP1_NPTS,)
 
-def test_comp_px_shape_ellipsis():
+def test_comp_px_shape_every_output():
     assert multicomp.comp1.px().shape == (_N_SNAP_MC, COMP1_NPTS)
 
 def test_comp_py_shape_single_t():
     assert multicomp.comp1.py(t=0).shape == (COMP1_NPTS,)
 
-def test_comp_py_shape_ellipsis():
+def test_comp_py_shape_every_output():
     assert multicomp.comp1.py().shape == (_N_SNAP_MC, COMP1_NPTS)
 
 def test_comp_pz_shape_single_t():
     assert multicomp.comp1.pz(t=0).shape == (COMP1_NPTS,)
 
-def test_comp_pz_shape_ellipsis():
+def test_comp_pz_shape_every_output():
     assert multicomp.comp1.pz().shape == (_N_SNAP_MC, COMP1_NPTS)
 
 # --- Angular momentum shapes --- #
@@ -279,25 +279,25 @@ def test_comp_pz_shape_ellipsis():
 def test_comp_L_shape_single_t():
     assert multicomp.comp1.L(t=0).shape == (COMP1_NPTS, 3)
 
-def test_comp_L_shape_ellipsis():
+def test_comp_L_shape_every_output():
     assert multicomp.comp1.L().shape == (_N_SNAP_MC, COMP1_NPTS, 3)
 
 def test_comp_Lx_shape_single_t():
     assert multicomp.comp1.Lx(t=0).shape == (COMP1_NPTS,)
 
-def test_comp_Lx_shape_ellipsis():
+def test_comp_Lx_shape_every_output():
     assert multicomp.comp1.Lx().shape == (_N_SNAP_MC, COMP1_NPTS)
 
 def test_comp_Ly_shape_single_t():
     assert multicomp.comp1.Ly(t=0).shape == (COMP1_NPTS,)
 
-def test_comp_Ly_shape_ellipsis():
+def test_comp_Ly_shape_every_output():
     assert multicomp.comp1.Ly().shape == (_N_SNAP_MC, COMP1_NPTS)
 
 def test_comp_Lz_shape_single_t():
     assert multicomp.comp1.Lz(t=0).shape == (COMP1_NPTS,)
 
-def test_comp_Lz_shape_ellipsis():
+def test_comp_Lz_shape_every_output():
     assert multicomp.comp1.Lz().shape == (_N_SNAP_MC, COMP1_NPTS)
 
 # --- KE shapes --- #
@@ -305,96 +305,96 @@ def test_comp_Lz_shape_ellipsis():
 def test_comp_KE_shape_single_t():
     assert multicomp.comp1.KE(t=0).shape == (COMP1_NPTS,)
 
-def test_comp_KE_shape_ellipsis():
+def test_comp_KE_shape_every_output():
     assert multicomp.comp1.KE().shape == (_N_SNAP_MC, COMP1_NPTS)
 
 # --- Component accessors match Sim sliced accessors -------------------------------------------------------------- #
 
 def test_comp_r_matches_sim_sliced():
-    '''comp.r(t) == sim.r(t)[slice]'''
+    '''comp.r(index=i) == sim.r(index=i)[slice]'''
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.r(t), multicomp.r(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.r(index=i), multicomp.r(index=i)[sl])
 
 def test_comp_phi_matches_sim_sliced():
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.phi(t), multicomp.phi(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.phi(index=i), multicomp.phi(index=i)[sl])
 
 def test_comp_theta_matches_sim_sliced():
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.theta(t), multicomp.theta(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.theta(index=i), multicomp.theta(index=i)[sl])
 
 def test_comp_cylR_matches_sim_sliced():
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.cylR(t), multicomp.cylR(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.cylR(index=i), multicomp.cylR(index=i)[sl])
 
 def test_comp_vr_matches_sim_sliced():
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.vr(t), multicomp.vr(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.vr(index=i), multicomp.vr(index=i)[sl])
 
 def test_comp_vphi_matches_sim_sliced():
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.vphi(t), multicomp.vphi(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.vphi(index=i), multicomp.vphi(index=i)[sl])
 
 def test_comp_vtheta_matches_sim_sliced():
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.vtheta(t), multicomp.vtheta(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.vtheta(index=i), multicomp.vtheta(index=i)[sl])
 
 def test_comp_cylvR_matches_sim_sliced():
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.cylvR(t), multicomp.cylvR(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.cylvR(index=i), multicomp.cylvR(index=i)[sl])
 
 def test_comp_p_matches_sim_sliced():
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.p(t), multicomp.p(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.p(index=i), multicomp.p(index=i)[sl])
 
 def test_comp_px_matches_sim_sliced():
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.px(t), multicomp.px(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.px(index=i), multicomp.px(index=i)[sl])
 
 def test_comp_py_matches_sim_sliced():
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.py(t), multicomp.py(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.py(index=i), multicomp.py(index=i)[sl])
 
 def test_comp_pz_matches_sim_sliced():
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.pz(t), multicomp.pz(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.pz(index=i), multicomp.pz(index=i)[sl])
 
 def test_comp_L_matches_sim_sliced():
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.L(t), multicomp.L(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.L(index=i), multicomp.L(index=i)[sl])
 
 def test_comp_Lx_matches_sim_sliced():
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.Lx(t), multicomp.Lx(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.Lx(index=i), multicomp.Lx(index=i)[sl])
 
 def test_comp_Ly_matches_sim_sliced():
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.Ly(t), multicomp.Ly(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.Ly(index=i), multicomp.Ly(index=i)[sl])
 
 def test_comp_Lz_matches_sim_sliced():
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.Lz(t), multicomp.Lz(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.Lz(index=i), multicomp.Lz(index=i)[sl])
 
 def test_comp_KE_matches_sim_sliced():
     sl = multicomp._slices['comp1']
-    for t in [0, 5, -1]:
-        np.testing.assert_array_equal(multicomp.comp1.KE(t), multicomp.KE(t)[sl])
+    for i in [0, 5, -1]:
+        np.testing.assert_array_equal(multicomp.comp1.KE(index=i), multicomp.KE(index=i)[sl])
 
 
 # --- Verify comp2 accessors (second slice offset) ------------------------------- #
@@ -588,23 +588,23 @@ def test_comp_vtheta_explicit():
 
 # --- Ellipsis accessor matches sim sliced (all snapshots) ---------------------------------------- #
 
-def test_comp_r_ellipsis_matches_sim():
+def test_comp_r_every_output_matches_sim():
     sl = multicomp._slices['comp1']
     np.testing.assert_array_equal(multicomp.comp1.r(), multicomp.r()[:, sl])
 
-def test_comp_vr_ellipsis_matches_sim():
+def test_comp_vr_every_output_matches_sim():
     sl = multicomp._slices['comp1']
     np.testing.assert_allclose(multicomp.comp1.vr(), multicomp.vr()[:, sl], rtol=1e-15)
 
-def test_comp_p_ellipsis_matches_sim():
+def test_comp_p_every_output_matches_sim():
     sl = multicomp._slices['comp1']
     np.testing.assert_allclose(multicomp.comp1.p(), multicomp.p()[:, sl], rtol=1e-15)
 
-def test_comp_L_ellipsis_matches_sim():
+def test_comp_L_every_output_matches_sim():
     sl = multicomp._slices['comp1']
     np.testing.assert_allclose(multicomp.comp1.L(), multicomp.L()[:, sl], rtol=1e-15)
 
-def test_comp_KE_ellipsis_matches_sim():
+def test_comp_KE_every_output_matches_sim():
     sl = multicomp._slices['comp1']
     np.testing.assert_allclose(multicomp.comp1.KE(), multicomp.KE()[:, sl], rtol=1e-15)
 

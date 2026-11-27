@@ -136,6 +136,6 @@ def test_at_every_snapshot_it_is_the_ratio_at_each():
     for obj in (sim, sim.ring):
         every = obj.virial_ratio()
         assert every.shape == (n_snap,)
-        np.testing.assert_allclose(every, [obj.virial_ratio(t=i) for i in range(n_snap)], rtol=1e-14)
+        np.testing.assert_allclose(every, [obj.virial_ratio(index=i) for i in range(n_snap)], rtol=1e-14)
         # The ring turns by about 80 degrees, staying on its circular orbits.
         np.testing.assert_allclose(every, 1., rtol=1e-3)
