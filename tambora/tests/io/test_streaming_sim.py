@@ -13,7 +13,7 @@ from galpy import potential as gp
 
 from tambora.dynamics import DirectSum, FalcON
 from tambora.dynamics.forces.Force import Force
-from tambora.dynamics.hooks import EveryOutput, EveryStep, Hook
+from tambora.dynamics.hooks import EveryStep, Hook
 from tambora.io import run_files
 from tambora.io.run_files import RUN_FILE, _read_settings, _SnapshotArray, snapshot_name
 from tambora.simulation import Sim
@@ -52,7 +52,8 @@ def _settings(directory):
 
 class _Stop(Hook):
     """Raises at step *at*."""
-    def __init__(self, at):
+    def __init__(self, at, every=None):
+        super().__init__(every=every)
         self.at = at
 
     def __call__(self, state):
@@ -92,7 +93,7 @@ def test_a_streamed_run_is_the_run_kept_in_memory_bit_for_bit(tmp_path, run):
 def test_a_run_that_stops_early_keeps_the_same_outputs_streamed_as_in_memory(tmp_path):
     disk, memory = _sim(output_dir=tmp_path / 'run'), _sim()
     for sim in (disk, memory):
-        sim.add_hook(_Stop(at=12), EveryStep())
+        sim.add_hook(_Stop(at=12, every=1))
         with pytest.warns(UserWarning, match="stopped early: the 3 outputs"), \
                 pytest.raises(RuntimeError, match="stopped by the test"):
             sim.run(**RUN)
@@ -109,8 +110,8 @@ def test_a_streamed_run_that_stops_before_its_first_output_leaves_no_run_behind(
             raise stop("stopped by the test")
     (tmp_path / 'notes.txt').write_text('mine')
     sim = _sim(output_dir=tmp_path)
-    hook = _StopAtStart()
-    sim.add_hook(hook, EveryStep())
+    hook = _StopAtStart(every=1)
+    sim.add_hook(hook)
     with pytest.raises(stop, match="stopped by the test"):
         sim.run(**RUN)
     assert os.listdir(tmp_path) == ['notes.txt']
@@ -274,7 +275,7 @@ def test_an_unset_softening_is_recorded_as_nan(tmp_path):
 def test_each_output_keeps_the_step_that_made_it(tmp_path, streamed):
     sim = _sim(output_dir=tmp_path / 'run') if streamed else _sim()
     hook = _Steps()
-    sim.add_hook(hook, EveryOutput())
+    sim.add_hook(hook)
     sim.run(**RUN)
     assert sim._steps.dtype == np.int64
     np.testing.assert_array_equal(sim._steps, hook.steps)
@@ -303,8 +304,8 @@ def test_a_rerun_replaces_the_steps_and_settings():
 
 def test_a_failed_rerun_that_recorded_nothing_keeps_the_last_runs_steps_and_settings():
     sim = _sim()
-    stop = _Stop(at=-1)
-    sim.add_hook(stop, EveryStep())
+    stop = _Stop(at=-1, every=1)
+    sim.add_hook(stop)
     sim.run(**RUN)
     settings, steps, times = sim._run_settings, sim._steps, sim.times
     stop.at = 0

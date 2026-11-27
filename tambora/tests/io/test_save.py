@@ -9,7 +9,6 @@ import pytest
 from galpy import potential as gp
 
 from tambora.dynamics import FalcON
-from tambora.dynamics.hooks import EveryStep
 from tambora.io import run_files
 from tambora.io.run_files import RUN_FILE, read_run, snapshot_name
 from tambora.simulation import Sim
@@ -79,7 +78,7 @@ def test_save_takes_a_path_as_sim_does(tmp_path, monkeypatch):
 
 def test_a_saved_run_that_stopped_early_loads_with_the_warning(tmp_path):
     sim = _sim()
-    sim.add_hook(_Stop(at=12), EveryStep())
+    sim.add_hook(_Stop(at=12, every=1))
     with pytest.warns(UserWarning, match="stopped early"), pytest.raises(RuntimeError, match="stopped by the test"):
         sim.run(**RUN)
     sim.save(tmp_path / 'saved')

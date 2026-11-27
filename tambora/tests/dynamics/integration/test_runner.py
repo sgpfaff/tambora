@@ -659,7 +659,7 @@ class TestStepClock:
         sim = Sim(solver=None)
         sim.add_particles(np.zeros((3, 3)), np.zeros((3, 3)), np.ones(3), name='c')
         bh = BoundednessHook('c', eps=0.01)
-        sim.add_hook(bh, EveryOutput())
+        sim.add_hook(bh)
         sim.run(t_end=0.1, dt=self.dt, dt_out=self.dt_out, progress=False, monitors=False)
 
         k = flip_step // round(self.dt_out / self.dt)

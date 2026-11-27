@@ -10,7 +10,6 @@ import pytest
 from galpy import potential as gp
 
 from tambora.dynamics import DirectSum, FalcON
-from tambora.dynamics.hooks import EveryStep
 from tambora.io import run_files
 from tambora.io.run_files import RUN_FILE, snapshot_name
 from tambora.simulation import Sim
@@ -249,7 +248,7 @@ def test_load_checks_its_solver_as_sim_does(tmp_path, solver, error, message):
 
 def test_loading_a_run_that_stopped_early_warns_and_keeps_its_outputs(tmp_path):
     disk = _sim(output_dir=tmp_path / 'run')
-    disk.add_hook(_Stop(at=12), EveryStep())
+    disk.add_hook(_Stop(at=12, every=1))
     with pytest.warns(UserWarning, match="stopped early"), pytest.raises(RuntimeError, match="stopped by the test"):
         disk.run(**RUN)
     (tmp_path / 'run' / (snapshot_name(3) + '.1234-0a1b2c3d.tmp')).write_bytes(b'')  # as a killed writer leaves

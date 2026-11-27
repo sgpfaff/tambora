@@ -2393,7 +2393,8 @@ class _KeyedHook(Hook):
     ``_StubHook`` (above) inherits the default ``_dedup_key`` -> ``None`` and so
     opts out of dedup; this one declares an identity from its ``label``.
     """
-    def __init__(self, label):
+    def __init__(self, label, every=None):
+        super().__init__(every=every)
         self.label = label
         self.steps = []
 
@@ -2409,9 +2410,11 @@ class _EveryHook(Hook):
     def __init__(self, every=None):
         super().__init__(every=every)
         self.steps = []
+        self.times = []
 
     def __call__(self, state):
         self.steps.append(state.step)
+        self.times.append(state.t)
 
 
 @pytest.mark.parametrize('every, error, match', [
@@ -2476,16 +2479,16 @@ class TestHooksFireAtTheirCadence:
 
     def test_every_step_fires_on_every_step(self):
         sim = self._sim()
-        hook = _StubHook()
-        sim.add_hook(hook, EveryStep())
+        hook = _EveryHook(every=1)
+        sim.add_hook(hook)
         self._run(sim)
         assert hook.steps == [0, 1, 2, 3, 4, 5, 6]
 
     def test_every_output_follows_dt_out_not_dt(self):
         # steps_per_output = dt_out/dt = 2, so this must not fire every step.
         sim = self._sim()
-        hook = _StubHook()
-        sim.add_hook(hook, EveryOutput())
+        hook = _EveryHook()
+        sim.add_hook(hook)
         self._run(sim)
         assert hook.steps == [0, 2, 4, 6]
 
@@ -2498,9 +2501,9 @@ class TestHooksFireAtTheirCadence:
 
     def test_hooks_with_different_cadences_fire_independently(self):
         sim = self._sim()
-        fast, slow = _StubHook(), _StubHook()
-        sim.add_hook(fast, EveryNSteps(1))
-        sim.add_hook(slow, EveryNSteps(3))
+        fast, slow = _EveryHook(every=1), _EveryHook(every=3)
+        sim.add_hook(fast)
+        sim.add_hook(slow)
         self._run(sim)
         assert fast.steps == [0, 1, 2, 3, 4, 5, 6]
         assert slow.steps == [0, 3, 6]
@@ -2509,8 +2512,8 @@ class TestHooksFireAtTheirCadence:
         # The state handed to the hook must be the live one for that step, not a
         # stale view: with dt=1 from t0=0, time and step index coincide.
         sim = self._sim()
-        hook = _StubHook()
-        sim.add_hook(hook, EveryNSteps(2))
+        hook = _EveryHook(every=2)
+        sim.add_hook(hook)
         self._run(sim)
         np.testing.assert_allclose(hook.times, hook.steps)
 
@@ -2520,13 +2523,6 @@ class TestHooksFireAtTheirCadence:
         sim.add_hook(hook)
         self._run(sim)
         assert hook.steps == [0, 3, 6]
-
-    def test_a_hook_without_every_fires_at_each_output(self):
-        sim = self._sim()
-        hook = _EveryHook()
-        sim.add_hook(hook)
-        self._run(sim)
-        assert hook.steps == [0, 2, 4, 6]
 
     def test_a_built_in_hook_given_every_fires_every_that_many_steps(self):
         sim = self._sim()
@@ -2538,8 +2534,8 @@ class TestHooksFireAtTheirCadence:
     def test_a_keyed_hook_fires_too(self):
         # _KeyedHook opts into dedup; that must not affect whether it runs.
         sim = self._sim()
-        hook = _KeyedHook('sat')
-        sim.add_hook(hook, EveryNSteps(3))
+        hook = _KeyedHook('sat', every=3)
+        sim.add_hook(hook)
         self._run(sim)
         assert hook.steps == [0, 3, 6]
 
@@ -2680,9 +2676,9 @@ class TestAddHook:
     def test_registers_multiple_hooks_in_order(self):
         sim = Sim()
         h1, h2, h3 = _StubHook(), _StubHook(), _StubHook()
-        sim.add_hook(h1, EveryNSteps(1))
-        sim.add_hook(h2, EveryNSteps(2))
-        sim.add_hook(h3, EveryNSteps(3))
+        sim.add_hook(h1)
+        sim.add_hook(h2)
+        sim.add_hook(h3)
         assert [h for h, _ in sim._hooks] == [h1, h2, h3]
 
     def test_add_hook_after_run_raises(self):
