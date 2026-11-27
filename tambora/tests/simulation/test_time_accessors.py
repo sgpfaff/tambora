@@ -1,5 +1,6 @@
 """Picking a snapshot on the Sim's and a component's accessors."""
 
+import re
 import warnings
 
 import numpy as np
@@ -80,3 +81,47 @@ def test_index_must_be_an_int():
 def test_index_out_of_range_is_refused(index):
     with pytest.raises(IndexError):
         SIM.pos(index=index)
+
+
+def test_nearest_t_gives_the_nearest_output_time():
+    assert SIM.nearest_t(0.013) == SIM.times[1]
+    assert SIM.nearest_t(0.017) == SIM.times[2]
+    assert type(SIM.nearest_t(0.017)) is float
+
+
+def test_nearest_t_of_an_output_time_is_that_time():
+    for t in SIM.times:
+        assert SIM.nearest_t(t) == t
+
+
+def test_nearest_t_takes_ints_and_numpy_numbers():
+    assert SIM.nearest_t(0) == SIM.times[0]
+    assert SIM.nearest_t(np.int64(0)) == SIM.times[0]
+    assert SIM.nearest_t(np.float32(0.021)) == SIM.times[2]
+
+
+def test_nearest_t_allows_round_off_at_the_ends():
+    assert SIM.nearest_t(0.04 + 1e-15) == SIM.times[-1]
+    assert SIM.nearest_t(-1e-15) == SIM.times[0]
+
+
+@pytest.mark.parametrize("t", [0.05, -0.01])
+def test_nearest_t_outside_the_run_is_refused(t):
+    with pytest.raises(ValueError, match=re.escape(f"t={t} Gyr is outside the run, which covers 0 to 0.04 Gyr.")):
+        SIM.nearest_t(t)
+
+
+@pytest.mark.parametrize("t", [[0.01, 0.02], np.array([0.01, 0.02]), '0.01', True])
+def test_nearest_t_takes_one_number(t):
+    with pytest.raises(TypeError, match="t must be a number. Got"):
+        SIM.nearest_t(t)
+
+
+def test_nearest_t_on_a_run_backwards_from_t0():
+    rng = np.random.default_rng(2)
+    sim = Sim(solver=DirectSum(), t0=1.0)
+    sim.add_particles(rng.normal(size=(4, 3)), rng.normal(size=(4, 3)), np.full(4, 1e5), eps=0.05)
+    sim.run(t_end=0.97, dt=-0.01, dt_out=-0.01, progress=False, monitors=False)
+    assert sim.nearest_t(0.982) == sim.times[2]
+    with pytest.raises(ValueError, match="covers 0.97 to 1 Gyr"):
+        sim.nearest_t(1.01)

@@ -107,6 +107,11 @@ def _check_t0(t0):
     return float(t0)
 
 
+def _t_slack(t):
+    """Round-off allowed when matching *t* to an output time [Gyr]."""
+    return 1e-12 + 1e-10 * abs(t)
+
+
 def _check_output_dir(output_dir, name='output_dir'):
     """*output_dir*, the directory argument *name*, as an absolute path."""
     try:
@@ -1330,6 +1335,29 @@ class Sim(_ParticleView):
     @property
     def times(self):
         return self._times
+
+    def nearest_t(self, t):
+        """
+        The output time nearest *t* [Gyr].
+
+        Parameters
+        ----------
+        t : float
+            A time within the run [Gyr].
+
+        Returns
+        -------
+        float
+            The element of ``sim.times`` nearest *t*.
+        """
+        if isinstance(t, bool) or not isinstance(t, numbers.Real):
+            raise TypeError(f"t must be a number. Got {type(t).__name__}.")
+        times = self._times
+        lo, hi = min(times[0], times[-1]), max(times[0], times[-1])     # dt < 0 runs backwards
+        slack = _t_slack(t)
+        if not lo - slack <= t <= hi + slack:
+            raise ValueError(f"t={t} Gyr is outside the run, which covers {lo:g} to {hi:g} Gyr.")
+        return float(times[np.argmin(np.abs(times - t))])
 
     # --- I/O ------------------------------------------------------------------------------
 
