@@ -54,6 +54,8 @@ class ConservationMonitor(Hook):
     track : sequence of str, optional
         Conserved quantities to monitor. Currently available: ``'energy'``.
         Default ``('energy',)``.
+    every : int, optional
+        Fire every this many steps. Default None, at each output.
 
     Attributes
     ----------
@@ -75,7 +77,8 @@ class ConservationMonitor(Hook):
 
     default_cadence = EveryOutput()
 
-    def __init__(self, track=('energy',)):
+    def __init__(self, track=('energy',), every=None):
+        super().__init__(every=every)
         track = tuple(track)
         if not track:
             raise ValueError("track must name at least one conserved quantity.")

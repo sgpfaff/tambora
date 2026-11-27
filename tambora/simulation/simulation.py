@@ -208,6 +208,15 @@ def _warn_not_saved(label, error, stacklevel):
                   "Pass save_with_run=False to skip saving it.", stacklevel=stacklevel + 1)
 
 
+def _hook_cadence(hook):
+    """The cadence a hook fires at when ``add_hook`` is given none."""
+    from ..dynamics.hooks import EveryNSteps, EveryOutput
+    every = getattr(hook, "every", None)
+    if every is not None:
+        return EveryNSteps(every)
+    return getattr(hook, "default_cadence", None) or EveryOutput()
+
+
 def _cadence_label(cadence):
     """Readable label for a cadence, including its interval where it has one."""
     name = type(cadence).__name__
@@ -684,7 +693,7 @@ class Sim(_ParticleView):
         self._hooks[:] = [(h, c) for h, c in self._hooks if h is not self._auto_monitor]
         self._auto_monitor = monitor
         if monitor is not None:
-            self._hooks.append((monitor, monitor.default_cadence))
+            self._hooks.append((monitor, _hook_cadence(monitor)))
         run_settings['hooks'] = {'names': [type(h).__name__ for h, _ in self._hooks],
                                  'cadences': [_cadence_label(c) for _, c in self._hooks]}
         from ..dynamics.hooks import Hook
@@ -768,8 +777,9 @@ class Sim(_ParticleView):
             The hook to run. Subclass ``tambora.dynamics.hooks.Hook`` for a hook
             with a ``default_cadence``, or pass any bare callable.
         cadence : Cadence, optional
-            When the hook fires. If None, uses the hook's ``default_cadence`` if
-            it has one, otherwise ``EveryOutput()``.
+            When the hook fires. If None, every ``hook.every`` steps when it is
+            set, else the hook's ``default_cadence`` if it has one, else
+            ``EveryOutput()``.
 
         Returns
         -------
@@ -787,7 +797,7 @@ class Sim(_ParticleView):
             equivalently-configured hook is already registered (see the hook's
             ``_dedup_key``).
         '''
-        from ..dynamics.hooks import EveryOutput, Cadence
+        from ..dynamics.hooks import Cadence
         if self._has_run:
             raise RuntimeError("Cannot add hooks after run()")
         if not callable(hook):
@@ -802,7 +812,7 @@ class Sim(_ParticleView):
                 f"An equivalently-configured {type(hook).__name__} is already "
                 f"registered. Change its configuration, or reuse the existing hook.")
         if cadence is None:
-            cadence = getattr(hook, "default_cadence", None) or EveryOutput()
+            cadence = _hook_cadence(hook)
         if not isinstance(cadence, Cadence):
             raise TypeError(f"cadence must be a Cadence instance, got "
                             f"{type(cadence).__name__!r}.")

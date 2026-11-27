@@ -51,9 +51,6 @@ _REDUCTIONS = {
 class BoundednessHook(Hook):
     """Track boundedness of a component over time.
 
-    A particle is bound if its specific energy in the component's COM frame is
-    negative (i.e. bound to the component *in isolation*).
-
     Parameters
     ----------
     component : str
@@ -72,6 +69,8 @@ class BoundednessHook(Hook):
     max_iter : int, optional
         Maximum unbinding iterations (must match across hooks to share the cached
         ``bound_mask``).
+    every : int, optional
+        Fire every this many steps. Default None, at each output.
 
     Attributes
     ----------
@@ -85,12 +84,18 @@ class BoundednessHook(Hook):
         Prefer the ``transitions`` / ``release_time`` accessors over reading this
         directly; they take readable direction names (``'unbound'`` /
         ``'bound'``) and handle rebinding correctly.
+
+    Notes
+    -----
+    -   A particle is bound if its specific energy in the component's COM frame is
+    negative (i.e. bound to the component *in isolation*).
     """
 
     default_cadence = EveryOutput()
 
     def __init__(self, component, track=(), capture_transitions=(),
-                 solver=None, eps=None, max_iter=50):
+                 solver=None, eps=None, max_iter=50, every=None):
+        super().__init__(every=every)
         for name in track:
             if name not in _REDUCTIONS:
                 raise ValueError(

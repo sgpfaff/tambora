@@ -65,6 +65,11 @@ def test_track_is_normalised_to_a_tuple():
     assert ConservationMonitor(track=['energy']).track == ('energy',)
 
 
+def test_every_is_none_by_default_and_kept_when_given():
+    assert ConservationMonitor().every is None
+    assert ConservationMonitor(every=3).every == 3
+
+
 def test_default_cadence_is_every_output():
     assert isinstance(ConservationMonitor().default_cadence, EveryOutput)
 

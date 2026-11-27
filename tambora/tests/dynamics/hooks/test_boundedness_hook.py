@@ -235,6 +235,11 @@ def test_reset_clears_the_records():
     assert len(bh.com) == 1
 
 
+def test_every_is_none_by_default_and_kept_when_given():
+    assert BoundednessHook('c').every is None
+    assert BoundednessHook('c', every=3).every == 3
+
+
 # --- tracked reductions and captured payloads -------------------------------
 
 def test_track_records_one_reduction_per_fire():

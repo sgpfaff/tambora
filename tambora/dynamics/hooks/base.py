@@ -1,3 +1,4 @@
+import numbers
 from abc import ABC, abstractmethod
 from ..integration import StepState
 from .cadence import EveryOutput
@@ -7,17 +8,29 @@ class Hook(ABC):
     """
     Abstract base class for integration hooks that run between integration steps.
 
-    A hook is a callable that receives a :class:`StepState` (a live, read-only
-    view of the simulation at the current step) and observes it, typically
-    accumulating results on ``self`` for inspection after the run.
+    Parameters
+    ----------
+    every : int, optional
+        Fire every this many steps. Default None, at each output.
 
     Attributes
     ----------
     default_cadence : Cadence
         Cadence used if none is supplied to ``Sim.add_hook``.
+
+    Notes
+    -----
+    -   A hook is a callable that receives a :class:`StepState` (a live, read-only
+        view of the simulation at the current step) and observes it, typically
+        accumulating results on ``self`` for inspection after the run.
+    
     """
 
     default_cadence = EveryOutput()
+    every = None
+
+    def __init__(self, every=None):
+        self.every = _check_every(every)
 
     @abstractmethod
     def __call__(self, state: StepState):
@@ -53,3 +66,14 @@ class Hook(ABC):
         instances allowed). 
         """
         return None
+
+
+def _check_every(every):
+    """*every*, a hook's step interval, or None for each output."""
+    if every is None:
+        return None
+    if isinstance(every, bool) or not isinstance(every, numbers.Integral):
+        raise TypeError(f"every must be a whole number of steps, got {type(every).__name__}.")
+    if every < 1:
+        raise ValueError(f"every must be positive, got {every}.")
+    return int(every)

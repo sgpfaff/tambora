@@ -3,6 +3,7 @@ Test the Sim class and its methods.
 '''
 
 import os
+import re
 import pytest 
 from tambora.simulation import Sim
 from tambora.simulation.simulation import _force_label, Component
@@ -2403,6 +2404,37 @@ class _KeyedHook(Hook):
         self.steps.append(state.step)
 
 
+class _EveryHook(Hook):
+    """A hook that passes ``every`` on to ``Hook``."""
+    def __init__(self, every=None):
+        super().__init__(every=every)
+        self.steps = []
+
+    def __call__(self, state):
+        self.steps.append(state.step)
+
+
+@pytest.mark.parametrize('every, error, match', [
+    (0, ValueError, "every must be positive, got 0."),
+    (-2, ValueError, "every must be positive, got -2."),
+    (2.5, TypeError, "every must be a whole number of steps, got float."),
+    (True, TypeError, "every must be a whole number of steps, got bool."),
+    ('3', TypeError, "every must be a whole number of steps, got str."),
+], ids=['zero', 'negative', 'float', 'bool', 'str'])
+def test_a_hook_refuses_an_every_that_isnt_a_positive_whole_number(every, error, match):
+    with pytest.raises(error, match=re.escape(match)):
+        _EveryHook(every=every)
+
+
+def test_a_hook_keeps_every_as_a_python_int():
+    hook = _EveryHook(every=np.int64(3))
+    assert hook.every == 3 and type(hook.every) is int
+
+
+def test_a_hook_that_sets_no_every_has_none():
+    assert _ResetCountingHook().every is None
+
+
 class TestHooksFireAtTheirCadence:
     """The register -> run -> fire path.
 
@@ -2481,6 +2513,27 @@ class TestHooksFireAtTheirCadence:
         sim.add_hook(hook, EveryNSteps(2))
         self._run(sim)
         np.testing.assert_allclose(hook.times, hook.steps)
+
+    def test_a_hook_given_every_fires_every_that_many_steps(self):
+        sim = self._sim()
+        hook = _EveryHook(every=3)
+        sim.add_hook(hook)
+        self._run(sim)
+        assert hook.steps == [0, 3, 6]
+
+    def test_a_hook_without_every_fires_at_each_output(self):
+        sim = self._sim()
+        hook = _EveryHook()
+        sim.add_hook(hook)
+        self._run(sim)
+        assert hook.steps == [0, 2, 4, 6]
+
+    def test_a_built_in_hook_given_every_fires_every_that_many_steps(self):
+        sim = self._sim()
+        mon = ConservationMonitor(every=3)
+        sim.add_hook(mon)
+        self._run(sim)
+        assert mon.t == [0.0, 3.0, 6.0]
 
     def test_a_keyed_hook_fires_too(self):
         # _KeyedHook opts into dedup; that must not affect whether it runs.
