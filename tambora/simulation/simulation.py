@@ -284,35 +284,30 @@ class Sim(_ParticleView):
         self._hooks = [] # (Hook, Cadence) pairs run during integration
         self._auto_monitor = None # the ConservationMonitor the last run attached itself
 
-    def _ti(self, t=..., index=None):
-        """
-        Resolve *t* or *index* to a snapshot index, or None for every snapshot.
-
-        int t -> direct index, float t -> nearest time.
-        """
+    def _ti(self, t=None, index=None):
+        """Snapshot index of output time *t* [Gyr] or position *index*; None for every snapshot."""
+        times = self._times
         if index is not None:
-            if t is not ...:
+            if t is not None:
                 raise TypeError("Give t or index, not both.")
             if not isinstance(index, (int, np.integer)):
                 raise TypeError(f"index must be an int. Got {type(index).__name__}.")
-            t = index
-        if isinstance(t, (int, np.integer)) or t is ...:
-            if t is ...:
-                return None
-            else:
-                if t > len(self._times) - 1 or t < -len(self._times):
-                    print(f"Time index {t} is out of bounds for simulation with {len(self._times)} snapshots. Please provide an index within [-{len(self._times)}, {len(self._times)-1}].")
-                    raise IndexError(f"Time index {t} is out of bounds for simulation with {len(self._times)} snapshots. Please provide an index within [-{len(self._times)}, {len(self._times)-1}].")
-                else:
-                    return int(t)
-        else:
-            if not isinstance(t, (float, np.floating)):
-                raise TypeError("t must be an int index, a float time, or ellipsis.")
-            else:
-                if t < self._times[0] or t > self._times[-1]:
-                    raise ValueError(f"t={t} Gyr is out of bounds for simulation time range [{self._times[0]}, {self._times[-1]}] Gyr.")
-                else:
-                    return int(np.argmin(np.abs(self._times - t)))
+            if not -len(times) <= index < len(times):
+                raise IndexError(f"index={index} is out of range. The run has {len(times)} outputs.")
+            return int(index)
+        if t is None:
+            return None
+        if isinstance(t, bool) or not isinstance(t, numbers.Real):
+            raise TypeError(f"t must be a time in Gyr. Got {type(t).__name__}.")
+        i = int(np.argmin(np.abs(times - t)))
+        if abs(times[i] - t) <= _t_slack(t):
+            return i
+        lo, hi = min(times[0], times[-1]), max(times[0], times[-1])     # dt < 0 runs backwards
+        if not lo <= t <= hi:
+            raise ValueError(f"t={t} Gyr is outside the run, which covers {lo:g} to {hi:g} Gyr. "
+                             "To pick a snapshot by position, use index=.")
+        raise ValueError(f"t={t} Gyr isn't an output time. The nearest is {times[i]:.10g} Gyr. "
+                         f"Use t=sim.nearest_t({t}) to pick it.")
 
     def __getattr__(self, name):
         '''
@@ -923,7 +918,7 @@ class Sim(_ParticleView):
     # --- Potential Energy --- #
 
     @unit_handler('energy')
-    def self_potential(self, t=..., solver=None, *, index=None) -> np.ndarray:
+    def self_potential(self, t=None, *, index=None, solver=None) -> np.ndarray:
         '''
         Self-gravitational potential of particles at *t*.
 
@@ -931,11 +926,9 @@ class Sim(_ParticleView):
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
@@ -954,7 +947,7 @@ class Sim(_ParticleView):
         return self._mass * self._self_gravity(i, solver, True, potential=True)
 
     @unit_handler('energy')
-    def PE(self, t=..., solver=None, *, index=None) -> np.ndarray:
+    def PE(self, t=None, *, index=None, solver=None) -> np.ndarray:
         '''
         Total potential energy of particles at *t*.
 
@@ -962,11 +955,9 @@ class Sim(_ParticleView):
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
@@ -987,7 +978,7 @@ class Sim(_ParticleView):
     # --- Total Energy --- #
 
     @unit_handler('energy')
-    def energy(self, t=..., solver=None, *, index=None):
+    def energy(self, t=None, *, index=None, solver=None):
         """
         Energy of particles at *t*.
         
@@ -995,11 +986,9 @@ class Sim(_ParticleView):
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
@@ -1017,7 +1006,7 @@ class Sim(_ParticleView):
         return self.KE(index=i, return_internal=True) + self.PE(index=i, solver=solver, return_internal=True)
 
     @unit_handler('energy')
-    def system_energy(self, t=..., solver=None, *, index=None):
+    def system_energy(self, t=None, *, index=None, solver=None):
         r"""
         Total conserved system energy at *t*.
         
@@ -1030,11 +1019,9 @@ class Sim(_ParticleView):
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
@@ -1053,17 +1040,15 @@ class Sim(_ParticleView):
                 + 0.5 * np.sum(self.self_potential(index=i, solver=solver, return_internal=True), axis=-1)
                 + np.sum(self.compute_external_pot(index=i, return_internal=True), axis=-1))
 
-    def dE(self, t=..., solver=None, *, index=None):
+    def dE(self, t=None, *, index=None, solver=None):
         '''
         Percent change in total energy over the simulation time.
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
@@ -1089,7 +1074,7 @@ class Sim(_ParticleView):
 
     # --- Virial Ratio --- #
 
-    def virial_ratio(self, t=..., solver=None, *, index=None):
+    def virial_ratio(self, t=None, *, index=None, solver=None):
         r'''
         Virial ratio :math:`2K/|W|` of the particles at *t*: 1 in equilibrium.
 
@@ -1103,11 +1088,9 @@ class Sim(_ParticleView):
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
@@ -1131,7 +1114,7 @@ class Sim(_ParticleView):
     # --- Self-Gravity --- #
 
     @unit_handler('acceleration')
-    def self_gravity(self, t=..., solver=None, *, index=None):
+    def self_gravity(self, t=None, *, index=None, solver=None):
         '''
         The self-gravity acceleration (ax, ay, az) 
         of each particle at *t*.
@@ -1140,11 +1123,9 @@ class Sim(_ParticleView):
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
@@ -1163,7 +1144,7 @@ class Sim(_ParticleView):
         return self._self_gravity(i, solver, True)
 
     @unit_handler('acceleration')
-    def self_ax(self, t=..., solver=None, *, index=None):
+    def self_ax(self, t=None, *, index=None, solver=None):
         '''
         x-component of self-gravity acceleration on each particle at *t*.
         
@@ -1171,11 +1152,9 @@ class Sim(_ParticleView):
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
@@ -1194,7 +1173,7 @@ class Sim(_ParticleView):
         return self.self_gravity(index=i, solver=solver, return_internal=True)[..., 0]
 
     @unit_handler('acceleration')
-    def self_ay(self, t=..., solver=None, *, index=None):
+    def self_ay(self, t=None, *, index=None, solver=None):
         '''
         y-component of self-gravity acceleration on each particle at *t*.
         
@@ -1202,11 +1181,9 @@ class Sim(_ParticleView):
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
@@ -1225,7 +1202,7 @@ class Sim(_ParticleView):
         return self.self_gravity(index=i, solver=solver, return_internal=True)[..., 1]
 
     @unit_handler('acceleration')
-    def self_az(self, t=..., solver=None, *, index=None):
+    def self_az(self, t=None, *, index=None, solver=None):
         '''
         z-component of self-gravity acceleration on each particle at *t*.
         
@@ -1233,11 +1210,9 @@ class Sim(_ParticleView):
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         solver : SelfGravityForce, optional
@@ -1292,15 +1267,10 @@ class Sim(_ParticleView):
     def plot_momentum_diagnostic(self, filename=None,
                                  plot_components=True):   # pragma: no cover
         '''
-        Plot the distribution of particle momenta at *t*.
+        Plot the relative change in total momentum over the run.
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
         filename : str, optional
             If provided, will save the plot to the given filename
             instead of showing it.

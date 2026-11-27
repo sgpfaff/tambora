@@ -57,8 +57,8 @@ class _ParticleView:
         elif not isinstance(solver, SelfGravityForce):
             raise TypeError(f"solver must be a self-gravity solver, e.g. DirectSum(). Got {type(solver).__name__!r}.")
         if i is None:
-            raise TypeError("Cannot compute on-the-fly for all times. Please provide an integer index or a float "
-                            "time for t. You will have to manually loop over snapshots.")
+            raise TypeError("Cannot compute on-the-fly for all times. Give t or index, "
+                            "or loop over sim.times.")
         of = sim if everyone else self
         compute = solver.potential if potential else solver.acc
         result = compute(of.pos(index=i, return_internal=True), of.mass, of._softening())
@@ -67,7 +67,7 @@ class _ParticleView:
     # --- Position Accessors -------------------------------------------------------------------
 
     @unit_handler('length')
-    def pos(self, t=..., *, index=None) -> np.ndarray:
+    def pos(self, t=None, *, index=None) -> np.ndarray:
         '''
         Particle positions (x, y, z) at *t*.
 
@@ -75,11 +75,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -93,7 +91,7 @@ class _ParticleView:
         return self._snap(self._sim._positions, i)
 
     @unit_handler('length')
-    def x(self, t=..., *, index=None) -> np.ndarray:
+    def x(self, t=None, *, index=None) -> np.ndarray:
         '''
         x-positions of the particles at *t*.
 
@@ -101,11 +99,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -119,7 +115,7 @@ class _ParticleView:
         return self._snap(self._sim._positions, i)[..., 0]
 
     @unit_handler('length')
-    def y(self, t=..., *, index=None) -> np.ndarray:
+    def y(self, t=None, *, index=None) -> np.ndarray:
         '''
         y-positions of the particles at *t*.
 
@@ -127,11 +123,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -145,7 +139,7 @@ class _ParticleView:
         return self._snap(self._sim._positions, i)[..., 1]
 
     @unit_handler('length')
-    def z(self, t=..., *, index=None) -> np.ndarray:
+    def z(self, t=None, *, index=None) -> np.ndarray:
         '''
         z-positions of the particles at *t*.
 
@@ -153,11 +147,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -171,7 +163,7 @@ class _ParticleView:
         return self._snap(self._sim._positions, i)[..., 2]
 
     @unit_handler('length')
-    def r(self, t=..., *, index=None):
+    def r(self, t=None, *, index=None):
         '''
         Particle spherical radii at *t*.
 
@@ -179,11 +171,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -197,7 +187,7 @@ class _ParticleView:
         pos = self.pos(index=i, return_internal=True)
         return np.linalg.norm(pos, axis=-1)
 
-    def phi(self, t=..., *, index=None):
+    def phi(self, t=None, *, index=None):
         '''
         Particle azimuthal angles at *t*.
         
@@ -208,11 +198,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -226,7 +214,7 @@ class _ParticleView:
         pos = self.pos(index=i, return_internal=True)
         return np.arctan2(pos[..., 1], pos[..., 0])
 
-    def theta(self, t=..., *, index=None):
+    def theta(self, t=None, *, index=None):
         '''
         Particle polar angles at *t*.
 
@@ -236,11 +224,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -256,7 +242,7 @@ class _ParticleView:
         return np.arccos(pos[..., 2] / r)
 
     @unit_handler('length')
-    def cylR(self, t=..., *, index=None):
+    def cylR(self, t=None, *, index=None):
         '''
         Particle cylindrical radii at *t*.
 
@@ -264,11 +250,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -284,7 +268,7 @@ class _ParticleView:
     # --- Velocity Accessors -------------------------------------------------------------------
 
     @unit_handler('velocity')
-    def vel(self, t=..., *, index=None) -> np.ndarray:
+    def vel(self, t=None, *, index=None) -> np.ndarray:
         '''
         Particle velocities (vx, vy, vz) at *t*.
 
@@ -292,11 +276,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -310,7 +292,7 @@ class _ParticleView:
         return self._snap(self._sim._velocities, i)
 
     @unit_handler('velocity')
-    def vx(self, t=..., *, index=None) -> np.ndarray:
+    def vx(self, t=None, *, index=None) -> np.ndarray:
         '''
         x-component of particle velocities at *t*.
 
@@ -318,11 +300,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -336,7 +316,7 @@ class _ParticleView:
         return self._snap(self._sim._velocities, i)[..., 0]
 
     @unit_handler('velocity')
-    def vy(self, t=..., *, index=None) -> np.ndarray:
+    def vy(self, t=None, *, index=None) -> np.ndarray:
         '''
         y-component of particle velocities at *t*.
 
@@ -344,11 +324,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -362,7 +340,7 @@ class _ParticleView:
         return self._snap(self._sim._velocities, i)[..., 1]
 
     @unit_handler('velocity')
-    def vz(self, t=..., *, index=None) -> np.ndarray:
+    def vz(self, t=None, *, index=None) -> np.ndarray:
         '''
         z-component of particle velocities at *t*.
 
@@ -370,11 +348,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -389,7 +365,7 @@ class _ParticleView:
         return self._snap(self._sim._velocities, i)[..., 2]
 
     @unit_handler('velocity')
-    def vr(self, t=..., *, index=None):
+    def vr(self, t=None, *, index=None):
         '''
         Spherical coordinates radial velocities at *t*.
 
@@ -400,11 +376,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -421,7 +395,7 @@ class _ParticleView:
         return vr
 
     @unit_handler('angular_velocity')
-    def vphi(self, t=..., *, index=None):
+    def vphi(self, t=None, *, index=None):
         '''
         Azimuthal angular velocity at *t* (for both spherical and cylindrical coordinates).
 
@@ -432,11 +406,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -452,7 +424,7 @@ class _ParticleView:
                 / self.cylR(index=i, return_internal=True)**2)
 
     @unit_handler('velocity')
-    def vtheta(self, t=..., *, index=None):
+    def vtheta(self, t=None, *, index=None):
         '''
         Polar velocities at *t* (for spherical coordinates).
 
@@ -463,11 +435,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -487,7 +457,7 @@ class _ParticleView:
         )
 
     @unit_handler('velocity')
-    def cylvR(self, t=..., *, index=None):
+    def cylvR(self, t=None, *, index=None):
         '''
         Cylindrical coordinates radial velocities at *t*.
 
@@ -498,11 +468,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -520,7 +488,7 @@ class _ParticleView:
     # --- Momentum Accessors -------------------------------------------------------------------
 
     @unit_handler('momentum')
-    def p(self, t=..., *, index=None):
+    def p(self, t=None, *, index=None):
         '''
         Particle momenta (px, py, pz) at *t*.
         
@@ -528,11 +496,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         
@@ -546,7 +512,7 @@ class _ParticleView:
         return self.mass[:, None] * self.vel(index=i, return_internal=True)
 
     @unit_handler('momentum')
-    def px(self, t=..., *, index=None):
+    def px(self, t=None, *, index=None):
         '''
         x-component of particle momenta at *t*.
 
@@ -554,11 +520,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -572,7 +536,7 @@ class _ParticleView:
         return self.mass * self.vx(index=i, return_internal=True)
 
     @unit_handler('momentum')
-    def py(self, t=..., *, index=None):
+    def py(self, t=None, *, index=None):
         '''
         y-component of particle momenta at *t*.
 
@@ -580,11 +544,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -598,7 +560,7 @@ class _ParticleView:
         return self.mass * self.vy(index=i, return_internal=True)
 
     @unit_handler('momentum')
-    def pz(self, t=..., *, index=None):
+    def pz(self, t=None, *, index=None):
         '''
         z-component of particle momenta at *t*.
 
@@ -606,11 +568,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -624,7 +584,7 @@ class _ParticleView:
         return self.mass * self.vz(index=i, return_internal=True)
 
     @unit_handler('angular_momentum')
-    def L(self, t=..., center_pos=None, center_vel=None, *, index=None):
+    def L(self, t=None, *, index=None, center_pos=None, center_vel=None):
         '''
         Angular momentum of particles at *t*.
 
@@ -632,11 +592,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         center_pos : array-like, optional
@@ -662,7 +620,7 @@ class _ParticleView:
         return self.mass[:, None] * np.cross(r, v)
 
     @unit_handler('angular_momentum')
-    def Lx(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0], *, index=None):
+    def Lx(self, t=None, *, index=None, center_pos=[0,0,0], center_vel=[0,0,0]):
         '''
         x-component of particle angular momentum at *t* about *center*.
 
@@ -670,11 +628,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         center_pos : array-like, optional
@@ -694,7 +650,7 @@ class _ParticleView:
         return self.L(index=i, center_pos=center_pos, center_vel=center_vel, return_internal=True)[..., 0]
 
     @unit_handler('angular_momentum')
-    def Ly(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0], *, index=None):
+    def Ly(self, t=None, *, index=None, center_pos=[0,0,0], center_vel=[0,0,0]):
         '''
         y-component of particle angular momentum at *t* about *center*.
 
@@ -702,11 +658,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         center_pos : array-like, optional
@@ -726,7 +680,7 @@ class _ParticleView:
         return self.L(index=i, center_pos=center_pos, center_vel=center_vel, return_internal=True)[..., 1]
 
     @unit_handler('angular_momentum')
-    def Lz(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0], *, index=None):
+    def Lz(self, t=None, *, index=None, center_pos=[0,0,0], center_vel=[0,0,0]):
         '''
         z-component of particle angular momentum at *t* about *center*.
 
@@ -734,11 +688,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
         center_pos : array-like, optional
@@ -760,7 +712,7 @@ class _ParticleView:
     # --- Center of Mass -----------------------------------------------------------------------
 
     @unit_handler('length')
-    def com_pos(self, t=..., *, index=None):
+    def com_pos(self, t=None, *, index=None):
         '''
         Center of mass (x, y, z) of the particles at *t*: their mass-weighted
         mean position.
@@ -769,11 +721,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -787,7 +737,7 @@ class _ParticleView:
         return diagnostics.center_of_mass(self.pos(index=i, return_internal=True), self.mass)
 
     @unit_handler('velocity')
-    def com_vel(self, t=..., *, index=None):
+    def com_vel(self, t=None, *, index=None):
         '''
         Velocity (vx, vy, vz) of the center of mass of the particles at *t*:
         their mass-weighted mean velocity.
@@ -796,11 +746,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -816,7 +764,7 @@ class _ParticleView:
     # --- External Potential -------------------------------------------------------------------
 
     @unit_handler('energy')
-    def compute_external_pot(self, t=..., *, index=None):
+    def compute_external_pot(self, t=None, *, index=None):
         '''
         External potential of particles at *t*.
 
@@ -824,11 +772,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -855,7 +801,7 @@ class _ParticleView:
     # --- Kinetic Energy -----------------------------------------------------------------------
 
     @unit_handler('energy')
-    def KE(self, t=..., *, index=None):
+    def KE(self, t=None, *, index=None):
         '''
         Kinetic energy of particles at *t*.
 
@@ -863,11 +809,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -883,7 +827,7 @@ class _ParticleView:
     # --- External Acceleration ----------------------------------------------------------------
 
     @unit_handler('acceleration')
-    def external_acc(self, t=..., *, index=None):
+    def external_acc(self, t=None, *, index=None):
         '''
         Total external acceleration on each particle at *t*.
 
@@ -891,11 +835,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -914,7 +856,7 @@ class _ParticleView:
                 + self._sim._base_ext_force.acc(pos=pos, vel=vel, mass=self.mass, t=t_phys))
 
     @unit_handler('acceleration')
-    def external_ax(self, t=..., *, index=None):
+    def external_ax(self, t=None, *, index=None):
         '''
         x-component of external acceleration on each particle at *t*.
 
@@ -922,11 +864,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -940,7 +880,7 @@ class _ParticleView:
         return self.external_acc(index=i, return_internal=True)[..., 0]
 
     @unit_handler('acceleration')
-    def external_ay(self, t=..., *, index=None):
+    def external_ay(self, t=None, *, index=None):
         '''
         y-component of external acceleration on each particle at *t*.
 
@@ -948,11 +888,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
@@ -966,7 +904,7 @@ class _ParticleView:
         return self.external_acc(index=i, return_internal=True)[..., 1]
 
     @unit_handler('acceleration')
-    def external_az(self, t=..., *, index=None):
+    def external_az(self, t=None, *, index=None):
         '''
         z-component of external acceleration on each particle at *t*.
 
@@ -974,11 +912,9 @@ class _ParticleView:
 
         Parameters
         ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time (in Gyr).
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+        t : float, optional
+            Output time [Gyr], one of ``sim.times`` (``sim.nearest_t`` snaps to one).
+            None, the default, gives every output.
         index : int, optional
             Position of the snapshot in ``sim.times``, in place of *t*. -1 is the last.
 
